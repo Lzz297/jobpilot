@@ -1,0 +1,243 @@
+# ==========================================
+# LLM 模型配置（切换大模型只改这里）
+# ==========================================
+llm:
+  provider: glm          # deepseek | qwen | glm
+  model: glm-5.1      # 模型名称
+  # 切换千问示例：
+  #   provider: qwen
+  #   model: qwen3.6-plus
+  # 各 provider 预设：
+  #   deepseek → base_url: api.deepseek.com,  env: DEEPSEEK_API_KEY
+  #   qwen    → base_url: dashscope.aliyuncs.com,  env: DASHSCOPE_API_KEY
+  #   glm     → base_url: open.bigmodel.cn,  env: GLM_API_KEY
+  # 也可手动覆盖：
+  # base_url: https://custom-endpoint.com/v1
+  # api_key_env: MY_CUSTOM_KEY
+
+# ==========================================
+# 搜索关键词组
+# ==========================================
+# 基于 me.yaml 战略定位的 4 个方向优先级 + 补充方向设计
+# direction 字段标记所属方向（代码当前不读取，供人工理解 + 未来扩展用）
+#
+# URL: https://hk.jobsdb.com/{slug}-jobs
+# 加 classification: https://hk.jobsdb.com/{slug}-jobs-in-{classification}
+# classification 可选值示例：
+#   information-communication-technology / banking-financial-services /
+#   science-technology / sales / customer-service
+
+search_queries:
+  # ── 第一优先级：支付工程师（WaaS 经验直接对口，面试不考算法）──
+  # - keywords: "payment engineer"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "payment"
+  # - keywords: "Settlement engineer"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "payment"
+  # - keywords: "Payment Operations"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "payment"
+
+    # 以下优先级暂时不跑，一个方向一个方向跑
+  # # ── 第二优先级：方案/集成工程师（ICT/Fintech，侧重业务理解和系统设计）──
+  # - keywords: "Solutions Engineer"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "solutions"
+  # - keywords: "Implementation Engineer"
+  #   location: "Hong Kong"
+  #   direction: "solutions"
+  # - keywords: "Pre-sales Engineer"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "solutions"
+
+  # # ── 第三优先级：Web3 后端开发（偏业务集成方向，岗位数量有限但 WaaS 经验是护城河）──
+  - keywords: "Web3"
+    location: "Hong Kong"
+    classification: "information-communication-technology"
+    direction: "web3"
+  # - keywords: "Blockchain"
+  #   location: "Hong Kong"
+  #   direction: "web3"
+  # - keywords: "Crypto"
+  #   location: "Hong Kong"
+  #   direction: "web3"
+  # - keywords: "Web3 Developer"
+  #   location: "Hong Kong"
+  #   direction: "web3"
+  # - keywords: "DeFi"
+  #   location: "Hong Kong"
+  #   direction: "web3"
+
+  # # ── 第四优先级/保底：技术支持（Web3/Crypto 方向，门槛最低）──
+  # - keywords: "Technical Support"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "support"
+  # - keywords: "Support Engineer"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "support"
+
+  # # ── 补充方向：Fintech 通用（覆盖跨境支付、合规科技、虚拟银行等）──
+  # - keywords: "Fintech"
+  #   location: "Hong Kong"
+  #   classification: "information-communication-technology"
+  #   direction: "fintech"
+  # - keywords: "Fintech Engineer"
+  #   location: "Hong Kong"
+  #   direction: "fintech"
+
+# ==========================================
+# 过滤规则
+# ==========================================
+filters:
+  # 排除特定公司（如已知不合适的公司，面试流程不友好等）
+  exclude_companies: []
+
+# ==========================================
+# 搜索/抓取量控制
+# ==========================================
+# 17 组关键词 × 3 页/组 ≈ 51 次页面请求（去重后实际岗位量通常在 100-250 之间）
+max_pages_per_query: 3
+max_total_results: 200
+
+# ==========================================
+# 匹配评分设置
+# ==========================================
+matching:
+  # 最低达标分数（低于此分数的岗位不进入推荐列表）
+  # 45 分是一个偏宽松的门槛，确保不误杀边缘匹配的好岗位
+  min_match_score: 45
+
+  # 推荐列表最大长度（设大一点，已评分的岗位达标就保留）
+  top_n: 999
+
+  # 及格线复评：对处于及格线附近的岗位做二次评分取平均，减少单次评分的偶然性
+  borderline_rescore: true
+  borderline_range: 8    # 复评区间：min_match_score ± 8 = 37~53 分
+
+  # ==========================================
+  # 权重方案
+  # ==========================================
+  # 不同岗位类型使用不同的评分权重，所有维度加和必须等于 100
+  # 5 个维度（与 prompts.yaml 的 scoring_system_prompt 对齐）：
+  #   skill      — JD 要求的技能候选人掌握了多少
+  #   experience — 工作年限和行业经验是否达标
+  #   level      — 岗位级别与候选人水平是否匹配
+  #   industry   — 岗位所在行业与候选人背景是否吻合
+  #   bonus      — 语言、地点、合规经验、面试友好度等加分项
+  weight_profiles:
+    # 默认方案（无法分类到具体方向时使用）
+    default:
+      skill: 30
+      experience: 25
+      level: 15
+      industry: 15
+      bonus: 15
+
+    # 支付工程师方向
+    # 行业和加分项权重更高：支付业务经验（WaaS/AML/MPC）是核心竞争力
+    # 职级权重最低：支付工程师岗位通常不严格卡 Junior/Senior
+    payment:
+      skill: 25
+      experience: 20
+      level: 10
+      industry: 25
+      bonus: 20
+
+    # 方案/集成工程师方向
+    # 加分项权重最高：B2B 对接经验、粤语能力、沟通能力是关键差异化
+    # 行业权重较高：ICT/Fintech 行业经验加分明显
+    solutions:
+      skill: 25
+      experience: 20
+      level: 15
+      industry: 20
+      bonus: 20
+
+    # Web3 后端方向
+    # 行业权重最高：Web3/Crypto 行业经验是硬门槛
+    # 经验和职级权重低：Web3 公司普遍不卡年限，更看重实际项目
+    web3:
+      skill: 25
+      experience: 15
+      level: 10
+      industry: 30
+      bonus: 20
+
+    # 技术岗通用（纯后端开发等）
+    # 技能权重最高：技术栈匹配度是核心
+    technical:
+      skill: 35
+      experience: 20
+      level: 15
+      industry: 15
+      bonus: 15
+
+  # ==========================================
+  # 岗位分类规则
+  # ==========================================
+  # 按标题关键词将岗位分配到对应的权重方案
+  # 检查顺序很重要：更具体的类别在前，通用类别在后
+  # 顺序：payment → solutions → web3 → technical → default
+  weight_rules:
+    payment:
+      - payment
+      - settlement
+      - clearing
+      - reconciliation
+      - remittance
+      - payout
+      - disbursement
+      - acquiring
+      - merchant services
+      - treasury
+    solutions:
+      - solutions engineer
+      - solutions architect
+      - solutions consultant
+      - technical consultant
+      - sales engineer
+      - pre-sales
+      - customer engineer
+      - customer success
+      - implementation engineer
+      - integration consultant
+    web3:
+      - web3
+      - blockchain
+      - crypto
+      - defi
+      - nft
+      - token
+      - wallet
+      - digital asset
+      - custody
+      - exchange
+      - on-chain
+      - smart contract
+    technical:
+      - developer
+      - engineer
+      - programmer
+      - backend
+      - frontend
+      - fullstack
+      - full-stack
+      - software
+      - devops
+
+# ==========================================
+# 市场调研设置（与找工作的配置独立）
+# ==========================================
+market_analysis:
+  max_pages: 4            # 每次市场调研翻几页
+  max_fetch_jd: 100       # 最多抓取多少条完整 JD
+  batch_size: 5            # LLM 分析时每批处理多少条 JD
+  jd_max_chars: 6000       # 每条 JD 截断长度（节省 token）

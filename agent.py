@@ -1,0 +1,89 @@
+"""
+agent.py - JobsDB 智能求职 Agent 主入口（终端模式）
+"""
+import config
+from config import client, print_session_summary, get_system_prompt
+from tools_defs import tools, tool_map, execute_tool, deduplicate_tool_calls
+from scraper import cleanup_playwright
+from pdf_renderer import cleanup_renderer
+
+
+# ============================================================
+#  Agent 主循环
+# ============================================================
+
+messages = [{"role": "system", "content": get_system_prompt()}]
+
+print("=" * 50)
+print("🤖 JobsDB 智能求职 Agent 已启动！")
+print("=" * 50)
+print()
+print("你可以说：")
+print("  💼 「帮我找工作」              → 三层漏斗搜索 + 匹配分析")
+print("  📋 「看看匹配结果」            → 查看多维度排名列表")
+print("  📊 「分析 Java 开发市场行情」    → 独立市场调研（技能/薪资/差距）")
+print("  📝 「为第1个生成简历」          → 基于匹配岗位生成定制简历")
+print("  📝 「生成通用简历」            → 基于个人画像生成通用版")
+print("  📝 「生成 SE 方向的简历」       → 基于岗位方向生成")
+print("  📝  直接粘贴 JD + 「生成简历」  → 基于任意 JD 生成")
+print("  👤 「看看我的档案」            → 查看个人配置")
+print("  🔍 「搜索 xxx」               → 自由搜索")
+print("  📄 「查看这个岗位 URL」         → 抓取单个岗位完整JD")
+print("  输入 quit 退出")
+print()
+
+while True:
+    user_input = input("你: ").strip()
+    if user_input.lower() == "quit":
+        print("👋 再见，祝你求职顺利！")
+        cleanup_playwright()
+        cleanup_renderer()
+        break
+    if not user_input:
+        continue
+
+    messages.append({"role": "user", "content": user_input})
+
+    response = client.chat.completions.create(
+        model=config.MODEL_NAME,
+        messages=messages,
+        tools=tools
+    )
+
+    reply = response.choices[0].message
+    messages.append(reply)
+
+    # 工具调用循环
+    while reply.tool_calls:
+        print("⚙️  Agent 正在工作...")
+
+        unique_calls = deduplicate_tool_calls(reply.tool_calls)
+
+        for tc in unique_calls:
+            result = execute_tool(tc)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": result
+            })
+
+        skipped = [tc for tc in reply.tool_calls if tc not in unique_calls]
+        for tc in skipped:
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": "（重复调用已跳过）"
+            })
+
+        response = client.chat.completions.create(
+            model=config.MODEL_NAME,
+            messages=messages,
+            tools=tools
+        )
+        reply = response.choices[0].message
+        messages.append(reply)
+
+    print(f"\n🤖: {reply.content}\n")
+
+    # ── 本轮结束，打印文件总览 ──
+    print_session_summary()

@@ -1,0 +1,28 @@
+# Python 虚拟环境
+.venv/
+
+# 环境变量 (含 API Key)
+.env
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 输出文件（生成的结果、简历、报告等）
+output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.tmp
+*.log

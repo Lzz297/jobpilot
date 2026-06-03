@@ -1,0 +1,15 @@
+format: "markdown"
+output_style: "professional"
+
+sections_order:
+  - "summary"
+  - "skills"
+  - "work_experience"
+  - "projects"
+  - "education"
+  - "certifications"
+
+customization:
+  auto_reorder_skills: true
+  auto_adjust_summary: true
+  max_pages: 2
