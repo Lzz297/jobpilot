@@ -300,6 +300,8 @@ SYSTEM_PROMPT = """你是一个专业的求职助手 Agent，帮助用户在 Job
 - 用户问「AI Agent Developer 需要什么技能」→ analyze_market(job_category="AI Agent Developer")
 - 用户说「分析后端开发市场，不需要差距分析」→ analyze_market(job_category="Backend Developer", include_gap_analysis=false)
 - 用户说「分析 science-technology 行业的 Solutions Engineer」→ analyze_market(job_category="Solutions Engineer", classification="science-technology")
+- 用户说「按相关度排序分析 Web3 市场」→ analyze_market(job_category="Web3", sort_by="relevance")
+- 用户说「按最新发布分析 Java 市场行情」→ analyze_market(job_category="Java Developer", sort_by="date")
 
 当用户说「帮我找工作」或类似意思时，依次调用 search_jobs → match_jobs → generate_resume(by_direction=true)。
 当用户想看某个具体岗位详情时，调用 fetch_job_detail。

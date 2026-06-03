@@ -1040,6 +1040,16 @@ function showModal(type) {
           </div>
         </div>
         <button onclick="addMarketRow()" style="background:none;border:none;color:#2563eb;cursor:pointer;padding:4px 0;font-size:13px">+ Add More</button>
+        <div class="sort-toggle" style="margin-top:8px">
+          <label class="sort-option">
+            <input type="radio" name="mktSort" value="date" checked>
+            <span>&#x1F4C5; Sort by Date</span>
+          </label>
+          <label class="sort-option">
+            <input type="radio" name="mktSort" value="relevance">
+            <span>&#x1F50D; Sort by Relevance</span>
+          </label>
+        </div>
         <div class="modal-actions">
           <button onclick="closeModal()">Cancel</button>
           <button class="primary" onclick="submitModal('market')">Analyze</button>
@@ -1100,11 +1110,13 @@ function submitModal(type) {
         if (cat) tasks.push({category: cat, classification: cls});
       });
       if (tasks.length === 0) return;
+      const mktSort = document.querySelector('input[name="mktSort"]:checked')?.value || 'date';
+      const sortHint = mktSort === 'relevance' ? '，按相关度排序' : '，按发布时间排序';
       if (tasks.length === 1) {
         const t = tasks[0];
-        msg = t.classification ? `分析 ${t.classification} 行业的 ${t.category} 市场行情` : `分析 ${t.category} 市场行情`;
+        msg = t.classification ? `分析 ${t.classification} 行业的 ${t.category} 市场行情${sortHint}` : `分析 ${t.category} 市场行情${sortHint}`;
       } else {
-        msg = '批量市场分析：\n' + tasks.map((t, i) => `${i+1}. ${t.category}` + (t.classification ? ` (${t.classification})` : '')).join('\n');
+        msg = '批量市场分析（' + sortHint + '）：\n' + tasks.map((t, i) => `${i+1}. ${t.category}` + (t.classification ? ` (${t.classification})` : '')).join('\n');
       }
       break;
     }
