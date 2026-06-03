@@ -589,6 +589,7 @@ Phase D: LLM 撰写报告 + 统一保存所有文件
 - LLM 分析 prompt 强调技能名称具体化（如 "Ethers.js Web3 Library" 而非 "Web3"）
 - 差距分析给出可执行的学习路径（每一步具体到"学什么、怎么学"）
 - 支持 `batch_analyze_market()` 批量分析多个岗位类别
+- 支持 `sort_by` 参数切换排序方式（`"date"` 按发布时间 / `"relevance"` 按相关度），Web UI 和 CLI 均可控制
 
 ---
 
@@ -609,7 +610,8 @@ Phase D: LLM 撰写报告 + 统一保存所有文件
 
 ```yaml
 llm:                              # LLM 配置（provider + model + 可选自定义 base_url）
-search_queries:                   # 搜索关键词组（keywords + location + classification + direction）
+sort_mode: "date"                 # 排序方式："date"=按发布时间 / "relevance"=按相关度
+search_queries:                   # 搜索关键词组（keywords + location + classification + direction + sort_by可选）
 filters:                          # 排除公司列表
 max_pages_per_query: 3            # 每组关键词翻页数
 max_total_results: 200            # 最终抓取 JD 上限
