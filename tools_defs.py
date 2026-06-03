@@ -66,7 +66,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "list_files",
-            "description": "列出 output 目录中的所有文件",
+            "description": "列出当前 run 目录和 market 目录中的文件",
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
     },

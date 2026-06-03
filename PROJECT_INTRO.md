@@ -42,7 +42,7 @@ D:\job-agent/
 |-- tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 |-- tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
 |
-|-- scraper.py                # [爬虫] JobsDB 页面抓取（~1021 行，最大模块），4 层列表解析 + 3 层详情解析
+|-- scraper.py                # [爬虫] JobsDB 页面抓取（~1031 行，最大模块），4 层列表解析 + 3 层详情解析
 |-- job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
 |-- job_match.py              # [匹配] LLM 五维度评分 + 动态权重 + 及格线复评
 |-- resume_gen.py             # [简历] 5 模式生成 + 英文先行 + 三语翻译 + 质量自检
@@ -73,7 +73,7 @@ D:\job-agent/
 |   |-- market/               #     市场调研输出（每组 5 个文件）
 |
 |-- .env                      # API Key（DEEPSEEK_API_KEY / DASHSCOPE_API_KEY / GLM_API_KEY）
-|-- CONFIG_GUIDE.md            # 配置文件详细说明（独立手册，457 行）
+|-- CONFIG_GUIDE.md            # 配置文件详细说明（独立手册，484 行）
 |-- RESUME_PROMPTS_FOR_REVIEW.md  # 简历 prompt 审查汇总（含修改指南）
 |-- .venv/                    # Python 虚拟环境
 ```
@@ -250,8 +250,8 @@ get_latest_run_dir()  # 查找最近一次 run（按文件名排序）
 | `generate_resume` | resume_gen | by_direction / job_index / jd_text / role_direction（均可选） | 5 种模式简历生成 |
 | `list_matched_jobs` | job_match | 无 | 查看匹配结果列表 |
 | `fetch_job_detail` | tools_basic | url | 抓取单个岗位完整 JD |
-| `analyze_market` | market_analysis | `job_category`, `location`, `include_gap_analysis`, `classification`, `sort_by`（可选） | 单类市场调研 |
-| `batch_analyze_market` | market_analysis | `tasks`, `location`, `include_gap_analysis` | 批量市场调研 |
+| `analyze_market` | market_analysis | `job_category`（必填）, `location`, `include_gap_analysis`, `classification`, `sort_by`（均为可选） | 单类市场调研 |
+| `batch_analyze_market` | market_analysis | `tasks`（必填）, `location`, `include_gap_analysis`, `sort_by`（均为可选） | 批量市场调研 |
 
 **执行分发**：
 
