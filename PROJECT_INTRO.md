@@ -245,12 +245,12 @@ get_latest_run_dir()  # 查找最近一次 run（按文件名排序）
 | `web_search` | tools_basic | query, max_results | DuckDuckGo 联网搜索 |
 | `load_user_profile` | tools_basic | 无 | 查看 `profiles/me.yaml` |
 | `load_search_config` | tools_basic | 无 | 查看 `profiles/search_config.yaml` |
-| `search_jobs` | job_search | 无 | 三层漏斗搜索 |
+| `search_jobs` | job_search | sort_by（可选） | 三层漏斗搜索，支持按日期或相关度排序 |
 | `match_jobs` | job_match | 无 | 五维匹配评分 |
 | `generate_resume` | resume_gen | by_direction / job_index / jd_text / role_direction（均可选） | 5 种模式简历生成 |
 | `list_matched_jobs` | job_match | 无 | 查看匹配结果列表 |
 | `fetch_job_detail` | tools_basic | url | 抓取单个岗位完整 JD |
-| `analyze_market` | market_analysis | `job_category`, `location`, `include_gap_analysis`, `classification` | 单类市场调研 |
+| `analyze_market` | market_analysis | `job_category`, `location`, `include_gap_analysis`, `classification`, `sort_by`（可选） | 单类市场调研 |
 | `batch_analyze_market` | market_analysis | `tasks`, `location`, `include_gap_analysis` | 批量市场调研 |
 
 **执行分发**：
@@ -430,6 +430,8 @@ _FIELD_SPECS = {
 ```
 
 **设计理念**：不做 LLM 预过滤，直接全量抓取完整 JD，将精确判断交给 match_jobs 的五维评分。虽然抓取时间更长（100 条约 150~350 秒），但能避免基于不完整信息（标题+摘要）误杀真正匹配的岗位。
+
+**排序控制**：通过 `sort_by` 参数切换搜索排序。`"date"` 按发布时间（最新在前，对应 `?sortmode=ListedDate`），`"relevance"` 按相关度（JobsDB 默认）。全局默认在 `search_config.yaml` 的 `sort_mode` 中配置，Web UI 侧边栏提供一键切换。
 
 ---
 

@@ -137,7 +137,7 @@ _GAP_ANALYSIS_PROMPT = """你是一位求职策略顾问。请对比市场技能
 #  主函数
 # ============================================================
 
-def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True, classification=""):
+def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True, classification="", sort_by=None):
     """
     独立市场调研：主动搜索 JobsDB 指定岗位类别，分析市场行情。
 
@@ -145,6 +145,8 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
         job_category: 岗位类别关键词，如 "Java Developer", "Web3", "AI Agent"
         location: 搜索地点，默认 "Hong Kong"
         include_gap_analysis: 是否包含个人差距分析
+        classification: JobsDB 行业分类（可选）
+        sort_by: 排序方式，"date" = 按发布时间, "relevance" = 按相关度
     """
     # ── 加载配置 ──
     search_cfg, _ = load_yaml("search_config.yaml")
@@ -153,6 +155,7 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
     cfg_max_fetch = ma_cfg.get("max_fetch_jd", 40)
     cfg_batch_size = ma_cfg.get("batch_size", 10)
     cfg_jd_max_chars = ma_cfg.get("jd_max_chars", 2000)
+    cfg_sort_by = sort_by or (search_cfg or {}).get("sort_mode", "date")
 
     emit(f"\n{'='*50}")
     emit(f"📊 市场分析: {job_category} @ {location}")
@@ -161,7 +164,7 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
     # ── Phase A: 数据采集 ──
     emit(f"\n   📡 搜索 JobsDB: {job_category}...")
     listings = scan_jobsdb_listings(job_category, location, max_pages=cfg_max_pages,
-                                     classification=classification)
+                                     classification=classification, sort_by=cfg_sort_by)
 
     if not listings:
         return f"❌ 未搜索到 {job_category} 相关岗位，请检查关键词或网络连接"
@@ -363,7 +366,7 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
 #  批量市场分析
 # ============================================================
 
-def batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True):
+def batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True, sort_by=None):
     """
     批量市场分析：依次分析多个岗位类别。
 
@@ -372,6 +375,7 @@ def batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True)
                例如: [{"category": "AI Agent", "classification": "information-communication-technology"}, {"category": "Web3"}]
         location: 搜索地点，默认 "Hong Kong"
         include_gap_analysis: 是否包含个人差距分析
+        sort_by: 排序方式，"date" = 按发布时间, "relevance" = 按相关度
     """
     if not tasks or not isinstance(tasks, list):
         return "❌ 请提供至少一个岗位类别"
@@ -394,6 +398,7 @@ def batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True)
             location=location,
             include_gap_analysis=include_gap_analysis,
             classification=classification,
+            sort_by=sort_by,
         )
         results.append(f"--- [{i}/{total}] {category} ---\n{result}")
 

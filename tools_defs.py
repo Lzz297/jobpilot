@@ -105,8 +105,18 @@ tools = [
         "type": "function",
         "function": {
             "name": "search_jobs",
-            "description": "三层漏斗搜索：扫描JobsDB列表页→规则过滤→抓取完整JD。自动读取配置执行，无需参数。",
-            "parameters": {"type": "object", "properties": {}, "required": []}
+            "description": "三层漏斗搜索：扫描JobsDB列表页→规则过滤→抓取完整JD。可选传 sort_by 参数切换排序方式（默认从配置读取）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["relevance", "date"],
+                        "description": "排序方式：\"relevance\"（按相关度排序，JobsDB默认）或 \"date\"（按发布时间排序，最新在前）。默认从 search_config.yaml 的 sort_mode 读取，未配置则按 date。"
+                    }
+                },
+                "required": []
+            }
         }
     },
     {
@@ -194,6 +204,11 @@ tools = [
                     "classification": {
                         "type": "string",
                         "description": "JobsDB 行业分类标签（可选），必须保留原始大小写和拼写，如 'science-technology'、'banking-financial-services'。不填则搜索全部行业"
+                    },
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["relevance", "date"],
+                        "description": "排序方式：\"relevance\"（按相关度排序）或 \"date\"（按发布时间排序，最新在前）。默认从 search_config.yaml 的 sort_mode 读取。"
                     }
                 },
                 "required": ["job_category"]
@@ -233,6 +248,11 @@ tools = [
                     "include_gap_analysis": {
                         "type": "boolean",
                         "description": "是否包含个人差距分析，默认 true"
+                    },
+                    "sort_by": {
+                        "type": "string",
+                        "enum": ["relevance", "date"],
+                        "description": "排序方式：\"relevance\"（按相关度排序）或 \"date\"（按发布时间排序，最新在前）。默认从 search_config.yaml 的 sort_mode 读取。"
                     }
                 },
                 "required": ["tasks"]

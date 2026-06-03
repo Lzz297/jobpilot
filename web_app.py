@@ -131,7 +131,7 @@ def _run_agent_turn(sid, user_message):
 #  Pipeline 直接执行（不经过 LLM）
 # ============================================================
 
-def _run_pipeline(sid, action):
+def _run_pipeline(sid, action, sort_by=None):
     """直接执行 search_jobs + match_jobs 流水线，不经过 LLM 决策。"""
     session = _get_or_create_session(sid)
     q = session["queue"]
@@ -141,7 +141,7 @@ def _run_pipeline(sid, action):
 
         if action == "search_match":
             q.put({"type": "status", "text": "Starting job search..."})
-            search_result = search_jobs()
+            search_result = search_jobs(sort_by=sort_by)
             q.put({"type": "progress", "text": search_result})
 
             if not search_result.startswith("❌"):
@@ -200,6 +200,7 @@ def pipeline():
     data = request.get_json()
     sid = data.get("sid", "")
     action = data.get("action", "")
+    sort_by = data.get("sort_by")  # optional: "date" or "relevance"
 
     if not sid or not action:
         return jsonify({"error": "Missing sid or action"}), 400
@@ -223,6 +224,7 @@ def pipeline():
     t = threading.Thread(
         target=_run_pipeline,
         args=(sid, action),
+        kwargs={"sort_by": sort_by},
         daemon=True,
     )
     t.start()

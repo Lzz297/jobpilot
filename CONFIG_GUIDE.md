@@ -120,12 +120,14 @@ search_queries:
 **原理：** 每组生成一次 JobsDB 搜索请求，然后翻页抓取列表。
 - 不填 `classification`：`hk.jobsdb.com/{keywords}-jobs`（搜索全部行业）
 - 填 `classification`：`hk.jobsdb.com/{keywords}-jobs-in-{classification}`（限定行业）
+- 可选填 `sort_by`：覆盖全局 `sort_mode`，`"date"` = 按发布时间，`"relevance"` = 按相关度
 
 | 你想达到的效果 | 怎么改 |
 |--------------|-------|
 | 搜索范围更广 | 增加更多关键词组（如加上 "Crypto", "DeFi"） |
 | 搜索更精准、减少噪音 | 用更具体的词，或者加 `classification` 限定行业 |
 | 搜其他城市 | 修改 `location`（如 "Singapore"、"Remote"） |
+| 某组搜索词用不同排序 | 在该组加 `sort_by: "relevance"` |
 
 **建议：** 宽泛词（Web3）和精确词（Web3 Product）搭配使用，5-8 组为宜。对于含义很广的岗位名称（如 Solutions Engineer），建议加 `classification` 缩小范围。`classification` 的值直接对应 JobsDB URL 中 `-in-` 后面的部分，自行在 JobsDB 上确认即可。
 
@@ -234,6 +236,28 @@ market_analysis:
 ```
 
 **作用：** 仅在调用 `analyze_market` 工具时使用，与找工作流程独立。
+
+---
+
+### 2.7 `sort_mode` — 排序设置
+
+```yaml
+sort_mode: "date"      # "date" = 按发布时间排序（最新在前）
+                       # "relevance" = 按相关度排序（JobsDB 默认）
+```
+
+**原理：** 控制 JobsDB 搜索结果的排序方式。`"date"` 对应 URL 参数 `?sortmode=ListedDate`，`"relevance"` 则不传 `sortmode` 参数（走 JobsDB 默认相关度排序）。
+
+**单个搜索词覆盖：** 如果某个关键词组需要不同的排序方式，可以在 `search_queries` 条目中加 `sort_by` 字段：
+
+```yaml
+search_queries:
+  - keywords: "Web3"
+    location: "Hong Kong"
+    sort_by: "relevance"   # 覆盖全局 sort_mode，按相关度搜索
+```
+
+**Web UI：** 侧边栏 "Find & Match Jobs" 按钮下方有排序切换：📅 Sort by Date / 🔍 Sort by Relevance。
 
 ---
 
@@ -418,6 +442,12 @@ customization:
 
 1. `me.yaml` → 修改 `location` 和 `job_intent.location_preference`
 2. `search_config.yaml` → 修改每组 `search_queries` 的 `location`
+
+### 场景 6：切换搜索结果排序
+
+1. **全局切换** → `search_config.yaml` 修改 `sort_mode` 为 `"relevance"`（按相关度）或 `"date"`（按发布时间）
+2. **单个搜索词** → 在对应的 `search_queries` 条目中加 `sort_by: "relevance"` 覆盖全局设置
+3. **临时切换** → Web UI 侧边栏 "Find & Match Jobs" 下方 radio button 直接选择
 
 ---
 

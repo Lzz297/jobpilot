@@ -106,6 +106,23 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 }
 .sidebar-btn.primary-action:hover { background: #2563eb; }
 
+/* Sort toggle */
+.sort-toggle {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 6px 4px 2px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.sort-option {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 8px; border-radius: 4px;
+  font-size: 12px; cursor: pointer; color: #94a3b8;
+  transition: background 0.15s, color 0.15s;
+}
+.sort-option:hover { background: var(--sidebar-hover); color: #e2e8f0; }
+.sort-option input[type="radio"] { accent-color: var(--accent); margin: 0; }
+
 .sidebar-divider { border-top: 1px solid rgba(255,255,255,0.08); margin: 8px 16px; }
 
 /* Current Run panel */
@@ -390,6 +407,16 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
       <button class="sidebar-btn primary-action" onclick="doFindAndMatch()">
         &#x1F680; Find & Match Jobs
       </button>
+      <div class="sort-toggle">
+        <label class="sort-option">
+          <input type="radio" name="sortMode" value="date" checked onchange="onSortModeChange()">
+          <span>&#x1F4C5; Sort by Date</span>
+        </label>
+        <label class="sort-option">
+          <input type="radio" name="sortMode" value="relevance" onchange="onSortModeChange()">
+          <span>&#x1F50D; Sort by Relevance</span>
+        </label>
+      </div>
     </div>
 
     <!-- CURRENT RUN -->
@@ -587,6 +614,12 @@ function handleEvent(ev) {
   }
 }
 
+// ── Sort mode change handler ──
+function onSortModeChange() {
+  const sel = document.querySelector('input[name="sortMode"]:checked');
+  console.log('Sort mode:', sel ? sel.value : 'not set');
+}
+
 // ── Primary workflow: Find & Match (direct pipeline, no LLM) ──
 async function doFindAndMatch() {
   if (busy) return;
@@ -598,10 +631,12 @@ async function doFindAndMatch() {
   showProgress();
   connectSSE();
 
+  const sortBy = document.querySelector('input[name="sortMode"]:checked')?.value || 'date';
+
   const resp = await fetch('/api/pipeline', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sid, action: 'search_match' }),
+    body: JSON.stringify({ sid, action: 'search_match', sort_by: sortBy }),
   });
 
   if (!resp.ok) {

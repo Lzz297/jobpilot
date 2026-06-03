@@ -16,10 +16,21 @@ llm:
   # api_key_env: MY_CUSTOM_KEY
 
 # ==========================================
+# 搜索排序设置
+# ==========================================
+# sort_mode 控制搜索结果的排序方式：
+#   "date"      → 按发布时间排序（最新在前），对应 URL ?sortmode=ListedDate
+#   "relevance" → 按相关度排序（JobsDB 默认），不传 sortmode 参数
+# 留空或删除此行，默认按 date 排序（保持向后兼容）
+# 单个 search_queries 条目可加 sort_by 字段覆盖此全局设置
+sort_mode: "date"
+
+# ==========================================
 # 搜索关键词组
 # ==========================================
 # 基于 me.yaml 战略定位的 4 个方向优先级 + 补充方向设计
 # direction 字段标记所属方向（代码当前不读取，供人工理解 + 未来扩展用）
+# sort_by 字段（可选）覆盖全局 sort_mode，支持 "date" / "relevance"
 #
 # URL: https://hk.jobsdb.com/{slug}-jobs
 # 加 classification: https://hk.jobsdb.com/{slug}-jobs-in-{classification}

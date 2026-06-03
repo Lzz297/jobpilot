@@ -655,7 +655,8 @@ def extract_job_links_from_listing(url: str, max_links: int = 15) -> list:
 # ─────────────────────────────────────
 
 def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
-                         max_pages: int = 6, classification: str = "") -> list:
+                         max_pages: int = 6, classification: str = "",
+                         sort_by: str = "date") -> list:
     """
     【第一层：列表页扫描】
     解析 JobsDB 搜索结果页，提取岗位基础信息。
@@ -667,6 +668,8 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
         max_pages: 最大翻页数
         classification: JobsDB 行业分类（可选），如 "science-technology"、"banking"
                         填写后 URL 变为 /{slug}-jobs-in-{classification}
+        sort_by: 排序方式，"date" = 按发布时间 (sortmode=ListedDate)，
+                 "relevance" = 按相关度 (JobsDB 默认，不传 sortmode)
 
     Returns:
         list of dicts
@@ -684,10 +687,16 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
         base_path = f"https://hk.jobsdb.com/{slug}-jobs"
 
     for page in range(1, max_pages + 1):
-        if page == 1:
-            search_url = f"{base_path}?sortmode=ListedDate"
+        params_parts = []
+        if page > 1:
+            params_parts.append(f"page={page}")
+        if sort_by == "date":
+            params_parts.append("sortmode=ListedDate")
+
+        if params_parts:
+            search_url = f"{base_path}?{'&'.join(params_parts)}"
         else:
-            search_url = f"{base_path}?page={page}&sortmode=ListedDate"
+            search_url = base_path
         emit(f"   🌐 扫描 JobsDB [{keyword}] 第{page}/{max_pages}页...")
 
         try:
@@ -845,8 +854,9 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
 # ─────────────────────────────────────
 
 def search_jobsdb_direct(keyword: str, location: str = "Hong Kong",
-                         pages: int = 2, max_per_page: int = 15) -> list:
-    items = scan_jobsdb_listings(keyword, location, max_pages=pages)
+                         pages: int = 2, max_per_page: int = 15,
+                         sort_by: str = "date") -> list:
+    items = scan_jobsdb_listings(keyword, location, max_pages=pages, sort_by=sort_by)
     return [{"url": it["url"], "title": it["title"],
              "company": it["company"], "snippet": it["snippet"]}
             for it in items[:pages * max_per_page]]
