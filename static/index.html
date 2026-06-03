@@ -5,409 +5,634 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JobsDB Agent</title>
 <style>
+/* ============================================================
+   Design System — Linear/Vercel inspired, refined neutral palette
+   ============================================================ */
 :root {
-  --sidebar-bg: #1e293b;
-  --sidebar-text: #cbd5e1;
-  --sidebar-heading: #f1f5f9;
-  --sidebar-hover: #334155;
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #94a3b8;
+  --sidebar-heading: #e2e8f0;
+  --sidebar-hover: rgba(255,255,255,0.06);
   --sidebar-active: #3b82f6;
   --main-bg: #f8fafc;
   --chat-bg: #ffffff;
   --user-bubble: #3b82f6;
   --user-text: #ffffff;
   --agent-bubble: #ffffff;
-  --agent-text: #1e293b;
+  --agent-text: #0f172a;
   --progress-bg: #0f172a;
   --progress-text: #94a3b8;
+  --border-subtle: rgba(226,232,240,0.6);
   --border: #e2e8f0;
   --accent: #3b82f6;
+  --accent-hover: #2563eb;
   --success: #22c55e;
   --warning: #f59e0b;
   --error: #ef4444;
+  --ring: rgba(59,130,246,0.2);
 }
 
+/* ── Reset & base ── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-size: 16px; line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
 .app { display: flex; height: 100vh; overflow: hidden; }
 
-/* ── Sidebar ── */
+/* ── Reduce motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   Scrollbar — refined webkit custom
+   ============================================================ */
+.sidebar::-webkit-scrollbar,
+.chat-area::-webkit-scrollbar,
+.progress-container::-webkit-scrollbar,
+.files-panel::-webkit-scrollbar,
+.market-row-container::-webkit-scrollbar {
+  width: 5px;
+}
+.sidebar::-webkit-scrollbar-track,
+.chat-area::-webkit-scrollbar-track,
+.progress-container::-webkit-scrollbar-track,
+.files-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 20px;
+}
+.chat-area::-webkit-scrollbar-thumb,
+.files-panel::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.10);
+  border-radius: 20px;
+}
+.progress-container::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 20px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.22);
+}
+.chat-area::-webkit-scrollbar-thumb:hover,
+.files-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.18);
+}
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
 .sidebar {
   width: 280px; min-width: 280px;
   background: var(--sidebar-bg);
   color: var(--sidebar-text);
   display: flex; flex-direction: column;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .sidebar-header {
   padding: 20px 16px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .sidebar-header h1 {
-  font-size: 16px; color: var(--sidebar-heading);
+  font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--sidebar-heading);
   display: flex; align-items: center; gap: 8px;
 }
 .status-dot {
   width: 8px; height: 8px; border-radius: 50%;
-  background: var(--success);
-  display: inline-block;
+  background: var(--success); flex-shrink: 0;
+  transition: background 0.3s ease;
 }
 .status-dot.busy {
   background: var(--warning);
   animation: pulse 1.2s ease-in-out infinite;
 }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-/* ── Model Switcher ── */
+/* Model Switcher */
 .model-switcher {
   margin-top: 10px;
   display: flex; align-items: center; gap: 6px;
 }
 .model-switcher label {
   font-size: 11px; color: #64748b; white-space: nowrap;
+  font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase;
 }
 .model-switcher select {
-  flex: 1; padding: 4px 6px;
-  background: #334155; color: #e2e8f0;
-  border: 1px solid #475569; border-radius: 4px;
-  font-size: 12px; cursor: pointer;
-  outline: none;
+  flex: 1; padding: 5px 8px;
+  background: rgba(255,255,255,0.06); color: #e2e8f0;
+  border: 1px solid rgba(255,255,255,0.10); border-radius: 8px;
+  font-size: 12px; cursor: pointer; outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.model-switcher select:focus { border-color: var(--accent); }
+.model-switcher select:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+}
 .model-switch-ok {
   font-size: 11px; color: var(--success);
-  opacity: 0; transition: opacity 0.3s;
+  opacity: 0; transition: opacity 0.3s ease;
 }
 .model-switch-ok.show { opacity: 1; }
 
+/* Sidebar sections */
 .sidebar-section { padding: 12px 16px 4px; }
 .sidebar-section h3 {
-  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
-  color: #64748b; margin-bottom: 8px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+  color: #475569; margin-bottom: 8px;
 }
 
+/* Sidebar buttons */
 .sidebar-btn {
   display: block; width: 100%;
-  padding: 10px 12px; margin-bottom: 4px;
-  background: transparent; border: none;
+  padding: 9px 12px; margin-bottom: 3px;
+  background: transparent; border: 1px solid transparent;
   color: var(--sidebar-text);
   font-size: 13px; text-align: left;
-  border-radius: 6px; cursor: pointer;
-  transition: background 0.15s;
+  border-radius: 8px; cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  outline: none;
 }
-.sidebar-btn:hover { background: var(--sidebar-hover); }
-.sidebar-btn:active { background: var(--sidebar-active); color: #fff; }
+.sidebar-btn:hover { background: var(--sidebar-hover); color: #e2e8f0; }
+.sidebar-btn:active { transform: scale(0.98); }
+.sidebar-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+  background: var(--sidebar-hover);
+}
 .sidebar-btn .icon { display: inline-block; width: 20px; text-align: center; margin-right: 6px; }
+
 .sidebar-btn.primary-action {
   background: var(--accent); color: #fff;
   font-weight: 500; font-size: 14px;
-  padding: 12px; margin-bottom: 8px;
+  padding: 11px; margin-bottom: 8px;
+  border: none;
+  box-shadow: 0 1px 3px rgba(59,130,246,0.3);
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
 }
-.sidebar-btn.primary-action:hover { background: #2563eb; }
+.sidebar-btn.primary-action:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 2px 8px rgba(59,130,246,0.35);
+}
+.sidebar-btn.primary-action:active { transform: scale(0.97); }
+.sidebar-btn.primary-action:focus-visible {
+  box-shadow: 0 0 0 3px var(--ring), 0 2px 8px rgba(59,130,246,0.35);
+}
 
 /* Sort toggle */
 .sort-toggle {
-  display: flex; flex-direction: column; gap: 2px;
-  padding: 6px 4px 2px 12px;
-  background: rgba(255,255,255,0.03);
-  border-radius: 6px;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 4px 4px 2px 10px;
+  background: rgba(255,255,255,0.025);
+  border-radius: 8px;
   margin-bottom: 6px;
 }
 .sort-option {
   display: flex; align-items: center; gap: 6px;
-  padding: 4px 8px; border-radius: 4px;
+  padding: 4px 8px; border-radius: 6px;
   font-size: 12px; cursor: pointer; color: #94a3b8;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 .sort-option:hover { background: var(--sidebar-hover); color: #e2e8f0; }
-.sort-option input[type="radio"] { accent-color: var(--accent); margin: 0; }
+.sort-option input[type="radio"] { accent-color: var(--accent); margin: 0; cursor: pointer; }
 
-.sidebar-divider { border-top: 1px solid rgba(255,255,255,0.08); margin: 8px 16px; }
+.sidebar-divider { border-top: 1px solid rgba(255,255,255,0.06); margin: 8px 16px; }
 
-/* Current Run panel */
-.run-panel {
-  padding: 8px 16px;
-}
+/* ============================================================
+   Current Run panel
+   ============================================================ */
+.run-panel { padding: 8px 16px; }
 .run-panel .run-info {
-  background: rgba(59,130,246,0.1);
-  border: 1px solid rgba(59,130,246,0.2);
-  border-radius: 8px;
+  background: rgba(59,130,246,0.08);
+  border: 1px solid rgba(59,130,246,0.15);
+  border-radius: 10px;
   padding: 10px 12px;
   font-size: 12px;
 }
 .run-panel .run-time {
   color: #94a3b8; font-size: 11px; margin-bottom: 6px;
+  font-weight: 500; letter-spacing: 0.02em;
 }
 .run-panel .run-stats {
   color: #cbd5e1; margin-bottom: 8px; line-height: 1.6;
 }
 .run-panel .run-stage {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px; font-weight: 500;
 }
-.run-stage.searched { background: rgba(251,191,36,0.2); color: #fbbf24; }
-.run-stage.matched { background: rgba(34,197,94,0.2); color: #4ade80; }
+.run-stage.searched { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.run-stage.matched  { background: rgba(34,197,94,0.15); color: #4ade80; }
 
-.run-actions {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+.run-actions { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
 
-/* Hidden state helper */
+/* Hidden */
 .hidden { display: none !important; }
 
-/* History entries */
+/* ============================================================
+   History
+   ============================================================ */
 .history-entry {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 8px; margin-bottom: 2px;
-  font-size: 12px; border-radius: 4px;
+  padding: 6px 10px; margin-bottom: 1px;
+  font-size: 12px; border-radius: 6px;
   cursor: pointer; color: var(--sidebar-text);
+  transition: background 0.15s ease;
 }
 .history-entry:hover { background: var(--sidebar-hover); }
 .history-entry .he-time { flex: 1; }
 .history-entry .he-stage {
-  font-size: 10px; padding: 1px 6px;
-  border-radius: 3px;
+  font-size: 10px; font-weight: 500; padding: 2px 8px;
+  border-radius: 20px;
 }
-.he-stage.searched { background: rgba(251,191,36,0.15); color: #fbbf24; }
-.he-stage.matched { background: rgba(34,197,94,0.15); color: #4ade80; }
+.he-stage.searched { background: rgba(251,191,36,0.12); color: #fbbf24; }
+.he-stage.matched  { background: rgba(34,197,94,0.12); color: #4ade80; }
 
-/* Files panel */
-.files-panel { flex: 1; overflow-y: auto; padding: 0 16px 16px; }
+/* ============================================================
+   Files panel
+   ============================================================ */
+.files-panel { flex: 1; overflow-y: auto; padding: 0 16px 16px; scrollbar-gutter: stable; }
 .file-group { margin-bottom: 4px; }
 .file-group-header {
   font-size: 11px; color: #94a3b8; font-weight: 500;
-  padding: 5px 8px; display: flex; align-items: center; gap: 6px;
-  cursor: pointer; border-radius: 4px; user-select: none;
+  padding: 6px 10px; display: flex; align-items: center; gap: 6px;
+  cursor: pointer; border-radius: 6px; user-select: none;
+  transition: background 0.15s ease;
 }
 .file-group-header:hover { background: var(--sidebar-hover); }
 .file-group-header .fg-arrow {
   font-size: 10px; width: 12px; text-align: center;
-  transition: transform 0.15s;
+  transition: transform 0.2s ease;
 }
 .file-group.collapsed .fg-arrow { transform: rotate(-90deg); }
 .file-group-header .fg-icon { font-size: 13px; }
 .file-group-header .fg-count {
-  margin-left: auto; font-size: 10px; color: #475569;
+  margin-left: auto; font-size: 10px; font-weight: 500; color: #475569;
+  background: rgba(255,255,255,0.06); padding: 1px 7px; border-radius: 10px;
 }
 .file-group-body { overflow: hidden; }
 .file-group.collapsed .file-group-body { display: none; }
 #historyWrap { overflow: hidden; }
 #historyWrap.collapsed #historyPanel { display: none; }
-.sidebar-section .fg-arrow { display: inline-block; font-size: 10px; transition: transform 0.15s; }
-.sidebar-section .fg-count { float: right; font-size: 10px; color: #475569; background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 8px; }
+.sidebar-section .fg-arrow {
+  display: inline-block; font-size: 10px; transition: transform 0.2s ease;
+}
+.sidebar-section .fg-count {
+  float: right; font-size: 10px; font-weight: 500; color: #475569;
+  background: rgba(255,255,255,0.06); padding: 1px 7px; border-radius: 10px;
+}
 .file-item {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 4px 8px 4px 30px; margin-bottom: 1px;
-  font-size: 12px; border-radius: 4px;
+  padding: 5px 10px 5px 30px; margin-bottom: 1px;
+  font-size: 12px; border-radius: 6px;
+  transition: background 0.15s ease;
 }
 .file-item:hover { background: var(--sidebar-hover); }
 .file-item .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-item .fsize { color: #64748b; font-size: 11px; margin: 0 8px; }
 .file-item a {
-  color: var(--accent); text-decoration: none; font-size: 11px;
+  color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 500;
   white-space: nowrap;
+  transition: color 0.15s ease;
 }
+.file-item a:hover { color: var(--accent-hover); text-decoration: underline; }
 
-/* ── Main area ── */
+/* ============================================================
+   Main area
+   ============================================================ */
 .main { flex: 1; display: flex; flex-direction: column; background: var(--main-bg); }
 
 /* Chat messages */
-.chat-area { flex: 1; overflow-y: auto; padding: 16px 24px; }
+.chat-area { flex: 1; overflow-y: auto; padding: 20px 24px; scrollbar-gutter: stable; }
 
-.msg { margin-bottom: 16px; display: flex; }
+.msg { margin-bottom: 20px; display: flex; }
 .msg.user { justify-content: flex-end; }
 .msg.agent { justify-content: flex-start; }
 
 .msg-bubble {
-  max-width: 75%; padding: 12px 16px;
-  border-radius: 12px; font-size: 14px;
-  line-height: 1.6; word-wrap: break-word;
+  max-width: 72%; padding: 12px 18px;
+  border-radius: 16px; font-size: 14px;
+  line-height: 1.65; word-wrap: break-word;
 }
 .msg.user .msg-bubble {
   background: var(--user-bubble); color: var(--user-text);
-  border-bottom-right-radius: 4px;
+  border-bottom-right-radius: 6px;
 }
 .msg.agent .msg-bubble {
   background: var(--agent-bubble); color: var(--agent-text);
-  border-bottom-left-radius: 4px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  border-bottom-left-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
 }
 
 /* Markdown in agent bubbles */
-.msg-bubble h1, .msg-bubble h2, .msg-bubble h3 { margin: 12px 0 6px; color: #1e293b; }
-.msg-bubble h1 { font-size: 18px; }
-.msg-bubble h2 { font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.msg-bubble h1, .msg-bubble h2, .msg-bubble h3 {
+  margin: 14px 0 6px; color: #0f172a;
+  font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;
+}
+.msg-bubble h1 { font-size: 19px; }
+.msg-bubble h2 { font-size: 16px; padding-bottom: 5px; border-bottom: 1px solid var(--border-subtle); }
 .msg-bubble h3 { font-size: 14px; }
 .msg-bubble p { margin: 6px 0; }
-.msg-bubble ul, .msg-bubble ol { margin: 6px 0; padding-left: 20px; }
-.msg-bubble li { margin: 3px 0; }
+.msg-bubble ul, .msg-bubble ol { margin: 6px 0; padding-left: 22px; }
+.msg-bubble li { margin: 4px 0; }
 .msg-bubble code {
-  background: #f1f5f9; padding: 2px 5px; border-radius: 3px;
-  font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 13px;
+  background: #f1f5f9; padding: 2px 6px; border-radius: 4px;
+  font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
+  font-size: 13px; color: #1e293b;
 }
 .msg-bubble pre {
-  background: #f1f5f9; padding: 10px; border-radius: 6px;
+  background: #f8fafc; padding: 12px 14px; border-radius: 10px;
+  border: 1px solid var(--border-subtle);
   overflow-x: auto; margin: 8px 0;
 }
 .msg-bubble pre code { background: none; padding: 0; }
 .msg-bubble strong { font-weight: 600; }
-.msg-bubble a { color: var(--accent); text-decoration: underline; }
-.msg-bubble table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
-.msg-bubble th, .msg-bubble td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
-.msg-bubble th { background: #f1f5f9; font-weight: 600; }
-.msg-bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.msg-bubble a { color: var(--accent); text-decoration: underline; font-weight: 500; }
+.msg-bubble a:hover { color: var(--accent-hover); }
+.msg-bubble table {
+  border-collapse: collapse; margin: 8px 0; font-size: 13px;
+  width: 100%; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+.msg-bubble th, .msg-bubble td {
+  border: 1px solid var(--border-subtle); padding: 7px 12px; text-align: left;
+}
+.msg-bubble th { background: #f8fafc; font-weight: 600; font-size: 12px; color: #475569; }
+.msg-bubble hr { border: none; border-top: 1px solid var(--border-subtle); margin: 14px 0; }
+.msg-bubble blockquote {
+  border-left: 3px solid var(--accent); padding-left: 12px;
+  margin: 8px 0; color: #475569;
+}
 
-/* Progress log */
+/* ============================================================
+   Progress log — dark terminal style
+   ============================================================ */
 .progress-container {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid rgba(0,0,0,0.06);
   background: var(--progress-bg);
   max-height: 200px; min-height: 0;
   overflow-y: auto;
-  transition: max-height 0.3s ease;
+  transition: max-height 0.25s ease;
 }
-.progress-container.collapsed { max-height: 36px; overflow: hidden; }
+.progress-container.collapsed { max-height: 38px; overflow: hidden; }
 
 .progress-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 16px; cursor: pointer;
-  color: #94a3b8; font-size: 12px;
+  padding: 9px 18px; cursor: pointer;
+  color: #64748b; font-size: 12px; font-weight: 500;
   position: sticky; top: 0; background: var(--progress-bg);
-  z-index: 1;
+  z-index: 1; user-select: none;
+  transition: color 0.15s ease;
 }
-.progress-header:hover { color: #cbd5e1; }
+.progress-header:hover { color: #94a3b8; }
 
 .progress-log {
-  padding: 0 16px 8px;
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  font-size: 12px; line-height: 1.6;
+  padding: 0 18px 10px;
+  font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
+  font-size: 12px; line-height: 1.7;
 }
 .progress-line { color: var(--progress-text); }
-.progress-line.tool { color: #60a5fa; }
+.progress-line.tool    { color: #60a5fa; }
 .progress-line.success { color: #4ade80; }
 .progress-line.warning { color: #fbbf24; }
-.progress-line.error { color: #f87171; }
-.progress-line.info { color: #818cf8; }
+.progress-line.error   { color: #f87171; }
+.progress-line.info    { color: #a78bfa; }
 
-/* Input bar */
+/* ============================================================
+   Input bar
+   ============================================================ */
 .input-bar {
-  display: flex; gap: 8px;
-  padding: 12px 24px; border-top: 1px solid var(--border);
+  display: flex; gap: 10px;
+  padding: 14px 24px; border-top: 1px solid var(--border-subtle);
   background: #fff;
 }
 .input-bar input {
-  flex: 1; padding: 10px 14px;
-  border: 1px solid var(--border); border-radius: 8px;
-  font-size: 14px; outline: none;
-  transition: border-color 0.15s;
+  flex: 1; padding: 11px 16px;
+  border: 1px solid var(--border-subtle); border-radius: 12px;
+  font-size: 14px; outline: none; background: #f8fafc;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
-.input-bar input:focus { border-color: var(--accent); }
-.input-bar input:disabled { background: #f1f5f9; }
+.input-bar input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+  background: #fff;
+}
+.input-bar input:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
 
 .send-btn {
-  padding: 10px 20px;
+  padding: 10px 22px;
   background: var(--accent); color: #fff;
-  border: none; border-radius: 8px;
+  border: none; border-radius: 12px;
   font-size: 14px; font-weight: 500;
-  cursor: pointer; transition: background 0.15s;
+  cursor: pointer;
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
   white-space: nowrap;
+  outline: none;
 }
-.send-btn:hover { background: #2563eb; }
-.send-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+.send-btn:hover { background: var(--accent-hover); box-shadow: 0 2px 8px rgba(59,130,246,0.25); }
+.send-btn:active { transform: scale(0.96); }
+.send-btn:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+.send-btn:disabled {
+  background: #94a3b8; cursor: not-allowed; box-shadow: none;
+  transform: none;
+}
 
-/* Welcome screen */
+/* ============================================================
+   Welcome screen
+   ============================================================ */
 .welcome {
   display: flex; flex-direction: column; align-items: center;
   justify-content: center; height: 100%; color: #64748b;
   text-align: center; padding: 40px;
 }
-.welcome h2 { font-size: 24px; color: #1e293b; margin-bottom: 8px; }
-.welcome p { font-size: 14px; margin-bottom: 16px; max-width: 420px; line-height: 1.6; }
-.welcome .start-btn {
-  padding: 14px 32px; margin: 12px 0;
-  background: var(--accent); color: #fff;
-  border: none; border-radius: 10px;
-  font-size: 16px; font-weight: 500;
-  cursor: pointer; transition: background 0.15s;
+.welcome h2 {
+  font-size: 26px; font-weight: 600; letter-spacing: -0.03em;
+  color: #0f172a; margin-bottom: 8px;
 }
-.welcome .start-btn:hover { background: #2563eb; }
+.welcome p {
+  font-size: 14px; margin-bottom: 20px; max-width: 420px;
+  line-height: 1.65; color: #64748b;
+}
+.welcome .start-btn {
+  padding: 14px 36px; margin: 12px 0;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 14px;
+  font-size: 16px; font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(59,130,246,0.2);
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+  outline: none;
+}
+.welcome .start-btn:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 16px rgba(59,130,246,0.3);
+}
+.welcome .start-btn:active { transform: scale(0.97); }
+.welcome .start-btn:focus-visible { box-shadow: 0 0 0 3px var(--ring), 0 4px 16px rgba(59,130,246,0.3); }
 .welcome .hint {
-  font-size: 13px; color: #94a3b8;
-  padding: 12px 20px; background: #f1f5f9;
-  border-radius: 8px; margin-top: 12px;
-  max-width: 420px;
+  font-size: 13px; color: #64748b;
+  padding: 14px 22px; background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px; margin-top: 14px;
+  max-width: 440px; line-height: 1.6;
 }
 
-/* Modal */
+/* ============================================================
+   Modal — refined overlay + backdrop-blur
+   ============================================================ */
 .modal-overlay {
   display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,0.4); z-index: 100;
+  background: rgba(15,23,42,0.4); backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 100;
   align-items: center; justify-content: center;
 }
 .modal-overlay.active { display: flex; }
+
 .modal {
-  background: #fff; border-radius: 12px;
-  padding: 24px; min-width: 360px; max-width: 480px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+  background: #fff; border-radius: 16px;
+  padding: 24px; min-width: 380px; max-width: 500px;
+  box-shadow:
+    0 4px 24px rgba(0,0,0,0.06),
+    0 16px 48px rgba(0,0,0,0.08);
+  animation: modalIn 0.2s ease-out;
 }
-.modal h3 { font-size: 16px; margin-bottom: 16px; color: #1e293b; }
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.modal h3 {
+  font-size: 16px; font-weight: 600; letter-spacing: -0.02em;
+  margin-bottom: 16px; color: #0f172a;
+}
 .modal input, .modal textarea {
-  width: 100%; padding: 10px 12px; margin-bottom: 12px;
-  border: 1px solid var(--border); border-radius: 6px;
-  font-size: 14px; outline: none;
+  width: 100%; padding: 10px 14px; margin-bottom: 10px;
+  border: 1px solid var(--border-subtle); border-radius: 10px;
+  font-size: 14px; outline: none; background: #f8fafc;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  font-family: inherit;
 }
-.modal textarea { height: 120px; resize: vertical; font-family: inherit; }
-.modal input:focus, .modal textarea:focus { border-color: var(--accent); }
+.modal textarea { height: 120px; resize: vertical; }
+.modal input:focus, .modal textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--ring);
+  background: #fff;
+}
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .modal-actions button {
-  padding: 8px 16px; border-radius: 6px; font-size: 14px;
-  cursor: pointer; border: 1px solid var(--border); background: #fff;
+  padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500;
+  cursor: pointer; border: 1px solid var(--border-subtle); background: #fff;
+  color: #334155;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  outline: none;
 }
-.modal-actions .primary { background: var(--accent); color: #fff; border: none; }
+.modal-actions button:hover { background: #f1f5f9; }
+.modal-actions button:active { transform: scale(0.97); }
+.modal-actions button:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.modal-actions .primary {
+  background: var(--accent); color: #fff; border: none;
+  box-shadow: 0 1px 3px rgba(59,130,246,0.25);
+}
+.modal-actions .primary:hover { background: var(--accent-hover); }
+.modal-actions .primary:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
 
-/* Responsive */
+/* Market analysis rows */
+.market-row {
+  display: flex; gap: 8px; margin-bottom: 8px; align-items: center;
+}
+.market-row input { margin-bottom: 0; flex: 1; }
+.market-row-remove {
+  cursor: pointer; color: #94a3b8; font-size: 18px;
+  padding: 2px 6px; border-radius: 6px; flex-shrink: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+  line-height: 1;
+}
+.market-row-remove:hover { color: #ef4444; background: rgba(239,68,68,0.06); }
+.add-row-btn {
+  display: block; background: none; border: none;
+  color: var(--accent); cursor: pointer; padding: 4px 0;
+  font-size: 13px; font-weight: 500;
+  transition: color 0.15s ease;
+}
+.add-row-btn:hover { color: var(--accent-hover); text-decoration: underline; }
+
+/* Sort toggle in modal */
+.sort-toggle-inline {
+  display: flex; gap: 12px; align-items: center;
+  padding: 6px 0; margin-top: 4px;
+}
+
+/* ============================================================
+   Responsive
+   ============================================================ */
 @media (max-width: 768px) {
   .sidebar { display: none; }
+  .chat-area { padding: 12px; }
+  .input-bar { padding: 10px 12px; }
 }
 
-/* Typing indicator */
-.typing { display: flex; gap: 4px; padding: 12px 16px; }
+/* ============================================================
+   Typing indicator
+   ============================================================ */
+.typing { display: flex; gap: 5px; padding: 12px 18px; }
 .typing span {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #94a3b8; animation: typing 1.4s ease-in-out infinite;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #94a3b8; animation: typingBounce 1.4s ease-in-out infinite;
 }
 .typing span:nth-child(2) { animation-delay: 0.2s; }
 .typing span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes typing { 0%,60%,100% { transform: translateY(0); } 30% { transform: translateY(-6px); } }
+@keyframes typingBounce {
+  0%,60%,100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+/* ============================================================
+   AI disclaimer
+   ============================================================ */
+.ai-disclaimer {
+  font-size: 11px; color: #94a3b8; text-align: center;
+  padding: 6px 16px 4px;
+  border-top: 1px solid var(--border-subtle);
+  background: #fafafa;
+}
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- Sidebar -->
-  <aside class="sidebar">
+  <!-- ============================================================
+       Sidebar
+       ============================================================ -->
+  <aside class="sidebar" role="navigation" aria-label="Sidebar navigation">
     <div class="sidebar-header">
-      <h1><span class="status-dot" id="statusDot"></span> JobsDB Agent</h1>
+      <h1><span class="status-dot" id="statusDot" aria-label="Agent status indicator"></span> JobsDB Agent</h1>
       <div class="model-switcher">
-        <label>Model</label>
-        <select id="modelSelect" onchange="switchModel(this.value)">
-        </select>
-        <span class="model-switch-ok" id="modelSwitchOk">&#10003;</span>
+        <label for="modelSelect">Model</label>
+        <select id="modelSelect" onchange="switchModel(this.value)" aria-label="Switch LLM model"></select>
+        <span class="model-switch-ok" id="modelSwitchOk" aria-live="polite">&#10003;</span>
       </div>
     </div>
 
     <!-- WORKFLOW -->
     <div class="sidebar-section">
       <h3>Workflow</h3>
-      <button class="sidebar-btn primary-action" onclick="doFindAndMatch()">
+      <button class="sidebar-btn primary-action" onclick="doFindAndMatch()"
+              aria-label="Start job search and matching pipeline">
         &#x1F680; Find & Match Jobs
       </button>
-      <div class="sort-toggle">
+      <div class="sort-toggle" role="radiogroup" aria-label="Search sort order">
         <label class="sort-option">
           <input type="radio" name="sortMode" value="date" checked onchange="onSortModeChange()">
           <span>&#x1F4C5; Sort by Date</span>
@@ -427,7 +652,6 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
       <div class="run-info">
         <div class="run-time" id="runTime"></div>
         <div class="run-stats" id="runStats"></div>
-        <div><span class="run-stage" id="runStage"></span></div>
         <div class="run-actions" id="runActions"></div>
       </div>
     </div>
@@ -435,22 +659,22 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <!-- TOOLS -->
     <div class="sidebar-section">
       <h3>Tools</h3>
-      <button class="sidebar-btn" onclick="showModal('market')">
+      <button class="sidebar-btn" onclick="showModal('market')" aria-label="Market analysis for job categories">
         <span class="icon">&#x1F4C8;</span>Market Analysis...
       </button>
-      <button class="sidebar-btn" onclick="showModal('jd')">
+      <button class="sidebar-btn" onclick="showModal('jd')" aria-label="Generate resume from job description text">
         <span class="icon">&#x1F4DD;</span>Resume from JD...
       </button>
-      <button class="sidebar-btn" onclick="showModal('role')">
+      <button class="sidebar-btn" onclick="showModal('role')" aria-label="Generate resume by role direction">
         <span class="icon">&#x1F4DD;</span>Resume by Role...
       </button>
-      <button class="sidebar-btn" onclick="sendQuick('生成通用简历')">
+      <button class="sidebar-btn" onclick="sendQuick('生成通用简历')" aria-label="Generate general resume">
         <span class="icon">&#x1F4DD;</span>General Resume
       </button>
-      <button class="sidebar-btn" onclick="sendQuick('看看我的档案')">
+      <button class="sidebar-btn" onclick="sendQuick('看看我的档案')" aria-label="View user profile">
         <span class="icon">&#x1F464;</span>View Profile
       </button>
-      <button class="sidebar-btn" onclick="sendQuick('看看搜索配置')">
+      <button class="sidebar-btn" onclick="sendQuick('看看搜索配置')" aria-label="View search configuration">
         <span class="icon">&#x2699;</span>View Config
       </button>
     </div>
@@ -458,12 +682,14 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <div class="sidebar-divider"></div>
 
     <!-- HISTORY -->
-    <div class="sidebar-section" style="cursor:pointer;" onclick="toggleHistory()">
+    <div class="sidebar-section" style="cursor:pointer;" onclick="toggleHistory()" role="button" tabindex="0"
+         aria-expanded="true" aria-label="Toggle run history"
+         onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleHistory(); }">
       <h3><span class="fg-arrow" id="historyArrow">&#9660;</span> History <span class="fg-count" id="historyCount">0</span></h3>
     </div>
     <div id="historyWrap">
       <div id="historyPanel" style="padding:0 16px 4px;">
-        <div style="color:#64748b;font-size:12px;padding:4px 8px;">No previous runs</div>
+        <div class="files-empty">No previous runs</div>
       </div>
     </div>
 
@@ -472,7 +698,7 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <!-- RUN FILES -->
     <div class="sidebar-section"><h3 id="filesPanelTitle">Run Files</h3></div>
     <div class="files-panel" id="filesPanel">
-      <div style="color:#64748b;font-size:12px;padding:4px 8px;">No files yet</div>
+      <div class="files-empty">No files yet</div>
     </div>
 
     <div class="sidebar-divider"></div>
@@ -480,27 +706,34 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
     <!-- MARKET REPORTS -->
     <div class="sidebar-section"><h3>Market Reports</h3></div>
     <div class="files-panel" id="marketPanel">
-      <div style="color:#64748b;font-size:12px;padding:4px 8px;">No reports yet</div>
+      <div class="files-empty">No reports yet</div>
     </div>
   </aside>
 
-  <!-- Main -->
-  <div class="main">
-    <div class="chat-area" id="chatArea">
-      <div class="welcome" id="welcome">
+  <!-- ============================================================
+       Main
+       ============================================================ -->
+  <main class="main">
+    <div class="chat-area" id="chatArea" role="log" aria-live="polite" aria-label="Chat messages">
+      <section class="welcome" id="welcome">
         <h2>JobsDB Agent</h2>
         <p>AI-powered job search, matching, resume generation, and market analysis for Hong Kong.</p>
-        <button class="start-btn" onclick="doFindAndMatch()">&#x1F680; Find & Match Jobs</button>
+        <button class="start-btn" onclick="doFindAndMatch()" aria-label="Start full job search and match pipeline">
+          &#x1F680; Find & Match Jobs
+        </button>
         <div class="hint">
           Click the button above to start the full pipeline (search + match).<br>
           You can also type anything below &mdash; e.g. "generate resume for #1",
           "analyze Java market", or any natural language request.
         </div>
-      </div>
+      </section>
     </div>
 
-    <div class="progress-container collapsed" id="progressContainer">
-      <div class="progress-header" onclick="toggleProgress()">
+    <div class="progress-container collapsed" id="progressContainer"
+         role="region" aria-label="Progress log" aria-live="polite">
+      <div class="progress-header" onclick="toggleProgress()"
+           role="button" tabindex="0" aria-expanded="false"
+           onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleProgress(); }">
         <span id="progressTitle">Progress Log</span>
         <span id="progressToggle">&#9650;</span>
       </div>
@@ -509,25 +742,36 @@ html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Sego
 
     <div class="input-bar">
       <input type="text" id="chatInput" placeholder="Type a message..." autocomplete="off"
+             aria-label="Chat message input"
              onkeydown="if(event.key==='Enter')sendMessage()">
-      <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send message">Send</button>
     </div>
-  </div>
+
+    <div class="ai-disclaimer" id="aiDisclaimer" style="display:none">
+      &#x26A0; AI-generated content may be inaccurate. Please verify important information.
+    </div>
+  </main>
 </div>
 
-<!-- Modals -->
-<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+<!-- ============================================================
+     Modal overlay
+     ============================================================ -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()"
+     role="dialog" aria-modal="true" aria-label="Dialog">
   <div class="modal" id="modalBox"></div>
 </div>
 
 <script>
-// ── State ──
+/* ============================================================
+   State
+   ============================================================ */
 let sid = null;
 let eventSource = null;
 let busy = false;
-let currentRun = null;  // currently displayed run
 
-// ── Model Switcher ──
+/* ============================================================
+   Model Switcher
+   ============================================================ */
 async function loadModelConfig() {
   try {
     const resp = await fetch('/api/config/model');
@@ -560,16 +804,27 @@ async function switchModel(provider) {
   } catch(e) { alert('Switch failed: ' + e.message); }
 }
 
-// ── Init ──
+/* ============================================================
+   Init
+   ============================================================ */
 async function init() {
   const resp = await fetch('/api/session', { method: 'POST' });
   const data = await resp.json();
   sid = data.sid;
   refreshRuns();
   loadModelConfig();
+  // Global Escape key listener for modal
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const overlay = document.getElementById('modalOverlay');
+      if (overlay.classList.contains('active')) closeModal();
+    }
+  });
 }
 
-// ── SSE ──
+/* ============================================================
+   SSE
+   ============================================================ */
 function connectSSE() {
   if (eventSource) { eventSource.close(); eventSource = null; }
   eventSource = new EventSource('/stream/' + sid);
@@ -592,7 +847,7 @@ function handleEvent(ev) {
       addProgressLine(ev.text);
       break;
     case 'tool_call':
-      addProgressLine(`-> ${ev.tool}(${truncate(ev.args, 60)})`, 'tool');
+      addProgressLine('→ ' + ev.tool + '(' + truncate(ev.args, 60) + ')', 'tool');
       break;
     case 'status':
       addProgressLine(ev.text, 'info');
@@ -605,7 +860,7 @@ function handleEvent(ev) {
       break;
     case 'error':
       addProgressLine('ERROR: ' + ev.text, 'error');
-      addAgentMessage('Error: ' + ev.text);
+      addAgentMessage('❌ Error: ' + ev.text);
       setIdle();
       closeSSE();
       break;
@@ -614,13 +869,17 @@ function handleEvent(ev) {
   }
 }
 
-// ── Sort mode change handler ──
+/* ============================================================
+   Sort mode
+   ============================================================ */
 function onSortModeChange() {
   const sel = document.querySelector('input[name="sortMode"]:checked');
   console.log('Sort mode:', sel ? sel.value : 'not set');
 }
 
-// ── Primary workflow: Find & Match (direct pipeline, no LLM) ──
+/* ============================================================
+   Primary workflow: Find & Match (direct pipeline)
+   ============================================================ */
 async function doFindAndMatch() {
   if (busy) return;
   hideWelcome();
@@ -641,13 +900,14 @@ async function doFindAndMatch() {
 
   if (!resp.ok) {
     const err = await resp.json();
-    addAgentMessage('Error: ' + (err.error || 'Unknown error'));
+    addAgentMessage('❌ Error: ' + (err.error || 'Unknown error'));
     setIdle();
   }
-  // SSE handles the rest
 }
 
-// ── Chat ──
+/* ============================================================
+   Chat
+   ============================================================ */
 function sendMessage() {
   const input = document.getElementById('chatInput');
   const msg = input.value.trim();
@@ -665,6 +925,7 @@ async function doSend(msg) {
   hideWelcome();
   addUserMessage(msg);
   setBusy();
+  showAIDisclaimer();
 
   document.getElementById('progressLog').innerHTML = '';
   showProgress();
@@ -678,18 +939,20 @@ async function doSend(msg) {
 
   if (!resp.ok) {
     const err = await resp.json();
-    addAgentMessage('Error: ' + (err.error || 'Unknown error'));
+    addAgentMessage('❌ Error: ' + (err.error || 'Unknown error'));
     setIdle();
     return;
   }
 }
 
-// ── UI helpers ──
+/* ============================================================
+   UI helpers
+   ============================================================ */
 function addUserMessage(text) {
   const area = document.getElementById('chatArea');
   const div = document.createElement('div');
   div.className = 'msg user';
-  div.innerHTML = `<div class="msg-bubble">${escapeHtml(text)}</div>`;
+  div.innerHTML = '<div class="msg-bubble">' + escapeHtml(text) + '</div>';
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;
 }
@@ -699,7 +962,7 @@ function addAgentMessage(text) {
   const area = document.getElementById('chatArea');
   const div = document.createElement('div');
   div.className = 'msg agent';
-  div.innerHTML = `<div class="msg-bubble">${renderMarkdown(text)}</div>`;
+  div.innerHTML = '<div class="msg-bubble">' + renderMarkdown(text) + '</div>';
   area.appendChild(div);
   area.scrollTop = area.scrollHeight;
 }
@@ -711,7 +974,7 @@ function addTypingIndicator() {
   el = document.createElement('div');
   el.id = 'typingIndicator';
   el.className = 'msg agent';
-  el.innerHTML = `<div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  el.innerHTML = '<div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
   area.appendChild(el);
   area.scrollTop = area.scrollHeight;
 }
@@ -727,28 +990,31 @@ function addProgressLine(text, cls) {
   line.className = 'progress-line' + (cls ? ' ' + cls : classifyLine(text));
   line.textContent = text;
   log.appendChild(line);
-  log.parentElement.scrollTop = log.parentElement.scrollHeight;
+  const container = document.getElementById('progressContainer');
+  container.scrollTop = container.scrollHeight;
 }
 
 function classifyLine(text) {
-  if (text.includes('\u2705') || text.includes('OK') || text.includes('\u2713')) return ' success';
-  if (text.includes('\u274C') || text.includes('error') || text.includes('FAIL')) return ' error';
-  if (text.includes('\u26A0') || text.includes('\u23F3')) return ' warning';
-  if (text.includes('\uD83E\uDDE0') || text.includes('\uD83D\uDCCA') || text.includes('\uD83D\uDCDD')) return ' info';
+  if (/✅|OK|✓/.test(text)) return ' success';
+  if (/❌|error|FAIL/i.test(text)) return ' error';
+  if (/[⚠⏳]/.test(text)) return ' warning';
+  if (/[🧠📊📝]/.test(text)) return ' info';
   return '';
 }
 
 function showProgress() {
   const c = document.getElementById('progressContainer');
   c.classList.remove('collapsed');
+  c.querySelector('.progress-header').setAttribute('aria-expanded', 'true');
   document.getElementById('progressToggle').innerHTML = '&#9660;';
 }
 
 function toggleProgress() {
   const c = document.getElementById('progressContainer');
   c.classList.toggle('collapsed');
-  document.getElementById('progressToggle').innerHTML =
-    c.classList.contains('collapsed') ? '&#9650;' : '&#9660;';
+  const expanded = !c.classList.contains('collapsed');
+  c.querySelector('.progress-header').setAttribute('aria-expanded', String(expanded));
+  document.getElementById('progressToggle').innerHTML = expanded ? '&#9660;' : '&#9650;';
 }
 
 function setBusy() {
@@ -773,28 +1039,31 @@ function hideWelcome() {
   if (el) el.style.display = 'none';
 }
 
-// ── Runs & Files ──
+function showAIDisclaimer() {
+  const el = document.getElementById('aiDisclaimer');
+  if (el) el.style.display = 'block';
+}
+
+/* ============================================================
+   Runs & Files
+   ============================================================ */
 async function refreshRuns() {
   try {
     const resp = await fetch('/api/runs');
     const runs = await resp.json();
 
-    // Find current (latest or is_current) run
     const cur = runs.find(r => r.is_current) || (runs.length > 0 ? runs[0] : null);
 
     if (cur) {
-      currentRun = cur;
       showCurrentRun(cur);
       loadRunFiles(cur.id, cur.time);
     } else {
       hideCurrentRun();
       document.getElementById('filesPanel').innerHTML =
-        '<div style="color:#64748b;font-size:12px;padding:4px 8px;">No files yet</div>';
+        '<div class="files-empty">No files yet</div>';
     }
 
-    // History = all runs (including current, for a complete timeline)
     renderHistory(runs);
-    // Also refresh market reports
     refreshMarketFiles();
   } catch(e) {
     console.error('refreshRuns error', e);
@@ -808,41 +1077,23 @@ function showCurrentRun(run) {
   document.getElementById('runTime').textContent = run.time || run.id;
 
   let stats = '';
-  if (run.job_count !== undefined) {
-    stats += `Searched: ${run.job_count} jobs`;
-  }
-  if (run.match_count !== undefined) {
-    stats += ` | Matched: ${run.match_count}`;
-  }
+  if (run.job_count !== undefined) stats += 'Searched: ' + run.job_count + ' jobs';
+  if (run.match_count !== undefined) stats += ' | Matched: ' + run.match_count;
   document.getElementById('runStats').textContent = stats || 'Processing...';
 
-  const stageEl = document.getElementById('runStage');
-  if (run.stage === 'matched') {
-    stageEl.textContent = 'Matched';
-    stageEl.className = 'run-stage matched';
-  } else if (run.stage === 'searched') {
-    stageEl.textContent = 'Searched';
-    stageEl.className = 'run-stage searched';
-  } else {
-    stageEl.textContent = '';
-    stageEl.className = 'run-stage';
-  }
-
-  // Run-context actions
   const actionsEl = document.getElementById('runActions');
   let actionsHtml = '';
 
   if (run.has_raw && !run.has_matched) {
-    // Searched but not matched yet — offer to match
-    actionsHtml += `<button class="sidebar-btn" onclick="sendQuick('匹配分析')">
-      <span class="icon">&#x1F4CA;</span>Run Match Analysis</button>`;
+    actionsHtml += '<button class="sidebar-btn" onclick="sendQuick(\'匹配分析\')" aria-label="Run match analysis on current results">'
+      + '<span class="icon">&#x1F4CA;</span>Run Match Analysis</button>';
   }
 
   if (run.has_matched) {
-    actionsHtml += `<button class="sidebar-btn" onclick="sendQuick('看看匹配结果')">
-      <span class="icon">&#x1F4CB;</span>View Match Results</button>`;
-    actionsHtml += `<button class="sidebar-btn" onclick="showModal('matched')">
-      <span class="icon">&#x1F4DD;</span>Generate Resume...</button>`;
+    actionsHtml += '<button class="sidebar-btn" onclick="sendQuick(\'看看匹配结果\')" aria-label="View match results">'
+      + '<span class="icon">&#x1F4CB;</span>View Match Results</button>';
+    actionsHtml += '<button class="sidebar-btn" onclick="showModal(\'matched\')" aria-label="Generate resume from matched job">'
+      + '<span class="icon">&#x1F4DD;</span>Generate Resume...</button>';
   }
 
   actionsEl.innerHTML = actionsHtml;
@@ -857,23 +1108,27 @@ function toggleHistory() {
   const wrap = document.getElementById('historyWrap');
   const arrow = document.getElementById('historyArrow');
   wrap.classList.toggle('collapsed');
-  arrow.innerHTML = wrap.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
+  const expanded = !wrap.classList.contains('collapsed');
+  arrow.innerHTML = expanded ? '&#9660;' : '&#9654;';
+  arrow.parentElement.parentElement.setAttribute('aria-expanded', String(expanded));
 }
 
 function renderHistory(runs) {
   const panel = document.getElementById('historyPanel');
   document.getElementById('historyCount').textContent = runs.length;
   if (!runs.length) {
-    panel.innerHTML = '<div style="color:#64748b;font-size:12px;padding:4px 8px;">No previous runs</div>';
+    panel.innerHTML = '<div class="files-empty">No previous runs</div>';
     return;
   }
   panel.innerHTML = runs.slice(0, 10).map(r => {
     const stageCls = r.stage === 'matched' ? 'matched' : 'searched';
     const stageLabel = r.stage === 'matched' ? 'Matched' : 'Searched';
-    return `<div class="history-entry" onclick="browseRun('${r.id}','${r.time || r.id}')" title="${r.id}">
-      <span class="he-time">${r.time || r.id}</span>
-      <span class="he-stage ${stageCls}">${stageLabel}</span>
-    </div>`;
+    return '<div class="history-entry" onclick="browseRun(\'' + r.id + '\',\'' + (r.time || r.id) + '\')"'
+      + ' title="' + r.id + '" role="button" tabindex="0"'
+      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \') { event.preventDefault(); browseRun(\'' + r.id + '\',\'' + (r.time || r.id) + '\'); }">'
+      + '<span class="he-time">' + (r.time || r.id) + '</span>'
+      + '<span class="he-stage ' + stageCls + '">' + stageLabel + '</span>'
+      + '</div>';
   }).join('');
 }
 
@@ -882,24 +1137,22 @@ async function browseRun(runId, runTime) {
 }
 
 async function loadRunFiles(runId, runTime) {
-  // Update title to show which run
   const titleEl = document.getElementById('filesPanelTitle');
-  titleEl.textContent = runTime ? `Files - ${runTime}` : 'Run Files';
+  titleEl.textContent = runTime ? 'Files - ' + runTime : 'Run Files';
 
   try {
-    const resp = await fetch(`/api/runs/${runId}/files`);
+    const resp = await fetch('/api/runs/' + runId + '/files');
     const files = await resp.json();
     const panel = document.getElementById('filesPanel');
     if (!files.length) {
-      panel.innerHTML = '<div style="color:#64748b;font-size:12px;padding:4px 8px;">No files</div>';
+      panel.innerHTML = '<div class="files-empty">No files</div>';
       return;
     }
 
-    // Categorize files
     const groups = {
-      resumes:  { icon: '\uD83D\uDCC4', label: 'Resumes & Cover Letters', files: [] },
-      match:    { icon: '\uD83D\uDCCA', label: 'Match Results',           files: [] },
-      search:   { icon: '\uD83D\uDD0D', label: 'Search Data',             files: [] },
+      resumes:  { icon: '📄', label: 'Resumes & Cover Letters', files: [] },
+      match:    { icon: '📊', label: 'Match Results',           files: [] },
+      search:   { icon: '🔍', label: 'Search Data',             files: [] },
     };
 
     for (const f of files) {
@@ -916,21 +1169,23 @@ async function loadRunFiles(runId, runTime) {
     let html = '';
     for (const g of Object.values(groups)) {
       if (!g.files.length) continue;
-      html += `<div class="file-group">`;
-      html += `<div class="file-group-header" onclick="this.parentElement.classList.toggle('collapsed')">`;
-      html += `<span class="fg-arrow">&#9660;</span>`;
-      html += `<span class="fg-icon">${g.icon}</span>${g.label}`;
-      html += `<span class="fg-count">${g.files.length}</span>`;
-      html += `</div><div class="file-group-body">`;
+      html += '<div class="file-group">';
+      html += '<div class="file-group-header" onclick="this.parentElement.classList.toggle(\'collapsed\')"'
+        + ' role="button" tabindex="0"'
+        + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \') { event.preventDefault(); this.parentElement.classList.toggle(\'collapsed\'); }">';
+      html += '<span class="fg-arrow">&#9660;</span>';
+      html += '<span class="fg-icon">' + g.icon + '</span>' + g.label;
+      html += '<span class="fg-count">' + g.files.length + '</span>';
+      html += '</div><div class="file-group-body">';
       for (const f of g.files) {
         const display = friendlyName(f.name);
-        html += `<div class="file-item">
-          <span class="fname" title="${escapeHtml(f.path)}">${escapeHtml(display)}</span>
-          <span class="fsize">${formatSize(f.size)}</span>
-          <a href="/download/${f.path}" target="_blank">DL</a>
-        </div>`;
+        html += '<div class="file-item">'
+          + '<span class="fname" title="' + escapeHtml(f.path) + '">' + escapeHtml(display) + '</span>'
+          + '<span class="fsize">' + formatSize(f.size) + '</span>'
+          + '<a href="/download/' + f.path + '" target="_blank" aria-label="Download ' + escapeHtml(f.name) + '">DL</a>'
+          + '</div>';
       }
-      html += `</div></div>`;
+      html += '</div></div>';
     }
     panel.innerHTML = html;
   } catch(e) {
@@ -939,7 +1194,6 @@ async function loadRunFiles(runId, runTime) {
 }
 
 function friendlyName(name) {
-  // Make file names more readable
   const map = {
     'raw_jobs.json': 'Raw Jobs Data',
     'filter_stats.json': 'Filter Statistics',
@@ -947,7 +1201,6 @@ function friendlyName(name) {
     'job_report.md': 'Match Report (MD)',
   };
   if (map[name]) return map[name];
-  // Resume / cover letter: extract readable parts
   if (name.match(/^resume_.*\.pdf$/i)) return name.replace(/^resume_/, 'Resume - ').replace(/\.pdf$/, ' (PDF)');
   if (name.match(/^resume_.*\.md$/i)) return name.replace(/^resume_/, 'Resume - ').replace(/\.md$/, ' (MD)');
   if (name.match(/^cover_letter_.*\.pdf$/i)) return name.replace(/^cover_letter_/, 'Cover Letter - ').replace(/\.pdf$/, ' (PDF)');
@@ -961,24 +1214,26 @@ function formatSize(bytes) {
   return (bytes/1024/1024).toFixed(1) + 'M';
 }
 
-// ── Market Reports ──
+/* ============================================================
+   Market Reports
+   ============================================================ */
 async function refreshMarketFiles() {
   try {
     const resp = await fetch('/api/market/files');
     const files = await resp.json();
     const panel = document.getElementById('marketPanel');
     if (!files.length) {
-      panel.innerHTML = '<div style="color:#64748b;font-size:12px;padding:4px 8px;">No reports yet</div>';
+      panel.innerHTML = '<div class="files-empty">No reports yet</div>';
       return;
     }
     let html = '';
     for (const f of files) {
       const display = marketFriendlyName(f.name);
-      html += `<div class="file-item">
-        <span class="fname" title="${escapeHtml(f.path)}">${escapeHtml(display)}</span>
-        <span class="fsize">${formatSize(f.size)}</span>
-        <a href="/download/${f.path}" target="_blank">DL</a>
-      </div>`;
+      html += '<div class="file-item">'
+        + '<span class="fname" title="' + escapeHtml(f.path) + '">' + escapeHtml(display) + '</span>'
+        + '<span class="fsize">' + formatSize(f.size) + '</span>'
+        + '<a href="/download/' + f.path + '" target="_blank" aria-label="Download ' + escapeHtml(f.name) + '">DL</a>'
+        + '</div>';
     }
     panel.innerHTML = html;
   } catch(e) {
@@ -987,77 +1242,80 @@ async function refreshMarketFiles() {
 }
 
 function marketFriendlyName(name) {
-  // market_Java_Developer_20260408_003500.pdf → "Java Developer (PDF) - 04-08 00:35"
-  // market_Java_Developer_20260408_003500_scan.json → "Java Developer (Scan JSON) - 04-08 00:35"
   const m = name.match(/^market_(.+?)_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:_(scan|jds))?\.(pdf|md|json)$/);
   if (m) {
     const label = m[1].replace(/_/g, ' ');
-    const date = `${m[3]}-${m[4]} ${m[5]}:${m[6]}`;
+    const date = m[3] + '-' + m[4] + ' ' + m[5] + ':' + m[6];
     const suffix = m[8];
     const ext = m[9].toUpperCase();
     const typeMap = { scan: 'Scan', jds: 'JDs' };
-    const tag = suffix ? `${typeMap[suffix]} ${ext}` : ext;
-    return `${label} (${tag}) - ${date}`;
+    const tag = suffix ? typeMap[suffix] + ' ' + ext : ext;
+    return label + ' (' + tag + ') - ' + date;
   }
   return name;
 }
 
-// ── Modals ──
+/* ============================================================
+   Modals
+   ============================================================ */
 function showModal(type) {
   const box = document.getElementById('modalBox');
   let html = '';
   switch(type) {
     case 'matched':
-      html = `<h3>Generate Resume by Matched Job</h3>
-        <input type="number" id="modalJobIndex" placeholder="Job ranking number (e.g. 1)" min="1">
-        <div class="modal-actions">
-          <button onclick="closeModal()">Cancel</button>
-          <button class="primary" onclick="submitModal('matched')">Generate</button>
-        </div>`;
+      html = '<h3>Generate Resume by Matched Job</h3>'
+        + '<input type="number" id="modalJobIndex" placeholder="Job ranking number (e.g. 1)" min="1" aria-label="Job ranking number">'
+        + '<div class="modal-actions">'
+        + '<button onclick="closeModal()">Cancel</button>'
+        + '<button class="primary" onclick="submitModal(\'matched\')">Generate</button>'
+        + '</div>';
       break;
     case 'jd':
-      html = `<h3>Generate Resume from JD Text</h3>
-        <textarea id="modalJdText" placeholder="Paste the job description here..."></textarea>
-        <div class="modal-actions">
-          <button onclick="closeModal()">Cancel</button>
-          <button class="primary" onclick="submitModal('jd')">Generate</button>
-        </div>`;
+      html = '<h3>Generate Resume from JD Text</h3>'
+        + '<textarea id="modalJdText" placeholder="Paste the job description here..." aria-label="Job description text"></textarea>'
+        + '<div class="modal-actions">'
+        + '<button onclick="closeModal()">Cancel</button>'
+        + '<button class="primary" onclick="submitModal(\'jd\')">Generate</button>'
+        + '</div>';
       break;
     case 'role':
-      html = `<h3>Generate Resume by Role Direction</h3>
-        <input type="text" id="modalRole" placeholder="e.g. Solutions Engineer, Backend Developer">
-        <div class="modal-actions">
-          <button onclick="closeModal()">Cancel</button>
-          <button class="primary" onclick="submitModal('role')">Generate</button>
-        </div>`;
+      html = '<h3>Generate Resume by Role Direction</h3>'
+        + '<input type="text" id="modalRole" placeholder="e.g. Solutions Engineer, Backend Developer" aria-label="Role direction">'
+        + '<div class="modal-actions">'
+        + '<button onclick="closeModal()">Cancel</button>'
+        + '<button class="primary" onclick="submitModal(\'role\')">Generate</button>'
+        + '</div>';
       break;
     case 'market':
-      html = `<h3>Market Analysis</h3>
-        <div id="marketRows">
-          <div class="market-row" style="display:flex;gap:6px;margin-bottom:6px;align-items:center">
-            <input type="text" class="mkt-cat" placeholder="Job category (e.g. Web3)" style="flex:1">
-            <input type="text" class="mkt-cls" placeholder="Industry (optional)" style="flex:1">
-          </div>
-        </div>
-        <button onclick="addMarketRow()" style="background:none;border:none;color:#2563eb;cursor:pointer;padding:4px 0;font-size:13px">+ Add More</button>
-        <div class="sort-toggle" style="margin-top:8px">
-          <label class="sort-option">
-            <input type="radio" name="mktSort" value="date" checked>
-            <span>&#x1F4C5; Sort by Date</span>
-          </label>
-          <label class="sort-option">
-            <input type="radio" name="mktSort" value="relevance">
-            <span>&#x1F50D; Sort by Relevance</span>
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button onclick="closeModal()">Cancel</button>
-          <button class="primary" onclick="submitModal('market')">Analyze</button>
-        </div>`;
+      html = '<h3>Market Analysis</h3>'
+        + '<div id="marketRows">'
+        + '<div class="market-row">'
+        + '<input type="text" class="mkt-cat" placeholder="Job category (e.g. Web3)" aria-label="Job category">'
+        + '<input type="text" class="mkt-cls" placeholder="Industry (optional)" aria-label="Industry classification">'
+        + '</div>'
+        + '</div>'
+        + '<button class="add-row-btn" onclick="addMarketRow()" aria-label="Add another market category">+ Add More</button>'
+        + '<div class="sort-toggle" style="margin-top:10px" role="radiogroup" aria-label="Market analysis sort order">'
+        + '<label class="sort-option">'
+        + '<input type="radio" name="mktSort" value="date" checked>'
+        + '<span>&#x1F4C5; Sort by Date</span>'
+        + '</label>'
+        + '<label class="sort-option">'
+        + '<input type="radio" name="mktSort" value="relevance">'
+        + '<span>&#x1F50D; Sort by Relevance</span>'
+        + '</label>'
+        + '</div>'
+        + '<div class="modal-actions">'
+        + '<button onclick="closeModal()">Cancel</button>'
+        + '<button class="primary" onclick="submitModal(\'market\')">Analyze</button>'
+        + '</div>';
       break;
   }
   box.innerHTML = html;
   document.getElementById('modalOverlay').classList.add('active');
+  // Lock body scroll
+  document.body.style.overflow = 'hidden';
+  // Focus first input
   setTimeout(() => {
     const inp = box.querySelector('input,textarea');
     if (inp) inp.focus();
@@ -1068,16 +1326,18 @@ function addMarketRow() {
   const container = document.getElementById('marketRows');
   const row = document.createElement('div');
   row.className = 'market-row';
-  row.style = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
-  row.innerHTML = `<input type="text" class="mkt-cat" placeholder="Job category" style="flex:1">
-    <input type="text" class="mkt-cls" placeholder="Industry (optional)" style="flex:1">
-    <span onclick="this.parentElement.remove()" style="cursor:pointer;color:#999;font-size:16px;padding:0 4px" title="Remove">✕</span>`;
+  row.innerHTML = '<input type="text" class="mkt-cat" placeholder="Job category" aria-label="Job category" style="flex:1;margin-bottom:0">'
+    + '<input type="text" class="mkt-cls" placeholder="Industry (optional)" aria-label="Industry classification" style="flex:1;margin-bottom:0">'
+    + '<span class="market-row-remove" onclick="this.parentElement.remove()" title="Remove" role="button" tabindex="0"'
+    + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \') { event.preventDefault(); this.parentElement.remove(); }">✕</span>';
   container.appendChild(row);
   row.querySelector('.mkt-cat').focus();
 }
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('active');
+  // Restore body scroll
+  document.body.style.overflow = '';
 }
 
 function submitModal(type) {
@@ -1086,19 +1346,19 @@ function submitModal(type) {
     case 'matched': {
       const idx = document.getElementById('modalJobIndex').value;
       if (!idx) return;
-      msg = `为第${idx}个生成简历`;
+      msg = '为第' + idx + '个生成简历';
       break;
     }
     case 'jd': {
       const jd = document.getElementById('modalJdText').value.trim();
       if (!jd) return;
-      msg = `根据以下JD生成简历：\n${jd}`;
+      msg = '根据以下JD生成简历：\n' + jd;
       break;
     }
     case 'role': {
       const role = document.getElementById('modalRole').value.trim();
       if (!role) return;
-      msg = `生成 ${role} 方向的简历`;
+      msg = '生成 ' + role + ' 方向的简历';
       break;
     }
     case 'market': {
@@ -1114,9 +1374,12 @@ function submitModal(type) {
       const sortHint = mktSort === 'relevance' ? '，按相关度排序' : '，按发布时间排序';
       if (tasks.length === 1) {
         const t = tasks[0];
-        msg = t.classification ? `分析 ${t.classification} 行业的 ${t.category} 市场行情${sortHint}` : `分析 ${t.category} 市场行情${sortHint}`;
+        msg = t.classification
+          ? '分析 ' + t.classification + ' 行业的 ' + t.category + ' 市场行情' + sortHint
+          : '分析 ' + t.category + ' 市场行情' + sortHint;
       } else {
-        msg = '批量市场分析（' + sortHint + '）：\n' + tasks.map((t, i) => `${i+1}. ${t.category}` + (t.classification ? ` (${t.classification})` : '')).join('\n');
+        msg = '批量市场分析（' + sortHint + '）：\n'
+          + tasks.map((t, i) => (i+1) + '. ' + t.category + (t.classification ? ' (' + t.classification + ')' : '')).join('\n');
       }
       break;
     }
@@ -1125,58 +1388,41 @@ function submitModal(type) {
   if (msg) doSend(msg);
 }
 
-// ── Markdown renderer ──
+/* ============================================================
+   Markdown renderer
+   ============================================================ */
 function renderMarkdown(text) {
   if (!text) return '';
   let html = escapeHtml(text);
 
-  // Code blocks
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
-    `<pre><code>${code}</code></pre>`);
+    '<pre><code>' + code + '</code></pre>');
 
-  // Inline code
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-  // Headers
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
   html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
   html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-
-  // Bold and italic
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-
-  // Horizontal rules
   html = html.replace(/^---$/gm, '<hr>');
 
-  // Tables
   html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)+)/gm, (_, header, sep, body) => {
     const thCells = header.split('|').filter(c => c.trim());
     const rows = body.trim().split('\n');
-    let t = '<table><thead><tr>' + thCells.map(c => `<th>${c.trim()}</th>`).join('') + '</tr></thead><tbody>';
+    let t = '<table><thead><tr>' + thCells.map(c => '<th>' + c.trim() + '</th>').join('') + '</tr></thead><tbody>';
     for (const row of rows) {
       const cells = row.split('|').filter(c => c.trim());
-      t += '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>';
+      t += '<tr>' + cells.map(c => '<td>' + c.trim() + '</td>').join('') + '</tr>';
     }
     return t + '</tbody></table>';
   });
 
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-  // Bare URLs
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank">$1</a>');
-
-  // Lists (unordered)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   html = html.replace(/^[*-] (.+)$/gm, '<li>$1</li>');
   html = html.replace(/(<li>.*<\/li>\n?)+/g, (m) => '<ul>' + m + '</ul>');
-
-  // Numbered lists
   html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-
-  // Paragraphs
-  html = html.replace(/^(?!<[hupolt]|<li|<hr|<table|<pre)(.+)$/gm, '<p>$1</p>');
-
-  // Clean up extra newlines
+  html = html.replace(/^(?!<[hupolt]|<li|<hr|<table|<pre|<block)(.+)$/gm, '<p>$1</p>');
   html = html.replace(/\n{2,}/g, '\n');
 
   return html;
@@ -1192,7 +1438,9 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n) + '...' : s;
 }
 
-// ── Start ──
+/* ============================================================
+   Start
+   ============================================================ */
 init();
 </script>
 </body>
