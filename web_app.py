@@ -60,6 +60,8 @@ def _get_or_create_session(sid):
 
 def _run_agent_turn(sid, user_message):
     """在后台线程中执行一轮 Agent 对话"""
+    global _stop_event
+    _stop_event.clear()
     session = _get_or_create_session(sid)
     q = session["queue"]
 
@@ -78,11 +80,18 @@ def _run_agent_turn(sid, user_message):
 
         # 工具调用循环
         while reply.tool_calls:
+            if _stop_event.is_set():
+                q.put({"type": "status", "text": "⏹ Stopped by user."})
+                break
+
             q.put({"type": "status", "text": "Agent 正在工作..."})
 
             unique_calls = deduplicate_tool_calls(reply.tool_calls)
 
             for tc in unique_calls:
+                if _stop_event.is_set():
+                    q.put({"type": "status", "text": "⏹ Stopped by user — skipping remaining tools."})
+                    break
                 q.put({
                     "type": "tool_call",
                     "tool": tc.function.name,
@@ -92,8 +101,11 @@ def _run_agent_turn(sid, user_message):
                 session["messages"].append({
                     "role": "tool",
                     "tool_call_id": tc.id,
-                    "content": result,
+                    "content": result if not _stop_event.is_set() else "⏹ User interrupted before completion.",
                 })
+
+            if _stop_event.is_set():
+                break
 
             skipped = [tc for tc in reply.tool_calls if tc not in unique_calls]
             for tc in skipped:
@@ -111,8 +123,8 @@ def _run_agent_turn(sid, user_message):
             reply = response.choices[0].message
             session["messages"].append(reply)
 
-        # 获取本轮生成的文件
-        files = get_session_files()
+        # 获取本轮生成的文件（被中断时不显示文件列表）
+        files = get_session_files() if not _stop_event.is_set() else []
 
         done_event = {
             "type": "done",
