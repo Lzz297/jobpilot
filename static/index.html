@@ -450,6 +450,39 @@ html, body {
   transform: none;
 }
 
+/* Stop button */
+.stop-btn {
+  padding: 10px 18px;
+  background: #fff; color: var(--error);
+  border: 1px solid rgba(239,68,68,0.3); border-radius: 12px;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer; white-space: nowrap; outline: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.stop-btn:hover { background: #fef2f2; border-color: rgba(239,68,68,0.5); }
+.stop-btn:active { transform: scale(0.96); }
+.stop-btn:focus-visible { box-shadow: 0 0 0 3px rgba(239,68,68,0.2); }
+
+/* Sidebar collapsible group */
+.sidebar-group { margin-bottom: 4px; }
+.sidebar-group-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 12px; font-size: 13px; cursor: pointer;
+  color: var(--sidebar-text); border-radius: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none; outline: none;
+}
+.sidebar-group-header:hover { background: var(--sidebar-hover); color: #e2e8f0; }
+.sidebar-group-header:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
+.sidebar-group-header .fg-arrow {
+  font-size: 10px; width: 12px; text-align: center;
+  transition: transform 0.2s ease;
+}
+.sidebar-group.collapsed .sidebar-group-header .fg-arrow { transform: rotate(-90deg); }
+.sidebar-group-body { overflow: hidden; }
+.sidebar-group.collapsed .sidebar-group-body { display: none; }
+.sidebar-group-body .sidebar-btn { padding-left: 30px; }
+
 /* ============================================================
    Welcome screen
    ============================================================ */
@@ -656,21 +689,34 @@ html, body {
       </div>
     </div>
 
-    <!-- TOOLS -->
+    <!-- ACTIONS -->
     <div class="sidebar-section">
-      <h3>Tools</h3>
+      <h3>Actions</h3>
       <button class="sidebar-btn" onclick="showModal('market')" aria-label="Market analysis for job categories">
         <span class="icon">&#x1F4C8;</span>Market Analysis...
       </button>
-      <button class="sidebar-btn" onclick="showModal('jd')" aria-label="Generate resume from job description text">
-        <span class="icon">&#x1F4DD;</span>Resume from JD...
-      </button>
-      <button class="sidebar-btn" onclick="showModal('role')" aria-label="Generate resume by role direction">
-        <span class="icon">&#x1F4DD;</span>Resume by Role...
-      </button>
-      <button class="sidebar-btn" onclick="sendQuick('生成通用简历')" aria-label="Generate general resume">
-        <span class="icon">&#x1F4DD;</span>General Resume
-      </button>
+
+      <!-- Resume group (collapsible) -->
+      <div class="sidebar-group" id="resumeGroup">
+        <div class="sidebar-group-header" onclick="toggleResumeGroup()"
+             role="button" tabindex="0" aria-expanded="true"
+             onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleResumeGroup(); }">
+          <span class="fg-arrow" id="resumeGroupArrow">&#9660;</span>
+          <span class="icon">&#x1F4DD;</span>Generate Resume
+        </div>
+        <div class="sidebar-group-body" id="resumeGroupBody">
+          <button class="sidebar-btn" onclick="showModal('jd')" aria-label="Resume from job description text">
+            <span class="icon">&#x1F4CB;</span>From JD Text...
+          </button>
+          <button class="sidebar-btn" onclick="showModal('role')" aria-label="Resume by role direction">
+            <span class="icon">&#x1F3AF;</span>By Role Direction...
+          </button>
+          <button class="sidebar-btn" onclick="sendQuick('生成通用简历')" aria-label="Generate general resume">
+            <span class="icon">&#x1F4C4;</span>General Resume
+          </button>
+        </div>
+      </div>
+
       <button class="sidebar-btn" onclick="sendQuick('看看我的档案')" aria-label="View user profile">
         <span class="icon">&#x1F464;</span>View Profile
       </button>
@@ -704,8 +750,15 @@ html, body {
     <div class="sidebar-divider"></div>
 
     <!-- MARKET REPORTS -->
-    <div class="sidebar-section"><h3>Market Reports</h3></div>
-    <div class="files-panel" id="marketPanel">
+    <div class="sidebar-section">
+      <h3 id="marketReportsHeader" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none"
+          onclick="toggleMarketReports()" role="button" tabindex="0" aria-expanded="false"
+          onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleMarketReports(); }">
+        Market Reports
+        <span class="fg-arrow" id="marketReportsArrow" style="font-size:10px;transition:transform 0.2s ease">&#9654;</span>
+      </h3>
+    </div>
+    <div class="files-panel hidden" id="marketPanel">
       <div class="files-empty">No reports yet</div>
     </div>
   </aside>
@@ -741,10 +794,11 @@ html, body {
     </div>
 
     <div class="input-bar">
-      <input type="text" id="chatInput" placeholder="Type a message..." autocomplete="off"
+      <input type="text" id="chatInput" placeholder="e.g. 帮我找工作 / 分析Web3市场 / 生成简历..." autocomplete="off"
              aria-label="Chat message input"
              onkeydown="if(event.key==='Enter')sendMessage()">
       <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send message">Send</button>
+      <button class="stop-btn hidden" id="stopBtn" onclick="stopTask()" aria-label="Stop running task">⏹ Stop</button>
     </div>
 
     <div class="ai-disclaimer" id="aiDisclaimer" style="display:none">
@@ -1020,23 +1074,55 @@ function toggleProgress() {
 function setBusy() {
   busy = true;
   document.getElementById('statusDot').classList.add('busy');
-  document.getElementById('sendBtn').disabled = true;
+  document.getElementById('sendBtn').classList.add('hidden');
+  document.getElementById('stopBtn').classList.remove('hidden');
   document.getElementById('chatInput').disabled = true;
+  document.getElementById('chatInput').placeholder = 'Task running...';
   addTypingIndicator();
 }
 
 function setIdle() {
   busy = false;
   document.getElementById('statusDot').classList.remove('busy');
+  document.getElementById('stopBtn').classList.add('hidden');
+  document.getElementById('sendBtn').classList.remove('hidden');
   document.getElementById('sendBtn').disabled = false;
   document.getElementById('chatInput').disabled = false;
+  document.getElementById('chatInput').placeholder = 'e.g. 帮我找工作 / 分析Web3市场 / 生成简历...';
   document.getElementById('chatInput').focus();
   removeTyping();
+}
+
+/* Stop the running task */
+async function stopTask() {
+  try {
+    await fetch('/api/stop', { method: 'POST' });
+  } catch(e) {}
+  addProgressLine('⏹ Stop requested — finishing current step...', 'warning');
+  document.getElementById('stopBtn').disabled = true;
 }
 
 function hideWelcome() {
   const el = document.getElementById('welcome');
   if (el) el.style.display = 'none';
+}
+
+/* ── Sidebar toggle helpers ── */
+
+function toggleResumeGroup() {
+  const g = document.getElementById('resumeGroup');
+  g.classList.toggle('collapsed');
+  const expanded = !g.classList.contains('collapsed');
+  g.querySelector('.sidebar-group-header').setAttribute('aria-expanded', String(expanded));
+}
+
+function toggleMarketReports() {
+  const panel = document.getElementById('marketPanel');
+  const arrow = document.getElementById('marketReportsArrow');
+  panel.classList.toggle('hidden');
+  const expanded = !panel.classList.contains('hidden');
+  arrow.innerHTML = expanded ? '&#9660;' : '&#9654;';
+  document.getElementById('marketReportsHeader').setAttribute('aria-expanded', String(expanded));
 }
 
 function showAIDisclaimer() {
@@ -1222,9 +1308,23 @@ async function refreshMarketFiles() {
     const resp = await fetch('/api/market/files');
     const files = await resp.json();
     const panel = document.getElementById('marketPanel');
+    const arrow = document.getElementById('marketReportsArrow');
+    const header = document.getElementById('marketReportsHeader');
     if (!files.length) {
       panel.innerHTML = '<div class="files-empty">No reports yet</div>';
+      // Auto-collapse when empty
+      if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        if (arrow) arrow.innerHTML = '&#9654;';
+        if (header) header.setAttribute('aria-expanded', 'false');
+      }
       return;
+    }
+    // Auto-expand when reports exist
+    if (panel.classList.contains('hidden')) {
+      panel.classList.remove('hidden');
+      if (arrow) arrow.innerHTML = '&#9660;';
+      if (header) header.setAttribute('aria-expanded', 'true');
     }
     let html = '';
     for (const f of files) {

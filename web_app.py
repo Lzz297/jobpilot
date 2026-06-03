@@ -39,6 +39,9 @@ _sessions_lock = threading.Lock()
 # ── 全局 Agent 锁（Playwright 不支持并发） ──
 _agent_lock = threading.Lock()
 
+# ── 全局停止信号（允许前端中断运行中的任务） ──
+_stop_event = threading.Event()
+
 
 def _get_or_create_session(sid):
     with _sessions_lock:
@@ -133,6 +136,8 @@ def _run_agent_turn(sid, user_message):
 
 def _run_pipeline(sid, action, sort_by=None):
     """直接执行 search_jobs + match_jobs 流水线，不经过 LLM 决策。"""
+    global _stop_event
+    _stop_event.clear()  # 每次新任务重置停止信号
     session = _get_or_create_session(sid)
     q = session["queue"]
 
@@ -144,12 +149,18 @@ def _run_pipeline(sid, action, sort_by=None):
             search_result = search_jobs(sort_by=sort_by)
             q.put({"type": "progress", "text": search_result})
 
-            if not search_result.startswith("❌"):
+            if _stop_event.is_set():
+                q.put({"type": "status", "text": "⏹ Stopped by user."})
+                reply = "⏹ Pipeline stopped by user before matching."
+            elif not search_result.startswith("❌"):
                 q.put({"type": "status", "text": "Starting match analysis..."})
                 match_result = match_jobs()
                 q.put({"type": "progress", "text": match_result})
 
-                if not match_result.startswith("错误"):
+                if _stop_event.is_set():
+                    q.put({"type": "status", "text": "⏹ Stopped by user."})
+                    reply = "⏹ Pipeline stopped by user before resume generation."
+                elif not match_result.startswith("错误"):
                     q.put({"type": "status", "text": "Generating direction-based resumes..."})
                     resume_result = generate_resume(by_direction=True)
                     q.put({"type": "progress", "text": resume_result})
@@ -162,7 +173,7 @@ def _run_pipeline(sid, action, sort_by=None):
         else:
             reply = f"Unknown pipeline action: {action}"
 
-        files = get_session_files()
+        files = get_session_files() if not _stop_event.is_set() else []
         q.put({
             "type": "done",
             "reply": reply,
@@ -230,6 +241,13 @@ def pipeline():
     t.start()
 
     return jsonify({"status": "started"})
+
+
+@app.route("/api/stop", methods=["POST"])
+def stop():
+    """中断当前正在运行的任务。"""
+    _stop_event.set()
+    return jsonify({"status": "stop_signalled"})
 
 
 @app.route("/api/chat", methods=["POST"])
