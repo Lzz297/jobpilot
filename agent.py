@@ -1,8 +1,7 @@
 """
 agent.py - JobsDB 智能求职 Agent 主入口（终端模式）
 """
-import config
-from config import client, print_session_summary, get_system_prompt
+from config import llm_call, print_session_summary, get_system_prompt
 from tools_defs import tools, tool_map, execute_tool, deduplicate_tool_calls
 from scraper import cleanup_playwright
 from pdf_renderer import cleanup_renderer
@@ -44,13 +43,7 @@ while True:
 
     messages.append({"role": "user", "content": user_input})
 
-    response = client.chat.completions.create(
-        model=config.MODEL_NAME,
-        messages=messages,
-        tools=tools
-    )
-
-    reply = response.choices[0].message
+    reply = llm_call(messages, tools=tools)
     messages.append(reply)
 
     # 工具调用循环
@@ -75,12 +68,7 @@ while True:
                 "content": "（重复调用已跳过）"
             })
 
-        response = client.chat.completions.create(
-            model=config.MODEL_NAME,
-            messages=messages,
-            tools=tools
-        )
-        reply = response.choices[0].message
+        reply = llm_call(messages, tools=tools)
         messages.append(reply)
 
     print(f"\n🤖: {reply.content}\n")

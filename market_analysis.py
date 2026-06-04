@@ -6,9 +6,8 @@ import os
 import json
 from datetime import datetime
 
-import config
 from config import (
-    emit, client, OUTPUT_DIR, track_file,
+    emit, llm_call, OUTPUT_DIR, track_file,
     load_profile, load_yaml, parse_json_response,
     load_prompts, render_prompt,
 )
@@ -229,17 +228,14 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
             jobs_text += f"描述:\n{desc}\n"
 
         try:
-            resp = client.chat.completions.create(
-                model=config.MODEL_NAME,
+            msg = llm_call(
+                [{"role": "system", "content": render_prompt(
+                    load_prompts().get("market_analysis", {}).get("analysis_system_prompt", _ANALYSIS_SYSTEM_PROMPT),
+                    job_category=job_category)},
+                 {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
                 temperature=0,
-                messages=[
-                    {"role": "system", "content": render_prompt(
-                        load_prompts().get("market_analysis", {}).get("analysis_system_prompt", _ANALYSIS_SYSTEM_PROMPT),
-                        job_category=job_category)},
-                    {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}
-                ]
             )
-            result = parse_json_response(resp.choices[0].message.content)
+            result = parse_json_response(msg.content)
             if result and isinstance(result, dict):
                 batch_results.append(result)
             else:
@@ -616,17 +612,14 @@ def _run_gap_analysis(analysis, profile):
     }, ensure_ascii=False, indent=2)
 
     try:
-        resp = client.chat.completions.create(
-            model=config.MODEL_NAME,
+        msg = llm_call(
+            [{"role": "system", "content": render_prompt(
+                load_prompts().get("market_analysis", {}).get("gap_analysis_prompt", _GAP_ANALYSIS_PROMPT),
+                technical_skills=skills_text, profile=profile_summary)},
+             {"role": "user", "content": "请进行差距分析。"}],
             temperature=0,
-            messages=[
-                {"role": "system", "content": render_prompt(
-                    load_prompts().get("market_analysis", {}).get("gap_analysis_prompt", _GAP_ANALYSIS_PROMPT),
-                    technical_skills=skills_text, profile=profile_summary)},
-                {"role": "user", "content": "请进行差距分析。"}
-            ]
         )
-        result = parse_json_response(resp.choices[0].message.content)
+        result = parse_json_response(msg.content)
         if result and isinstance(result, dict):
             return result
         else:
@@ -662,15 +655,12 @@ def _generate_report_via_llm(job_category, location, sample_size, analysis, gap_
     )
 
     try:
-        resp = client.chat.completions.create(
-            model=config.MODEL_NAME,
+        msg = llm_call(
+            [{"role": "system", "content": prompt},
+             {"role": "user", "content": "请撰写完整的市场分析报告。"}],
             temperature=0,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": "请撰写完整的市场分析报告。"},
-            ]
         )
-        report = resp.choices[0].message.content.strip()
+        report = msg.content.strip()
         # 去除 LLM 可能添加的 markdown 代码块包裹
         if report.startswith("```markdown"):
             report = report[len("```markdown"):].strip()

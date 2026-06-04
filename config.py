@@ -104,6 +104,60 @@ def _init_llm_client():
 client, MODEL_NAME = _init_llm_client()
 
 
+# ============================================================
+#  统一 LLM 调用入口（所有模块通过此函数调用，不直接使用 client）
+# ============================================================
+
+def llm_call(messages, *, temperature=None, tools=None, max_retries=2):
+    """调用 LLM，自动处理限流重试、超时、服务端错误。
+
+    返回 message 对象（含 .content 和 .tool_calls 属性）。
+    调用方可以直接 msg.content 取文本、msg.tool_calls 取工具调用。
+
+    可重试的错误（429/超时/连接/5xx）：指数退避，最多 max_retries 次。
+    不可重试的错误（401/403/400）：直接抛出，不浪费等待时间。
+    """
+    import time
+    from openai import RateLimitError, APITimeoutError, APIConnectionError, APIStatusError
+
+    last_error = None
+    for attempt in range(max_retries + 1):
+        try:
+            kwargs = {"model": MODEL_NAME, "messages": messages}
+            if tools is not None:
+                kwargs["tools"] = tools
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+
+            response = client.chat.completions.create(**kwargs)
+            return response.choices[0].message
+
+        except RateLimitError as e:
+            last_error = e
+            if attempt < max_retries:
+                wait = min(2 ** attempt, 30)
+                emit(f"   ⚠️ LLM 限流 (429)，{wait}s 后重试 ({attempt + 1}/{max_retries})...")
+                time.sleep(wait)
+
+        except (APITimeoutError, APIConnectionError) as e:
+            last_error = e
+            if attempt < max_retries:
+                wait = min(2 ** attempt, 30)
+                emit(f"   ⚠️ LLM 调用失败 ({type(e).__name__})，{wait}s 后重试 ({attempt + 1}/{max_retries})...")
+                time.sleep(wait)
+
+        except APIStatusError as e:
+            if e.status_code >= 500 and attempt < max_retries:
+                last_error = e
+                wait = min(2 ** attempt, 30)
+                emit(f"   ⚠️ LLM 服务端错误 ({e.status_code})，{wait}s 后重试 ({attempt + 1}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                raise
+
+    raise last_error
+
+
 def switch_model(provider, model=None):
     """运行时切换 LLM 提供商，原地修改 client 属性使全局立即生效"""
     global MODEL_NAME

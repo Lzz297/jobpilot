@@ -6,9 +6,8 @@ import json
 import yaml
 from datetime import datetime
 
-import config
 from config import (
-    emit, client, OUTPUT_DIR, track_file,
+    emit, llm_call, OUTPUT_DIR, track_file,
     load_profile, load_search_config_dict, parse_json_response,
     get_current_run_dir, get_latest_run_dir, load_prompts, render_prompt,
 )
@@ -140,15 +139,12 @@ def _score_batch(batch, profile_summary, weights, batch_label=""):
         jobs_text += f"链接: {job.get('url', '')}\n"
 
     try:
-        resp = client.chat.completions.create(
-            model=config.MODEL_NAME,
+        msg = llm_call(
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": jobs_text}],
             temperature=0,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": jobs_text}
-            ]
         )
-        result_text = resp.choices[0].message.content
+        result_text = msg.content
         scored = parse_json_response(result_text)
         if scored and isinstance(scored, list):
             return scored

@@ -15,7 +15,7 @@ from flask import Flask, request, jsonify, Response, send_from_directory
 
 import config
 from config import (
-    client, set_emit_target, get_session_files, get_system_prompt,
+    llm_call, set_emit_target, get_session_files, get_system_prompt,
     OUTPUT_DIR, get_current_run_dir, get_latest_run_dir,
 )
 from tools_defs import tools, execute_tool, deduplicate_tool_calls
@@ -65,12 +65,7 @@ def _run_agent_turn(sid, user_message):
 
         session["messages"].append({"role": "user", "content": user_message})
 
-        response = client.chat.completions.create(
-            model=config.MODEL_NAME,
-            messages=session["messages"],
-            tools=tools,
-        )
-        reply = response.choices[0].message
+        reply = llm_call(session["messages"], tools=tools)
         session["messages"].append(reply)
 
         # 工具调用循环
@@ -100,12 +95,7 @@ def _run_agent_turn(sid, user_message):
                     "content": "(重复调用已跳过)",
                 })
 
-            response = client.chat.completions.create(
-                model=config.MODEL_NAME,
-                messages=session["messages"],
-                tools=tools,
-            )
-            reply = response.choices[0].message
+            reply = llm_call(session["messages"], tools=tools)
             session["messages"].append(reply)
 
         # 获取本轮生成的文件

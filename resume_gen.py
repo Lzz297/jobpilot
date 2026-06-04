@@ -13,9 +13,8 @@ import json
 import yaml
 from datetime import datetime
 
-import config
 from config import (
-    emit, client, OUTPUT_DIR, track_file,
+    emit, llm_call, OUTPUT_DIR, track_file,
     load_profile, load_yaml, load_search_config_dict, parse_json_response,
     get_current_run_dir, get_latest_run_dir,
     load_prompts, render_prompt,
@@ -234,15 +233,12 @@ def _aggregate_direction_requirements(matched_jobs, profile_text, search_cfg):
         system_prompt = render_prompt(template, profile_summary=profile_text)
 
         try:
-            resp = client.chat.completions.create(
-                model=config.MODEL_NAME,
+            msg = llm_call(
+                [{"role": "system", "content": system_prompt},
+                 {"role": "user", "content": f"方向：{direction}\n\n以下是该方向 {len(jobs)} 个达标岗位的 JD：\n{jds_text}"}],
                 temperature=0,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"方向：{direction}\n\n以下是该方向 {len(jobs)} 个达标岗位的 JD：\n{jds_text}"}
-                ]
             )
-            parsed = parse_json_response(resp.choices[0].message.content)
+            parsed = parse_json_response(msg.content)
             if parsed and isinstance(parsed, dict):
                 parsed["direction"] = direction
                 parsed["job_count"] = len(jobs)
@@ -518,15 +514,12 @@ def _review_resume(resume_md, file_label, resumes_dir, date_str):
     emit("   🔍 正在审查英文简历质量...")
 
     try:
-        resp = client.chat.completions.create(
-            model=config.MODEL_NAME,
+        msg = llm_call(
+            [{"role": "system", "content": review_prompt},
+             {"role": "user", "content": resume_md}],
             temperature=0,
-            messages=[
-                {"role": "system", "content": review_prompt},
-                {"role": "user", "content": resume_md}
-            ]
         )
-        review = parse_json_response(resp.choices[0].message.content)
+        review = parse_json_response(msg.content)
 
         if not review or not isinstance(review, dict):
             emit("   ⚠️ 简历审查返回格式异常，跳过")
@@ -599,14 +592,11 @@ def _call_llm_and_save(system_content, user_content, file_label,
     # ================================================================
     emit(f"   📝 正在生成英文简历...")
     try:
-        resp = client.chat.completions.create(
-            model=config.MODEL_NAME,
-            messages=[
-                {"role": "system", "content": system_content},
-                {"role": "user", "content": user_content}
-            ]
+        msg = llm_call(
+            [{"role": "system", "content": system_content},
+             {"role": "user", "content": user_content}],
         )
-        lang_results["en"]["resume_md"] = _strip_code_block(resp.choices[0].message.content)
+        lang_results["en"]["resume_md"] = _strip_code_block(msg.content)
     except Exception as e:
         return f"英文简历生成失败: {str(e)}"
 
@@ -629,14 +619,11 @@ def _call_llm_and_save(system_content, user_content, file_label,
                 f"{feedback}"
             )
             try:
-                resp = client.chat.completions.create(
-                    model=config.MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": system_content},
-                        {"role": "user", "content": feedback_user}
-                    ]
+                msg = llm_call(
+                    [{"role": "system", "content": system_content},
+                     {"role": "user", "content": feedback_user}],
                 )
-                lang_results["en"]["resume_md"] = _strip_code_block(resp.choices[0].message.content)
+                lang_results["en"]["resume_md"] = _strip_code_block(msg.content)
                 emit("   ✅ 英文简历已根据审查反馈重新生成")
             except Exception as e:
                 emit(f"   ⚠️ 重新生成失败: {e}，使用原版简历")
@@ -655,14 +642,11 @@ def _call_llm_and_save(system_content, user_content, file_label,
     # ================================================================
     emit(f"   📨 正在生成英文 Cover Letter...")
     try:
-        cl_resp = client.chat.completions.create(
-            model=config.MODEL_NAME,
-            messages=[
-                {"role": "system", "content": cl_prompt or _COVER_LETTER_PROMPT},
-                {"role": "user", "content": user_content}
-            ]
+        cl_msg = llm_call(
+            [{"role": "system", "content": cl_prompt or _COVER_LETTER_PROMPT},
+             {"role": "user", "content": user_content}],
         )
-        lang_results["en"]["cl_md"] = _strip_code_block(cl_resp.choices[0].message.content)
+        lang_results["en"]["cl_md"] = _strip_code_block(cl_msg.content)
         cl_base = os.path.join(resumes_dir, f"cover_letter_{safe_label}_{date_str}_en.md")
         lang_results["en"]["cl_pdf"] = render_pdf(lang_results["en"]["cl_md"], cl_base)
         if lang_results["en"]["cl_pdf"]:
@@ -687,14 +671,11 @@ def _call_llm_and_save(system_content, user_content, file_label,
             emit(f"   🌐 正在翻译简历为{lang_label}...")
             translate_sys = render_prompt(translate_resume_tpl, target_lang=target_lang)
             try:
-                resp = client.chat.completions.create(
-                    model=config.MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": translate_sys},
-                        {"role": "user", "content": en_resume_md}
-                    ]
+                msg = llm_call(
+                    [{"role": "system", "content": translate_sys},
+                     {"role": "user", "content": en_resume_md}],
                 )
-                lang_results[lang]["resume_md"] = _strip_code_block(resp.choices[0].message.content)
+                lang_results[lang]["resume_md"] = _strip_code_block(msg.content)
                 resume_base = os.path.join(
                     resumes_dir, f"resume_{safe_label}_{date_str}_{lang}.md")
                 lang_results[lang]["resume_pdf"] = render_pdf(lang_results[lang]["resume_md"], resume_base)
@@ -710,14 +691,11 @@ def _call_llm_and_save(system_content, user_content, file_label,
             emit(f"   🌐 正在翻译 Cover Letter 为{lang_label}...")
             translate_cl_sys = render_prompt(translate_cl_tpl, target_lang=target_lang)
             try:
-                resp = client.chat.completions.create(
-                    model=config.MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": translate_cl_sys},
-                        {"role": "user", "content": en_cl_md}
-                    ]
+                msg = llm_call(
+                    [{"role": "system", "content": translate_cl_sys},
+                     {"role": "user", "content": en_cl_md}],
                 )
-                lang_results[lang]["cl_md"] = _strip_code_block(resp.choices[0].message.content)
+                lang_results[lang]["cl_md"] = _strip_code_block(msg.content)
                 cl_base = os.path.join(
                     resumes_dir, f"cover_letter_{safe_label}_{date_str}_{lang}.md")
                 lang_results[lang]["cl_pdf"] = render_pdf(lang_results[lang]["cl_md"], cl_base)
