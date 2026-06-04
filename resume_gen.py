@@ -254,7 +254,7 @@ def _aggregate_direction_requirements(matched_jobs, profile_text, search_cfg):
     return results
 
 
-def _generate_for_direction_batch(profile, profile_text, template_text, base_rules, resume_prompts):
+def _generate_for_direction_batch(profile, profile_text, template_text, base_rules, resume_prompts, output_langs=None):
     """基于匹配数据按方向批量生成简历"""
     run_dir = get_current_run_dir() or get_latest_run_dir()
     if not run_dir:
@@ -313,7 +313,7 @@ def _generate_for_direction_batch(profile, profile_text, template_text, base_rul
         result = _call_llm_and_save(
             system_content, user_content, direction,
             mode_label="方向聚合", job_label=f"{direction} 方向（基于 {agg_data.get('job_count', '?')} 个岗位）",
-            cl_prompt=cl_prompt)
+            cl_prompt=cl_prompt, output_langs=output_langs)
         all_results.append((direction, result))
 
     output = f"✅ 按方向批量简历生成完成！（共 {len(all_results)} 个方向）\n\n"
@@ -330,7 +330,7 @@ def _generate_for_direction_batch(profile, profile_text, template_text, base_rul
 #  主函数：统一入口
 # ============================================================
 
-def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direction=False):
+def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direction=False, output_langs=None):
     """
     多模式简历生成。根据传入参数自动选择模式：
       - by_direction: 基于匹配数据按方向批量生成（需先 search + match）
@@ -338,6 +338,8 @@ def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direct
       - jd_text: 基于用户粘贴的 JD 文本
       - role_direction: 基于岗位方向（如 "Solutions Engineer"）
       - 均为空: 生成通用简历
+
+    output_langs: 可选，指定输出语言子集，如 ["en", "hk"]。不传则输出全部三种。
     """
     # ── 加载公共资源 ──
     profile, err = load_profile()
@@ -362,26 +364,26 @@ def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direct
 
     if by_direction:
         return _generate_for_direction_batch(
-            profile, profile_text, template_text, base_rules, resume_prompts)
+            profile, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
     elif job_index is not None:
         return _generate_for_matched_job(
-            job_index, profile, profile_text, template_text, base_rules, resume_prompts)
+            job_index, profile, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
     elif jd_text:
         return _generate_for_jd_text(
-            jd_text, profile_text, template_text, base_rules, resume_prompts)
+            jd_text, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
     elif role_direction:
         return _generate_for_role(
-            role_direction, profile_text, template_text, base_rules, resume_prompts)
+            role_direction, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
     else:
         return _generate_general(
-            profile, profile_text, template_text, base_rules, resume_prompts)
+            profile, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
 
 
 # ============================================================
 #  模式 1：基于匹配岗位
 # ============================================================
 
-def _generate_for_matched_job(job_index, profile, profile_text, template_text, base_rules, resume_prompts):
+def _generate_for_matched_job(job_index, profile, profile_text, template_text, base_rules, resume_prompts, output_langs=None):
     """从匹配结果中选择岗位生成定制简历"""
     run_dir = get_current_run_dir() or get_latest_run_dir()
     if not run_dir:
@@ -412,14 +414,14 @@ def _generate_for_matched_job(job_index, profile, profile_text, template_text, b
     return _call_llm_and_save(
         system_content, user_content, file_label,
         mode_label="匹配岗位", job_label=job_label, company=company,
-        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT))
+        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT), output_langs=output_langs)
 
 
 # ============================================================
 #  模式 2：基于 JD 文本
 # ============================================================
 
-def _generate_for_jd_text(jd_text, profile_text, template_text, base_rules, resume_prompts):
+def _generate_for_jd_text(jd_text, profile_text, template_text, base_rules, resume_prompts, output_langs=None):
     """基于用户粘贴的 JD 文本生成定制简历"""
     # 尝试从 JD 中提取岗位名称
     first_line = jd_text.strip().split("\n")[0][:80]
@@ -435,14 +437,14 @@ def _generate_for_jd_text(jd_text, profile_text, template_text, base_rules, resu
     return _call_llm_and_save(
         system_content, user_content, job_label,
         mode_label="JD 文本", job_label=job_label,
-        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT))
+        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT), output_langs=output_langs)
 
 
 # ============================================================
 #  模式 3：基于岗位方向
 # ============================================================
 
-def _generate_for_role(role_direction, profile_text, template_text, base_rules, resume_prompts):
+def _generate_for_role(role_direction, profile_text, template_text, base_rules, resume_prompts, output_langs=None):
     """基于岗位方向/角色类型生成针对性简历"""
     emit(f"   📝 模式: 岗位方向 | 正在生成「{role_direction}」方向的简历...")
 
@@ -454,14 +456,14 @@ def _generate_for_role(role_direction, profile_text, template_text, base_rules, 
     return _call_llm_and_save(
         system_content, user_content, role_direction,
         mode_label="岗位方向", job_label=f"{role_direction} 方向",
-        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT))
+        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT), output_langs=output_langs)
 
 
 # ============================================================
 #  模式 4：通用简历
 # ============================================================
 
-def _generate_general(profile, profile_text, template_text, base_rules, resume_prompts):
+def _generate_general(profile, profile_text, template_text, base_rules, resume_prompts, output_langs=None):
     """基于用户画像生成通用简历"""
     intent = profile.get("job_intent", {})
     directions = ", ".join(intent.get("target_titles", [])[:3])
@@ -476,7 +478,7 @@ def _generate_general(profile, profile_text, template_text, base_rules, resume_p
     return _call_llm_and_save(
         system_content, user_content, "general",
         mode_label="通用", job_label="通用简历",
-        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT))
+        cl_prompt=resume_prompts.get("cover_letter_prompt", _COVER_LETTER_PROMPT), output_langs=output_langs)
 
 
 # ============================================================
@@ -573,7 +575,7 @@ _TRANSLATE_LANG_NAMES = {"hk": "繁體中文（香港用語）", "cn": "简体�
 
 def _call_llm_and_save(system_content, user_content, file_label,
                        mode_label="", job_label="", company="",
-                       cl_prompt=None):
+                       cl_prompt=None, output_langs=None):
     """英文先行 → 审查 → 定稿 → 翻译到其他语言"""
     run_dir = get_current_run_dir() or get_latest_run_dir()
     if run_dir:
@@ -584,7 +586,8 @@ def _call_llm_and_save(system_content, user_content, file_label,
     safe_label = _make_safe_label(file_label)
     date_str = datetime.now().strftime("%Y%m%d")
 
-    langs = ["en", "hk", "cn"]
+    # output_langs: 可选参数，指定输出语言子集。默认全部三种。
+    langs = output_langs if output_langs else ["en", "hk", "cn"]
     lang_results = {lang: {"resume_pdf": None, "resume_md": "", "cl_pdf": None, "cl_md": ""} for lang in langs}
 
     # ================================================================

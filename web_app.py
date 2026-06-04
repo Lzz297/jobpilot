@@ -123,7 +123,7 @@ def _run_agent_turn(sid, user_message):
 #  Pipeline 直接执行（不经过 LLM）
 # ============================================================
 
-def _run_pipeline(sid, action, sort_by=None):
+def _run_pipeline(sid, action, sort_by=None, languages=None):
     """直接执行 search_jobs + match_jobs 流水线，不经过 LLM 决策。"""
     session = _get_or_create_session(sid)
     q = session["queue"]
@@ -143,7 +143,7 @@ def _run_pipeline(sid, action, sort_by=None):
 
                 if not match_result.startswith("错误"):
                     q.put({"type": "status", "text": "Generating direction-based resumes..."})
-                    resume_result = generate_resume(by_direction=True)
+                    resume_result = generate_resume(by_direction=True, output_langs=languages)
                     q.put({"type": "progress", "text": resume_result})
                     reply = resume_result
                 else:
@@ -193,6 +193,7 @@ def pipeline():
     sid = data.get("sid", "")
     action = data.get("action", "")
     sort_by = data.get("sort_by")  # optional: "date" or "relevance"
+    languages = data.get("languages")  # optional: ["en","hk","cn"] subset
 
     if not sid or not action:
         return jsonify({"error": "Missing sid or action"}), 400
@@ -216,7 +217,7 @@ def pipeline():
     t = threading.Thread(
         target=_run_pipeline,
         args=(sid, action),
-        kwargs={"sort_by": sort_by},
+        kwargs={"sort_by": sort_by, "languages": languages},
         daemon=True,
     )
     t.start()
@@ -433,6 +434,7 @@ def api_resume():
     data = request.json or {}
     sid = data.get("sid", "").strip()
     mode = data.get("mode", "general")
+    languages = data.get("languages")  # optional: ["en","hk","cn"] subset
     if not sid:
         return jsonify({"error": "Missing sid"}), 400
 
@@ -453,24 +455,24 @@ def api_resume():
         try:
             set_emit_target(q)
             if mode == "direction":
-                result = generate_resume(by_direction=True)
+                result = generate_resume(by_direction=True, output_langs=languages)
             elif mode == "job":
                 idx = data.get("job_index", 1)
-                result = generate_resume(job_index=int(idx))
+                result = generate_resume(job_index=int(idx), output_langs=languages)
             elif mode == "jd":
                 jd = data.get("jd_text", "").strip()
                 if not jd:
                     q.put({"type": "error", "text": "JD 文本不能为空"})
                     return
-                result = generate_resume(jd_text=jd)
+                result = generate_resume(jd_text=jd, output_langs=languages)
             elif mode == "role":
                 role = data.get("role_direction", "").strip()
                 if not role:
                     q.put({"type": "error", "text": "岗位方向不能为空"})
                     return
-                result = generate_resume(role_direction=role)
+                result = generate_resume(role_direction=role, output_langs=languages)
             else:
-                result = generate_resume()
+                result = generate_resume(output_langs=languages)
 
             files = get_session_files()
             q.put({"type": "done", "reply": result, "files": [[fp, desc] for fp, desc in files]})
