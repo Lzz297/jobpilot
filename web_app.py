@@ -24,6 +24,7 @@ from pdf_renderer import cleanup_renderer
 from job_search import search_jobs
 from job_match import match_jobs
 from resume_gen import generate_resume
+from market_analysis import analyze_market, batch_analyze_market
 
 
 # ============================================================
@@ -406,6 +407,173 @@ def market_files():
                 })
     files.sort(key=lambda x: x["mtime"], reverse=True)
     return jsonify(files)
+
+
+# ── 匹配结果 API ──
+
+@app.route("/api/runs/<run_id>/matches")
+def run_matches(run_id):
+    """返回指定 run 的结构化匹配评分数据。"""
+    run_path = os.path.join(OUTPUT_DIR, run_id)
+    if not os.path.isdir(run_path) or not run_id.startswith("run_"):
+        return jsonify({"error": "Run not found"}), 404
+    matched_path = os.path.join(run_path, "matched_jobs.json")
+    if not os.path.exists(matched_path):
+        return jsonify({"error": "该 Run 还没有匹配结果"}), 404
+    with open(matched_path, "r", encoding="utf-8") as f:
+        return jsonify(json.load(f))
+
+
+# ── 简历生成 API ──
+
+@app.route("/api/resume", methods=["POST"])
+def api_resume():
+    """直接调用简历生成。参数由前端表单提供，SSE 流返回进度。"""
+    data = request.json or {}
+    sid = data.get("sid", "").strip()
+    mode = data.get("mode", "general")
+    if not sid:
+        return jsonify({"error": "Missing sid"}), 400
+
+    session = _get_or_create_session(sid)
+    if session["busy"]:
+        return jsonify({"error": "Agent is busy"}), 429
+    if not _agent_lock.acquire(blocking=False):
+        return jsonify({"error": "Another session is running"}), 429
+    session["busy"] = True
+
+    # Clear old queue
+    q = session["queue"]
+    while not q.empty():
+        try: q.get_nowait()
+        except queue.Empty: break
+
+    def _run():
+        try:
+            set_emit_target(q)
+            if mode == "direction":
+                result = generate_resume(by_direction=True)
+            elif mode == "job":
+                idx = data.get("job_index", 1)
+                result = generate_resume(job_index=int(idx))
+            elif mode == "jd":
+                jd = data.get("jd_text", "").strip()
+                if not jd:
+                    q.put({"type": "error", "text": "JD 文本不能为空"})
+                    return
+                result = generate_resume(jd_text=jd)
+            elif mode == "role":
+                role = data.get("role_direction", "").strip()
+                if not role:
+                    q.put({"type": "error", "text": "岗位方向不能为空"})
+                    return
+                result = generate_resume(role_direction=role)
+            else:
+                result = generate_resume()
+
+            files = get_session_files()
+            q.put({"type": "done", "reply": result, "files": [[fp, desc] for fp, desc in files]})
+        except Exception as e:
+            q.put({"type": "error", "text": str(e)})
+        finally:
+            set_emit_target(None)
+            session["busy"] = False
+            _agent_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+# ── 市场调研 API ──
+
+@app.route("/api/market", methods=["POST"])
+def api_market():
+    """直接调用市场调研。SSE 流返回进度。"""
+    data = request.json or {}
+    sid = data.get("sid", "").strip()
+    cat = data.get("job_category", "").strip()
+    if not sid or not cat:
+        return jsonify({"error": "Missing sid or job_category"}), 400
+
+    session = _get_or_create_session(sid)
+    if session["busy"]:
+        return jsonify({"error": "Agent is busy"}), 429
+    if not _agent_lock.acquire(blocking=False):
+        return jsonify({"error": "Another session is running"}), 429
+    session["busy"] = True
+
+    q = session["queue"]
+    while not q.empty():
+        try: q.get_nowait()
+        except queue.Empty: break
+
+    loc = data.get("location", "Hong Kong")
+    gap = data.get("include_gap_analysis", True)
+    classification = data.get("classification", "")
+    sort_by = data.get("sort_by") or None
+
+    def _run():
+        try:
+            set_emit_target(q)
+            result = analyze_market(job_category=cat, location=loc,
+                                    include_gap_analysis=gap,
+                                    classification=classification,
+                                    sort_by=sort_by)
+            files = get_session_files()
+            q.put({"type": "done", "reply": result, "files": [[fp, desc] for fp, desc in files]})
+        except Exception as e:
+            q.put({"type": "error", "text": str(e)})
+        finally:
+            set_emit_target(None)
+            session["busy"] = False
+            _agent_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/market/batch", methods=["POST"])
+def api_market_batch():
+    """批量市场调研。SSE 流返回进度。"""
+    data = request.json or {}
+    sid = data.get("sid", "").strip()
+    tasks = data.get("tasks", [])
+    if not sid or not tasks:
+        return jsonify({"error": "Missing sid or tasks"}), 400
+
+    session = _get_or_create_session(sid)
+    if session["busy"]:
+        return jsonify({"error": "Agent is busy"}), 429
+    if not _agent_lock.acquire(blocking=False):
+        return jsonify({"error": "Another session is running"}), 429
+    session["busy"] = True
+
+    q = session["queue"]
+    while not q.empty():
+        try: q.get_nowait()
+        except queue.Empty: break
+
+    loc = data.get("location", "Hong Kong")
+    gap = data.get("include_gap_analysis", True)
+    sort_by = data.get("sort_by") or None
+
+    def _run():
+        try:
+            set_emit_target(q)
+            result = batch_analyze_market(tasks=tasks, location=loc,
+                                          include_gap_analysis=gap,
+                                          sort_by=sort_by)
+            files = get_session_files()
+            q.put({"type": "done", "reply": result, "files": [[fp, desc] for fp, desc in files]})
+        except Exception as e:
+            q.put({"type": "error", "text": str(e)})
+        finally:
+            set_emit_target(None)
+            session["busy"] = False
+            _agent_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
 
 
 # ── 模型配置 API ──

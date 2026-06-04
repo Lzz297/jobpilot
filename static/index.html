@@ -838,41 +838,190 @@ async function renderMarketFiles(){
   refreshIcons();
 }
 
-/* ===================== RESUME / MARKET / MATCHES — PHASE 2 PLACEHOLDER ===================== */
+/* ===================== MATCHES VIEW ===================== */
+const MF = {run:null, dir:'all', rec:'all', conf:'all', min:0, sort:'total_desc', q:''};
+async function renderMatches(){
+  // Load runs for selector
+  const runsData = await apiGet('/api/runs');
+  const mr = (runsData||[]).filter(r=>r.has_matched);
+  if(!mr.length){ $('#match-list').innerHTML = `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">还没有匹配数据，先去工作台搜索岗位。</div>`; refreshIcons(); return; }
+  if(!MF.run || !mr.find(r=>r.id===MF.run)) MF.run = (mr.find(r=>r.is_current)||mr[0]).id;
+
+  $('#match-run').innerHTML = mr.map(r=>`<option value="${r.id}" ${r.id===MF.run?'selected':''}>${r.id}${r.is_current?'（当前活跃）':''} · ${r.match_count} 个达标</option>`).join('');
+  $('#match-source').textContent = `${MF.run}/matched_jobs.json`;
+  $('#nav-match-count').textContent = (mr.find(r=>r.is_current)||mr[0]).match_count||'';
+
+  // Fetch match data
+  const data = await apiGet('/api/runs/'+MF.run+'/matches');
+  const all = (data||[]).slice();
+
+  // Direction chips
+  const dirs = [...new Set(all.map(j=>j.llm_direction||j.weight_profile||'default'))];
+  $('#match-dir-chips').innerHTML = ['all',...dirs].map(d=>{
+    const on=MF.dir===d;
+    return `<button onclick="MF.dir='${d}';renderMatches()" class="text-xs px-2.5 py-1 rounded-full border ${on?'bg-indigo-600 text-white border-indigo-600':'bg-white text-slate-500 border-slate-200'}">${d==='all'?'全部方向':d}</button>`;
+  }).join('');
+
+  // Filter
+  let list = all;
+  if(MF.dir!=='all') list = list.filter(j=>(j.llm_direction||j.weight_profile||'default')===MF.dir);
+  if(MF.rec==='strong') list = list.filter(j=>j.total_score>=80);
+  else if(MF.rec==='consider') list = list.filter(j=>j.total_score>=60&&j.total_score<80);
+  else if(MF.rec==='no') list = list.filter(j=>j.total_score<60);
+  if(MF.conf==='verified') list = list.filter(j=>j.confidence==='verified');
+  else if(MF.conf==='uncertain') list = list.filter(j=>j.confidence==='uncertain');
+  list = list.filter(j=>(j.total_score||0)>=MF.min);
+  if(MF.q) list = list.filter(j=>(j.title+''+(j.company||'')).toLowerCase().includes(MF.q.toLowerCase()));
+  if(MF.sort==='total_desc') list.sort((a,b)=>(b.total_score||0)-(a.total_score||0));
+  else if(MF.sort==='total_asc') list.sort((a,b)=>(a.total_score||0)-(b.total_score||0));
+  else if(MF.sort==='skill_desc') list.sort((a,b)=>(b.scores?.skill||0)-(a.scores?.skill||0));
+
+  $('#match-count').textContent = `显示 ${list.length} / ${all.length} 个达标岗位`;
+
+  $('#match-list').innerHTML = list.map(j=>{
+    const total = j.total_score || 0;
+    const dir = j.llm_direction || j.weight_profile || 'default';
+    const dirCls = DIR_META[dir] ? DIR_META[dir].cls : 'bg-slate-100 text-slate-600';
+    const [ic,cls] = recBadge(total);
+    const scores = j.scores || {};
+    const bars = Object.entries({技能:'skill',经验:'experience',职级:'level',行业:'industry',加分:'bonus'}).map(([cn,k])=>{
+      const v = scores[k] || 0;
+      return `<div class="flex items-center gap-2"><span class="text-[11px] text-slate-400 w-7">${cn}</span><div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div class="h-full ${scoreColor(v)} rounded-full" style="width:${v}%"></div></div><span class="text-[11px] text-slate-500 w-6 text-right">${v}</span></div>`;
+    }).join('');
+    const skills = (j.skill_match||[]).map(s=>{
+      const ok=s.includes('✅'),bad=s.includes('❌'),warn=s.includes('⚠️');
+      const c=ok?'bg-emerald-50 text-emerald-700':bad?'bg-red-50 text-red-600':warn?'bg-amber-50 text-amber-700':'bg-slate-50 text-slate-600';
+      return `<span class="text-[11px] px-1.5 py-0.5 rounded ${c}">${escapeHtml(s)}</span>`;
+    }).join(' ');
+    const confHtml = j.confidence==='verified'?`<span class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">复评一致 ±${j.score_variance||0}</span>`:j.confidence==='uncertain'?`<span class="text-[11px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">评分波动 ±${j.score_variance||0} · 需人工判断</span>`:'';
+    const recText = j.recommendation || (total>=80?'强烈推荐':total>=60?'可考虑':'不推荐');
+    const origIdx = all.indexOf(j)+1;
+    return `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="flex items-start gap-3"><div class="shrink-0 text-center"><div class="text-2xl font-bold text-slate-800">${total}</div><div class="text-[10px] text-slate-400">#${origIdx}</div></div><div class="flex-1 min-w-0"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-semibold text-slate-800 text-sm truncate">${escapeHtml(j.title||'未知')}</div><div class="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">${j.company?`<span class="flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>${escapeHtml(j.company)}</span>`:''}${j.url?`<a href="${j.url}" target="_blank" class="text-indigo-500 flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i>链接</a>`:''}</div></div><span class="shrink-0 text-xs border ${cls} rounded-full px-2 py-0.5">${ic} ${recText}</span></div><div class="flex flex-wrap gap-1.5 mt-2"><span class="text-[11px] px-1.5 py-0.5 rounded ${dirCls}">方向 ${dir}</span><span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">权重 ${j.weight_profile||'default'}</span>${confHtml}</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-3">${bars}</div>${skills?`<div class="mt-2 flex flex-wrap gap-1">${skills}</div>`:''}${(j.missing_skills||[]).length?`<div class="text-[11px] text-red-500 mt-1">缺失技能：${j.missing_skills.join('、')}</div>`:''}<p class="text-xs text-slate-500 mt-2 leading-relaxed">${escapeHtml(j.reason||'')}</p></div></div></div>`;
+  }).join('') || `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">没有符合当前筛选条件的岗位</div>`;
+  refreshIcons();
+}
+function resetFilters(){ MF.dir='all';MF.rec='all';MF.conf='all';MF.min=0;MF.sort='total_desc';MF.q=''; $('#f-rec').value='all';$('#f-conf').value='all';$('#f-sort').value='total_desc';$('#f-min').value=0;$('#f-min-val').textContent='0';$('#f-q').value=''; renderMatches(); }
+
+/* ===================== RESUME VIEW ===================== */
+const RS = { run:null, langs:new Set(['en','hk','cn']) };
+const RESUME_MODES = [
+  {id:'direction', needsRun:true, icon:'layers', name:'方向聚合 (by_direction)', desc:'按方向聚合 JD 共性需求批量生成。可生成 payment、web3、technical（solutions 仅 1 个、default 跳过）。', cta:'基于该 Run 匹配结果生成'},
+  {id:'job', needsRun:true, icon:'target', name:'匹配岗位 (job_index)', desc:'从该 Run 的匹配排名中选某个高分岗位单独定制。', input:'select'},
+  {id:'jd', needsRun:false, icon:'clipboard-paste', name:'JD 文本 (jd_text)', desc:'其他平台看到的岗位，粘贴完整 JD。', input:'textarea'},
+  {id:'role', needsRun:false, icon:'compass', name:'岗位方向 (role_direction)', desc:'只有方向没有具体 JD，靠 LLM 对该角色的理解生成。', input:'text', placeholder:'如 Solutions Engineer'},
+  {id:'general', needsRun:false, icon:'file', name:'通用简历', desc:'基于 me.yaml 生成通用版，投递通用平台。', cta:'生成通用简历'},
+];
+function langsOrdered(){ return ['en','hk','cn'].filter(l=>RS.langs.has(l)); }
+function toggleLang(k){ if(RS.langs.has(k)){ if(RS.langs.size===1){ toast('至少选择一种产出语言','warn'); return; } RS.langs.delete(k); } else RS.langs.add(k); renderLangChips(); }
+function renderLangChips(){
+  $('#rs-lang-chips').innerHTML = [['en','英文 EN'],['hk','繁體中文 HK'],['cn','简体中文 CN']].map(([k,l])=>{
+    const on=RS.langs.has(k);
+    return `<button onclick="toggleLang('${k}')" class="text-xs px-3 py-1.5 rounded-lg border transition ${on?'bg-indigo-600 text-white border-indigo-600':'bg-white text-slate-500 border-slate-200 hover:border-indigo-300'}">${on?'✓ ':''}${l}</button>`;
+  }).join('');
+}
 async function loadRunsForSelect(){
   const data = await apiGet('/api/runs');
-  const runs = (data||[]).filter(r=>r.has_matched);
-  $('#rs-run').innerHTML = runs.length ? runs.map(r=>`<option value="${r.id}">${r.id}${r.is_current?'（当前）':''} · ${r.match_count} 个达标</option>`).join('') : '<option>暂无匹配数据</option>';
+  const mr = (data||[]).filter(r=>r.has_matched);
+  RS.run = (mr.find(r=>r.is_current)||mr[0]||{}).id;
+  $('#rs-run').innerHTML = mr.length ? mr.map(r=>`<option value="${r.id}" ${r.id===RS.run?'selected':''}>${r.id}${r.is_current?'（当前）':''} · ${r.match_count} 个达标</option>`).join('') : '<option>暂无匹配数据</option>';
+  renderResumeModes();
+}
+async function renderResumeModes(){
+  const data = await apiGet('/api/runs/'+(RS.run||'')+'/matches');
+  const matched = data||[];
+  $('#resume-modes').innerHTML = RESUME_MODES.map(m=>{
+    let inputHtml = '';
+    if(m.input==='select') inputHtml = `<select id="rs-job" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white">${matched.map((j,i)=>`<option value="${i+1}">#${i+1} · ${escapeHtml(j.title||'')}（${j.total_score||0}分）</option>`).join('')}</select>`;
+    if(m.input==='textarea') inputHtml = `<textarea id="rs-jd" rows="3" placeholder="粘贴完整 JD…" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm resize-none"></textarea>`;
+    if(m.input==='text') inputHtml = `<input id="rs-role" placeholder="${m.placeholder}" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm">`;
+    const badge = m.needsRun ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 inline-flex items-center gap-1"><i data-lucide="database" class="w-3 h-3"></i> 基于 Run: ${RS.run}</span>` : `<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 inline-flex items-center gap-1"><i data-lucide="settings-2" class="w-3 h-3"></i> 不依赖 Run</span>`;
+    return `<div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col"><div class="flex items-center gap-2 text-slate-800 font-semibold text-sm"><i data-lucide="${m.icon}" class="w-4 h-4 text-indigo-600"></i>${m.name}</div><div class="mt-1.5">${badge}</div><p class="text-xs text-slate-500 mt-2 flex-1">${m.desc}</p>${inputHtml}<button onclick="resumeTrigger('${m.id}')" class="agent-trigger mt-3 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-2 flex items-center justify-center gap-1"><i data-lucide="wand-2" class="w-3.5 h-3.5"></i> ${m.cta||'生成简历'}</button></div>`;
+  }).join('');
+  refreshIcons();
+}
+function renderResume(){ loadRunsForSelect(); renderLangChips(); }
+function resumeTrigger(id){
+  if(guardBusy()) return; if(!RS.langs.size){ toast('请至少选择一种产出语言','warn'); return; }
+  let body = {sid:STATE.sid, mode:id};
+  if(id==='direction'){ /* ok */ }
+  else if(id==='general'){ /* ok */ }
+  else if(id==='job'){ body.job_index = parseInt($('#rs-job').value)||1; }
+  else if(id==='jd'){ body.jd_text = $('#rs-jd').value.trim(); if(!body.jd_text) return toast('请粘贴 JD 文本','warn'); }
+  else if(id==='role'){ body.role_direction = $('#rs-role').value.trim(); if(!body.role_direction) return toast('请输入岗位方向','warn'); }
+
+  const panel = $('#resume-panel');
+  panel.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">生成中…</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="rs-log"></div><div id="rs-result"></div></div>`;
+  const log = $('#rs-log');
+
+  apiPost('/api/resume', body).then(data => {
+    if(!data){ setBusy(false); logLine(log, {t:'err', x:'请求失败'}); return; }
+    startSSE(log,
+      (reply, files) => {
+        $('#rs-result').innerHTML = `<div class="mt-3 fade-in"><div class="text-sm text-emerald-700 font-medium mb-1">✅ 生成完成 · ${files.length} 个文件</div>${fileChips(files)}<button onclick="switchView('files');fileTab('jobs')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2">在文件管理中查看</button></div>`;
+        refreshIcons();
+      }
+    );
+  }).catch(err => { setBusy(false); logLine(log, {t:'err', x:'网络错误: '+err.message}); });
 }
 
-function renderMatches(){ $('#match-list').innerHTML = `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl space-y-2"><div class="text-slate-500">匹配结果结构化看板将在 Phase 2 上线</div><div class="text-xs">当前请在工作台对话中使用「看看匹配结果」查看（LLM 会返回排名列表）</div><button onclick="switchView('workspace');$('#chat-input').value='看看匹配结果';sendChat()" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 mt-2">去工作台查看</button></div>`; }
-
-// Resume modes: trigger through chat for now
-function renderResumeModes(){
-  $('#resume-modes').innerHTML = `<div class="col-span-full text-sm text-slate-400 py-8 text-center bg-white border border-slate-200 rounded-xl space-y-2"><div class="text-slate-500">简历生成专用页将在 Phase 2 上线</div><div class="text-xs">当前请在工作台对话中使用自然语言指令生成简历（5 种模式均支持）</div><button onclick="switchView('workspace')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 mt-2">去工作台</button></div>`;
-  $('#resume-panel').innerHTML = '';
+/* ===================== MARKET VIEW ===================== */
+function mktTab(tab){
+  $('#mkt-single').classList.toggle('hidden',tab!=='single');
+  $('#mkt-batch').classList.toggle('hidden',tab!=='batch');
+  $('#mkt-tab-single').className='px-4 py-1.5 '+(tab==='single'?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  $('#mkt-tab-batch').className='px-4 py-1.5 '+(tab==='batch'?'bg-indigo-600 text-white':'bg-white text-slate-500');
 }
-
-function renderMarket(){ /* placeholder — market form visible, submit triggers chat */ }
-function renderResume(){ loadRunsForSelect(); renderResumeModes(); }
-
-// Market: keep the form but trigger via chat
+function renderMarket(){ renderMarketPresets(); }
+function renderMarketPresets(){
+  $('#mkt-cat-chips').innerHTML = `<span class="text-[11px] text-slate-400">手动输入岗位类别（大小写敏感，如 Web3、Java Developer）</span>`;
+  $('#mkt-class-chips').innerHTML = `<span class="text-[11px] text-slate-400">手动输入行业分类，如 information-communication-technology</span>`;
+  $('#mkt-batch-cats').innerHTML = `<span class="text-[11px] text-slate-400">点击下方「添加任务」手动输入</span>`;
+  refreshIcons();
+}
+function addBatchRow(q){
+  q=q||{category:'',classification:''};
+  const row=document.createElement('div'); row.className='batch-row flex gap-2';
+  row.innerHTML=`<input value="${escapeHtml(q.category||'')}" placeholder="岗位类别（大小写敏感）" class="bcat flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><input value="${escapeHtml(q.classification||'')}" placeholder="行业分类（可选）" class="bclass flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><button onclick="this.closest('.batch-row').remove()" class="text-slate-400 hover:text-red-500 px-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+  $('#batch-rows').appendChild(row); refreshIcons();
+}
 function runMarket(){
   if(guardBusy()) return;
   const cat=$('#mkt-cat').value.trim(); if(!cat) return toast('请填写岗位类别','warn');
-  switchView('workspace');
-  $('#chat-input').value = '分析 '+cat+' 市场行情';
-  sendChat();
+  const body = {sid:STATE.sid, job_category:cat, location:$('#mkt-loc').value.trim()||'Hong Kong',
+    include_gap_analysis:$('#mkt-gap').checked, classification:$('#mkt-class').value.trim(),
+    sort_by:$('#mkt-sort').value||null};
+  const panel=$('#market-panel');
+  panel.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">分析中：${escapeHtml(cat)}</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="mkt-log"></div><div id="mkt-result"></div></div>`;
+  const log=$('#mkt-log');
+  apiPost('/api/market', body).then(data => {
+    if(!data){ setBusy(false); logLine(log, {t:'err', x:'请求失败'}); return; }
+    startSSE(log,
+      (reply, files) => {
+        $('#mkt-result').innerHTML = `<div class="mt-3 fade-in"><div class="text-sm text-emerald-700 font-medium mb-1">✅ 市场分析完成 · ${files.length} 个文件</div>${fileChips(files)}<button onclick="switchView('files');fileTab('market')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2">在文件管理中查看</button></div>`;
+        refreshIcons();
+      }
+    );
+  }).catch(err => { setBusy(false); logLine(log, {t:'err', x:'网络错误: '+err.message}); });
 }
 function runMarketBatch(){
   if(guardBusy()) return;
   const rows=[...document.querySelectorAll('#batch-rows .batch-row')];
-  const tasks=rows.map(r=>({cat:r.querySelector('.bcat').value.trim(),cls:r.querySelector('.bclass').value.trim()})).filter(t=>t.cat);
+  const tasks=rows.map(r=>({category:r.querySelector('.bcat').value.trim(),classification:r.querySelector('.bclass').value.trim()})).filter(t=>t.category);
   if(!tasks.length) return toast('请至少添加一个任务','warn');
-  const names = tasks.map(t=>t.cat).join('，');
-  switchView('workspace');
-  $('#chat-input').value = '帮我分析 '+names+' 三个方向的市场行情';
-  sendChat();
+  const body = {sid:STATE.sid, tasks, location:$('#mkt-loc').value.trim()||'Hong Kong',
+    include_gap_analysis:$('#mkt-gap').checked, sort_by:$('#mkt-sort').value||null};
+  const panel=$('#market-panel');
+  panel.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">批量分析：${tasks.length} 个任务</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-80 overflow-y-auto" id="mkt-log"></div><div id="mkt-result"></div></div>`;
+  const log=$('#mkt-log');
+  apiPost('/api/market/batch', body).then(data => {
+    if(!data){ setBusy(false); logLine(log, {t:'err', x:'请求失败'}); return; }
+    startSSE(log,
+      (reply, files) => {
+        $('#mkt-result').innerHTML = `<div class="mt-3 fade-in"><div class="text-sm text-emerald-700 font-medium mb-1">✅ 批量分析完成 · ${files.length} 个文件</div>${fileChips(files)}<button onclick="switchView('files');fileTab('market')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2">在文件管理中查看</button></div>`;
+        refreshIcons();
+      }
+    );
+  }).catch(err => { setBusy(false); logLine(log, {t:'err', x:'网络错误: '+err.message}); });
 }
 
 /* ===================== YAML MODAL (READ-ONLY FOR PHASE 1) ===================== */

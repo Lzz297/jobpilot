@@ -2,8 +2,8 @@
 # LLM 模型配置（切换大模型只改这里）
 # ==========================================
 llm:
-  provider: glm          # deepseek | qwen | glm
-  model: glm-5.1      # 模型名称
+  provider: deepseek          # deepseek | qwen | glm
+  model: deepseek-chat      # 模型名称
   # 切换千问示例：
   #   provider: qwen
   #   model: qwen3.6-plus
