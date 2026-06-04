@@ -10,6 +10,7 @@ import queue
 import threading
 import atexit
 import time
+import yaml
 
 from flask import Flask, request, jsonify, Response, send_from_directory
 
@@ -574,6 +575,47 @@ def api_market_batch():
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "started"})
+
+
+# ── YAML 配置读写 API ──
+
+@app.route("/api/config/yaml/<name>", methods=["GET"])
+def get_yaml_config(name):
+    """读取 profiles/{name}.yaml，返回 JSON 格式内容。"""
+    if name not in ("me", "search_config"):
+        return jsonify({"error": "仅支持 me 或 search_config"}), 400
+    data, err = config.load_yaml(f"{name}.yaml")
+    if err:
+        return jsonify({"error": err}), 404
+    return jsonify({"name": name, "content": data})
+
+
+@app.route("/api/config/yaml/<name>", methods=["PUT"])
+def put_yaml_config(name):
+    """回写 profiles/{name}.yaml，前端提交 JSON，后端转 YAML 存储。"""
+    if name not in ("me", "search_config"):
+        return jsonify({"error": "仅支持 me 或 search_config"}), 400
+    data = request.json
+    if not data or "content" not in data:
+        return jsonify({"error": "Missing content"}), 400
+
+    new_content = data["content"]
+    # 基本校验：确保是合法 dict
+    if not isinstance(new_content, dict):
+        return jsonify({"error": "content 必须是 JSON 对象"}), 400
+
+    try:
+        yaml_text = yaml.dump(new_content, allow_unicode=True, default_flow_style=False)
+    except Exception as e:
+        return jsonify({"error": f"YAML 序列化失败: {str(e)}"}), 400
+
+    filepath = os.path.join(config.PROFILES_DIR, f"{name}.yaml")
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(yaml_text)
+        return jsonify({"status": "ok", "name": name})
+    except Exception as e:
+        return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
 
 
 # ── 模型配置 API ──
