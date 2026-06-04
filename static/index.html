@@ -3,1519 +3,952 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JobsDB Agent</title>
+<title>JobPilot · 智能求职助手</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
 <style>
-/* ============================================================
-   Design System — Linear/Vercel inspired, refined neutral palette
-   ============================================================ */
-:root {
-  --sidebar-bg: #0f172a;
-  --sidebar-text: #94a3b8;
-  --sidebar-heading: #e2e8f0;
-  --sidebar-hover: rgba(255,255,255,0.06);
-  --sidebar-active: #3b82f6;
-  --main-bg: #f8fafc;
-  --chat-bg: #ffffff;
-  --user-bubble: #3b82f6;
-  --user-text: #ffffff;
-  --agent-bubble: #ffffff;
-  --agent-text: #0f172a;
-  --progress-bg: #0f172a;
-  --progress-text: #94a3b8;
-  --border-subtle: rgba(226,232,240,0.6);
-  --border: #e2e8f0;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --success: #22c55e;
-  --warning: #f59e0b;
-  --error: #ef4444;
-  --ring: rgba(59,130,246,0.2);
-}
-
-/* ── Reset & base ── */
-* { margin: 0; padding: 0; box-sizing: border-box; }
-html, body {
-  height: 100%;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  font-size: 16px; line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-.app { display: flex; height: 100vh; overflow: hidden; }
-
-/* ── Reduce motion ── */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* ============================================================
-   Scrollbar — refined webkit custom
-   ============================================================ */
-.sidebar::-webkit-scrollbar,
-.chat-area::-webkit-scrollbar,
-.progress-container::-webkit-scrollbar,
-.files-panel::-webkit-scrollbar,
-.market-row-container::-webkit-scrollbar {
-  width: 5px;
-}
-.sidebar::-webkit-scrollbar-track,
-.chat-area::-webkit-scrollbar-track,
-.progress-container::-webkit-scrollbar-track,
-.files-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-.sidebar::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12);
-  border-radius: 20px;
-}
-.chat-area::-webkit-scrollbar-thumb,
-.files-panel::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.10);
-  border-radius: 20px;
-}
-.progress-container::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
-  border-radius: 20px;
-}
-.sidebar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.22);
-}
-.chat-area::-webkit-scrollbar-thumb:hover,
-.files-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.18);
-}
-
-/* ============================================================
-   Sidebar
-   ============================================================ */
-.sidebar {
-  width: 280px; min-width: 280px;
-  background: var(--sidebar-bg);
-  color: var(--sidebar-text);
-  display: flex; flex-direction: column;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-
-.sidebar-header {
-  padding: 20px 16px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
-}
-.sidebar-header h1 {
-  font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
-  color: var(--sidebar-heading);
-  display: flex; align-items: center; gap: 8px;
-}
-.status-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: var(--success); flex-shrink: 0;
-  transition: background 0.3s ease;
-}
-.status-dot.busy {
-  background: var(--warning);
-  animation: pulse 1.2s ease-in-out infinite;
-}
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
-
-/* Model Switcher */
-.model-switcher {
-  margin-top: 10px;
-  display: flex; align-items: center; gap: 6px;
-}
-.model-switcher label {
-  font-size: 11px; color: #64748b; white-space: nowrap;
-  font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase;
-}
-.model-switcher select {
-  flex: 1; padding: 5px 8px;
-  background: rgba(255,255,255,0.06); color: #e2e8f0;
-  border: 1px solid rgba(255,255,255,0.10); border-radius: 8px;
-  font-size: 12px; cursor: pointer; outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-.model-switcher select:focus-visible {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--ring);
-}
-.model-switch-ok {
-  font-size: 11px; color: var(--success);
-  opacity: 0; transition: opacity 0.3s ease;
-}
-.model-switch-ok.show { opacity: 1; }
-
-/* Sidebar sections */
-.sidebar-section { padding: 12px 16px 4px; }
-.sidebar-section h3 {
-  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
-  color: #475569; margin-bottom: 8px;
-}
-
-/* Sidebar buttons */
-.sidebar-btn {
-  display: block; width: 100%;
-  padding: 9px 12px; margin-bottom: 3px;
-  background: transparent; border: 1px solid transparent;
-  color: var(--sidebar-text);
-  font-size: 13px; text-align: left;
-  border-radius: 8px; cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
-  outline: none;
-}
-.sidebar-btn:hover { background: var(--sidebar-hover); color: #e2e8f0; }
-.sidebar-btn:active { transform: scale(0.98); }
-.sidebar-btn:focus-visible {
-  box-shadow: 0 0 0 2px var(--ring);
-  background: var(--sidebar-hover);
-}
-.sidebar-btn .icon { display: inline-block; width: 20px; text-align: center; margin-right: 6px; }
-
-.sidebar-btn.primary-action {
-  background: var(--accent); color: #fff;
-  font-weight: 500; font-size: 14px;
-  padding: 11px; margin-bottom: 8px;
-  border: none;
-  box-shadow: 0 1px 3px rgba(59,130,246,0.3);
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
-}
-.sidebar-btn.primary-action:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(59,130,246,0.35);
-}
-.sidebar-btn.primary-action:active { transform: scale(0.97); }
-.sidebar-btn.primary-action:focus-visible {
-  box-shadow: 0 0 0 3px var(--ring), 0 2px 8px rgba(59,130,246,0.35);
-}
-
-/* Sort toggle */
-.sort-toggle {
-  display: flex; flex-direction: column; gap: 1px;
-  padding: 4px 4px 2px 10px;
-  background: rgba(255,255,255,0.025);
-  border-radius: 8px;
-  margin-bottom: 6px;
-}
-.sort-option {
-  display: flex; align-items: center; gap: 6px;
-  padding: 4px 8px; border-radius: 6px;
-  font-size: 12px; cursor: pointer; color: #94a3b8;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.sort-option:hover { background: var(--sidebar-hover); color: #e2e8f0; }
-.sort-option input[type="radio"] { accent-color: var(--accent); margin: 0; cursor: pointer; }
-
-.sidebar-divider { border-top: 1px solid rgba(255,255,255,0.06); margin: 8px 16px; }
-
-/* ============================================================
-   Current Run panel
-   ============================================================ */
-.run-panel { padding: 8px 16px; }
-.run-panel .run-info {
-  background: rgba(59,130,246,0.08);
-  border: 1px solid rgba(59,130,246,0.15);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font-size: 12px;
-}
-.run-panel .run-time {
-  color: #94a3b8; font-size: 11px; margin-bottom: 6px;
-  font-weight: 500; letter-spacing: 0.02em;
-}
-.run-panel .run-stats {
-  color: #cbd5e1; margin-bottom: 8px; line-height: 1.6;
-}
-.run-panel .run-stage {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 20px;
-  font-size: 11px; font-weight: 500;
-}
-.run-stage.searched { background: rgba(251,191,36,0.15); color: #fbbf24; }
-.run-stage.matched  { background: rgba(34,197,94,0.15); color: #4ade80; }
-
-.run-actions { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
-
-/* Hidden */
-.hidden { display: none !important; }
-
-/* ============================================================
-   History
-   ============================================================ */
-.history-entry {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 6px 10px; margin-bottom: 1px;
-  font-size: 12px; border-radius: 6px;
-  cursor: pointer; color: var(--sidebar-text);
-  transition: background 0.15s ease;
-}
-.history-entry:hover { background: var(--sidebar-hover); }
-.history-entry .he-time { flex: 1; }
-.history-entry .he-stage {
-  font-size: 10px; font-weight: 500; padding: 2px 8px;
-  border-radius: 20px;
-}
-.he-stage.searched { background: rgba(251,191,36,0.12); color: #fbbf24; }
-.he-stage.matched  { background: rgba(34,197,94,0.12); color: #4ade80; }
-
-/* ============================================================
-   Files panel
-   ============================================================ */
-.files-panel { flex: 1; overflow-y: auto; padding: 0 16px 16px; scrollbar-gutter: stable; }
-.file-group { margin-bottom: 4px; }
-.file-group-header {
-  font-size: 11px; color: #94a3b8; font-weight: 500;
-  padding: 6px 10px; display: flex; align-items: center; gap: 6px;
-  cursor: pointer; border-radius: 6px; user-select: none;
-  transition: background 0.15s ease;
-}
-.file-group-header:hover { background: var(--sidebar-hover); }
-.file-group-header .fg-arrow {
-  font-size: 10px; width: 12px; text-align: center;
-  transition: transform 0.2s ease;
-}
-.file-group.collapsed .fg-arrow { transform: rotate(-90deg); }
-.file-group-header .fg-icon { font-size: 13px; }
-.file-group-header .fg-count {
-  margin-left: auto; font-size: 10px; font-weight: 500; color: #475569;
-  background: rgba(255,255,255,0.06); padding: 1px 7px; border-radius: 10px;
-}
-.file-group-body { overflow: hidden; }
-.file-group.collapsed .file-group-body { display: none; }
-#historyWrap { overflow: hidden; }
-#historyWrap.collapsed #historyPanel { display: none; }
-.sidebar-section .fg-arrow {
-  display: inline-block; font-size: 10px; transition: transform 0.2s ease;
-}
-.sidebar-section .fg-count {
-  float: right; font-size: 10px; font-weight: 500; color: #475569;
-  background: rgba(255,255,255,0.06); padding: 1px 7px; border-radius: 10px;
-}
-.file-item {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 5px 10px 5px 30px; margin-bottom: 1px;
-  font-size: 12px; border-radius: 6px;
-  transition: background 0.15s ease;
-}
-.file-item:hover { background: var(--sidebar-hover); }
-.file-item .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file-item .fsize { color: #64748b; font-size: 11px; margin: 0 8px; }
-.file-item a {
-  color: var(--accent); text-decoration: none; font-size: 11px; font-weight: 500;
-  white-space: nowrap;
-  transition: color 0.15s ease;
-}
-.file-item a:hover { color: var(--accent-hover); text-decoration: underline; }
-
-/* ============================================================
-   Main area
-   ============================================================ */
-.main { flex: 1; display: flex; flex-direction: column; background: var(--main-bg); }
-
-/* Chat messages */
-.chat-area { flex: 1; overflow-y: auto; padding: 20px 24px; scrollbar-gutter: stable; }
-
-.msg { margin-bottom: 20px; display: flex; }
-.msg.user { justify-content: flex-end; }
-.msg.agent { justify-content: flex-start; }
-
-.msg-bubble {
-  max-width: 72%; padding: 12px 18px;
-  border-radius: 16px; font-size: 14px;
-  line-height: 1.65; word-wrap: break-word;
-}
-.msg.user .msg-bubble {
-  background: var(--user-bubble); color: var(--user-text);
-  border-bottom-right-radius: 6px;
-}
-.msg.agent .msg-bubble {
-  background: var(--agent-bubble); color: var(--agent-text);
-  border-bottom-left-radius: 6px;
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
-}
-
-/* Markdown in agent bubbles */
-.msg-bubble h1, .msg-bubble h2, .msg-bubble h3 {
-  margin: 14px 0 6px; color: #0f172a;
-  font-weight: 600; letter-spacing: -0.02em; line-height: 1.3;
-}
-.msg-bubble h1 { font-size: 19px; }
-.msg-bubble h2 { font-size: 16px; padding-bottom: 5px; border-bottom: 1px solid var(--border-subtle); }
-.msg-bubble h3 { font-size: 14px; }
-.msg-bubble p { margin: 6px 0; }
-.msg-bubble ul, .msg-bubble ol { margin: 6px 0; padding-left: 22px; }
-.msg-bubble li { margin: 4px 0; }
-.msg-bubble code {
-  background: #f1f5f9; padding: 2px 6px; border-radius: 4px;
-  font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
-  font-size: 13px; color: #1e293b;
-}
-.msg-bubble pre {
-  background: #f8fafc; padding: 12px 14px; border-radius: 10px;
-  border: 1px solid var(--border-subtle);
-  overflow-x: auto; margin: 8px 0;
-}
-.msg-bubble pre code { background: none; padding: 0; }
-.msg-bubble strong { font-weight: 600; }
-.msg-bubble a { color: var(--accent); text-decoration: underline; font-weight: 500; }
-.msg-bubble a:hover { color: var(--accent-hover); }
-.msg-bubble table {
-  border-collapse: collapse; margin: 8px 0; font-size: 13px;
-  width: 100%; border-radius: 8px; overflow: hidden;
-  border: 1px solid var(--border-subtle);
-}
-.msg-bubble th, .msg-bubble td {
-  border: 1px solid var(--border-subtle); padding: 7px 12px; text-align: left;
-}
-.msg-bubble th { background: #f8fafc; font-weight: 600; font-size: 12px; color: #475569; }
-.msg-bubble hr { border: none; border-top: 1px solid var(--border-subtle); margin: 14px 0; }
-.msg-bubble blockquote {
-  border-left: 3px solid var(--accent); padding-left: 12px;
-  margin: 8px 0; color: #475569;
-}
-
-/* ============================================================
-   Progress log — dark terminal style
-   ============================================================ */
-.progress-container {
-  border-top: 1px solid rgba(0,0,0,0.06);
-  background: var(--progress-bg);
-  max-height: 200px; min-height: 0;
-  overflow-y: auto;
-  transition: max-height 0.25s ease;
-}
-.progress-container.collapsed { max-height: 38px; overflow: hidden; }
-
-.progress-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 18px; cursor: pointer;
-  color: #64748b; font-size: 12px; font-weight: 500;
-  position: sticky; top: 0; background: var(--progress-bg);
-  z-index: 1; user-select: none;
-  transition: color 0.15s ease;
-}
-.progress-header:hover { color: #94a3b8; }
-
-.progress-log {
-  padding: 0 18px 10px;
-  font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', Consolas, monospace;
-  font-size: 12px; line-height: 1.7;
-}
-.progress-line { color: var(--progress-text); }
-.progress-line.tool    { color: #60a5fa; }
-.progress-line.success { color: #4ade80; }
-.progress-line.warning { color: #fbbf24; }
-.progress-line.error   { color: #f87171; }
-.progress-line.info    { color: #a78bfa; }
-
-/* ============================================================
-   Input bar
-   ============================================================ */
-.input-bar {
-  display: flex; gap: 10px;
-  padding: 14px 24px; border-top: 1px solid var(--border-subtle);
-  background: #fff;
-}
-.input-bar input {
-  flex: 1; padding: 11px 16px;
-  border: 1px solid var(--border-subtle); border-radius: 12px;
-  font-size: 14px; outline: none; background: #f8fafc;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-}
-.input-bar input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--ring);
-  background: #fff;
-}
-.input-bar input:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
-
-.send-btn {
-  padding: 10px 22px;
-  background: var(--accent); color: #fff;
-  border: none; border-radius: 12px;
-  font-size: 14px; font-weight: 500;
-  cursor: pointer;
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
-  white-space: nowrap;
-  outline: none;
-}
-.send-btn:hover { background: var(--accent-hover); box-shadow: 0 2px 8px rgba(59,130,246,0.25); }
-.send-btn:active { transform: scale(0.96); }
-.send-btn:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
-.send-btn:disabled {
-  background: #94a3b8; cursor: not-allowed; box-shadow: none;
-  transform: none;
-}
-
-/* Sidebar collapsible group */
-.sidebar-group { margin-bottom: 4px; }
-.sidebar-group-header {
-  display: flex; align-items: center; gap: 6px;
-  padding: 9px 12px; font-size: 13px; cursor: pointer;
-  color: var(--sidebar-text); border-radius: 8px;
-  transition: background 0.15s ease, color 0.15s ease;
-  user-select: none; outline: none;
-}
-.sidebar-group-header:hover { background: var(--sidebar-hover); color: #e2e8f0; }
-.sidebar-group-header:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
-.sidebar-group-header .fg-arrow {
-  font-size: 10px; width: 12px; text-align: center;
-  transition: transform 0.2s ease;
-}
-.sidebar-group.collapsed .sidebar-group-header .fg-arrow { transform: rotate(-90deg); }
-.sidebar-group-body { overflow: hidden; }
-.sidebar-group.collapsed .sidebar-group-body { display: none; }
-.sidebar-group-body .sidebar-btn { padding-left: 30px; }
-
-/* ============================================================
-   Welcome screen
-   ============================================================ */
-.welcome {
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; height: 100%; color: #64748b;
-  text-align: center; padding: 40px;
-}
-.welcome h2 {
-  font-size: 26px; font-weight: 600; letter-spacing: -0.03em;
-  color: #0f172a; margin-bottom: 8px;
-}
-.welcome p {
-  font-size: 14px; margin-bottom: 20px; max-width: 420px;
-  line-height: 1.65; color: #64748b;
-}
-.welcome .start-btn {
-  padding: 14px 36px; margin: 12px 0;
-  background: var(--accent); color: #fff;
-  border: none; border-radius: 14px;
-  font-size: 16px; font-weight: 500;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(59,130,246,0.2);
-  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
-  outline: none;
-}
-.welcome .start-btn:hover {
-  background: var(--accent-hover);
-  box-shadow: 0 4px 16px rgba(59,130,246,0.3);
-}
-.welcome .start-btn:active { transform: scale(0.97); }
-.welcome .start-btn:focus-visible { box-shadow: 0 0 0 3px var(--ring), 0 4px 16px rgba(59,130,246,0.3); }
-.welcome .hint {
-  font-size: 13px; color: #64748b;
-  padding: 14px 22px; background: #f8fafc;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px; margin-top: 14px;
-  max-width: 440px; line-height: 1.6;
-}
-
-/* ============================================================
-   Modal — refined overlay + backdrop-blur
-   ============================================================ */
-.modal-overlay {
-  display: none; position: fixed; inset: 0;
-  background: rgba(15,23,42,0.4); backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 100;
-  align-items: center; justify-content: center;
-}
-.modal-overlay.active { display: flex; }
-
-.modal {
-  background: #fff; border-radius: 16px;
-  padding: 24px; min-width: 380px; max-width: 500px;
-  box-shadow:
-    0 4px 24px rgba(0,0,0,0.06),
-    0 16px 48px rgba(0,0,0,0.08);
-  animation: modalIn 0.2s ease-out;
-}
-@keyframes modalIn {
-  from { opacity: 0; transform: translateY(8px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-.modal h3 {
-  font-size: 16px; font-weight: 600; letter-spacing: -0.02em;
-  margin-bottom: 16px; color: #0f172a;
-}
-.modal input, .modal textarea {
-  width: 100%; padding: 10px 14px; margin-bottom: 10px;
-  border: 1px solid var(--border-subtle); border-radius: 10px;
-  font-size: 14px; outline: none; background: #f8fafc;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  font-family: inherit;
-}
-.modal textarea { height: 120px; resize: vertical; }
-.modal input:focus, .modal textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--ring);
-  background: #fff;
-}
-.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
-.modal-actions button {
-  padding: 9px 18px; border-radius: 10px; font-size: 14px; font-weight: 500;
-  cursor: pointer; border: 1px solid var(--border-subtle); background: #fff;
-  color: #334155;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
-  outline: none;
-}
-.modal-actions button:hover { background: #f1f5f9; }
-.modal-actions button:active { transform: scale(0.97); }
-.modal-actions button:focus-visible { box-shadow: 0 0 0 2px var(--ring); }
-.modal-actions .primary {
-  background: var(--accent); color: #fff; border: none;
-  box-shadow: 0 1px 3px rgba(59,130,246,0.25);
-}
-.modal-actions .primary:hover { background: var(--accent-hover); }
-.modal-actions .primary:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
-
-/* Market analysis rows */
-.market-row {
-  display: flex; gap: 8px; margin-bottom: 8px; align-items: center;
-}
-.market-row input { margin-bottom: 0; flex: 1; }
-.market-row-remove {
-  cursor: pointer; color: #94a3b8; font-size: 18px;
-  padding: 2px 6px; border-radius: 6px; flex-shrink: 0;
-  transition: color 0.15s ease, background 0.15s ease;
-  line-height: 1;
-}
-.market-row-remove:hover { color: #ef4444; background: rgba(239,68,68,0.06); }
-.add-row-btn {
-  display: block; background: none; border: none;
-  color: var(--accent); cursor: pointer; padding: 4px 0;
-  font-size: 13px; font-weight: 500;
-  transition: color 0.15s ease;
-}
-.add-row-btn:hover { color: var(--accent-hover); text-decoration: underline; }
-
-/* Sort toggle in modal */
-.sort-toggle-inline {
-  display: flex; gap: 12px; align-items: center;
-  padding: 6px 0; margin-top: 4px;
-}
-
-/* ============================================================
-   Responsive
-   ============================================================ */
-@media (max-width: 768px) {
-  .sidebar { display: none; }
-  .chat-area { padding: 12px; }
-  .input-bar { padding: 10px 12px; }
-}
-
-/* ============================================================
-   Typing indicator
-   ============================================================ */
-.typing { display: flex; gap: 5px; padding: 12px 18px; }
-.typing span {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: #94a3b8; animation: typingBounce 1.4s ease-in-out infinite;
-}
-.typing span:nth-child(2) { animation-delay: 0.2s; }
-.typing span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes typingBounce {
-  0%,60%,100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-5px); opacity: 1; }
-}
-
-/* ============================================================
-   AI disclaimer
-   ============================================================ */
-.ai-disclaimer {
-  font-size: 11px; color: #94a3b8; text-align: center;
-  padding: 6px 16px 4px;
-  border-top: 1px solid var(--border-subtle);
-  background: #fafafa;
-}
+  body{font-family:'Inter',system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;}
+  ::-webkit-scrollbar{width:8px;height:8px}
+  ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .fade-in{animation:fadeIn .25s ease}
+  @keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+  .pop{animation:pop .2s ease}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .spin{animation:spin 1s linear infinite;display:inline-block}
+  .busy .agent-trigger{opacity:.45;pointer-events:none}
+  .navbtn.active{background:#eef2ff}
+  .navbtn.active .nav-title{color:#4338ca;font-weight:600}
+  .navbtn.active .lucide{color:#4f46e5}
+  .logbox{background:#0f172a}
+  .logbox .ln,.yaml-pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  input[type=range]{accent-color:#4f46e5}
 </style>
 </head>
-<body>
-<div class="app">
-  <!-- ============================================================
-       Sidebar
-       ============================================================ -->
-  <aside class="sidebar" role="navigation" aria-label="Sidebar navigation">
-    <div class="sidebar-header">
-      <h1><span class="status-dot" id="statusDot" aria-label="Agent status indicator"></span> JobsDB Agent</h1>
-      <div class="model-switcher">
-        <label for="modelSelect">Model</label>
-        <select id="modelSelect" onchange="switchModel(this.value)" aria-label="Switch LLM model"></select>
-        <span class="model-switch-ok" id="modelSwitchOk" aria-live="polite">&#10003;</span>
+<body class="bg-slate-100 text-slate-800">
+
+<div class="flex h-screen overflow-hidden">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside id="sidebar" class="w-64 shrink-0 bg-white border-r border-slate-200 flex-col hidden md:flex">
+    <div class="px-5 py-4 border-b border-slate-100">
+      <div class="flex items-center gap-2">
+        <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center">
+          <i data-lucide="compass" class="w-5 h-5 text-white"></i></div>
+        <div class="leading-tight">
+          <div class="font-bold text-slate-900 text-sm">JobPilot</div>
+          <div class="text-[11px] text-slate-400">智能求职助手</div></div>
       </div>
     </div>
 
-    <!-- WORKFLOW -->
-    <div class="sidebar-section">
-      <h3>Workflow</h3>
-      <button class="sidebar-btn primary-action" onclick="doFindAndMatch()"
-              aria-label="Start job search and matching pipeline">
-        &#x1F680; Find & Match Jobs
-      </button>
-      <div class="sort-toggle" role="radiogroup" aria-label="Search sort order">
-        <label class="sort-option">
-          <input type="radio" name="sortMode" value="date" checked onchange="onSortModeChange()">
-          <span>&#x1F4C5; Sort by Date</span>
-        </label>
-        <label class="sort-option">
-          <input type="radio" name="sortMode" value="relevance" onchange="onSortModeChange()">
-          <span>&#x1F50D; Sort by Relevance</span>
-        </label>
+    <nav class="flex-1 px-3 py-3 space-y-1 overflow-y-auto">
+      <button data-view="workspace" class="navbtn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <i data-lucide="layout-dashboard" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1 text-left leading-tight"><span class="nav-title block text-sm">工作台</span><span class="block text-[10px] text-slate-400 font-normal">对话 · 一键找工作</span></span></button>
+      <button data-view="matches" class="navbtn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <i data-lucide="target" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1 text-left leading-tight"><span class="nav-title block text-sm">匹配结果</span><span class="block text-[10px] text-slate-400 font-normal">各 Run 的岗位评分</span></span>
+        <span id="nav-match-count" class="text-[11px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full"></span></button>
+      <button data-view="resume" class="navbtn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <i data-lucide="file-text" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1 text-left leading-tight"><span class="nav-title block text-sm">简历生成</span><span class="block text-[10px] text-slate-400 font-normal">多模式 · 语言可选</span></span></button>
+      <button data-view="market" class="navbtn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <i data-lucide="line-chart" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1 text-left leading-tight"><span class="nav-title block text-sm">市场调研</span><span class="block text-[10px] text-slate-400 font-normal">岗位行情分析</span></span></button>
+      <button data-view="runs" class="navbtn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <i data-lucide="history" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1 text-left leading-tight"><span class="nav-title block text-sm">运行历史</span><span class="block text-[10px] text-slate-400 font-normal">每次找工作的 Run</span></span></button>
+      <button data-view="files" class="navbtn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <i data-lucide="folder-open" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1 text-left leading-tight"><span class="nav-title block text-sm">文件管理</span><span class="block text-[10px] text-slate-400 font-normal">找工作 & 市场文件</span></span></button>
+      <button data-view="settings" class="navbtn w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50">
+        <i data-lucide="settings" class="w-4 h-4 shrink-0"></i>
+        <span class="flex-1 text-left leading-tight"><span class="nav-title block text-sm">设置</span><span class="block text-[10px] text-slate-400 font-normal">画像与搜索配置</span></span></button>
+    </nav>
+
+    <div class="px-3 py-3 border-t border-slate-100 space-y-3">
+      <div class="grid grid-cols-2 gap-2">
+        <button onclick="openYamlModal('me')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
+          <i data-lucide="eye" class="w-3.5 h-3.5"></i> me.yaml</button>
+        <button onclick="openYamlModal('config')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
+          <i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看配置</button>
       </div>
-    </div>
-
-    <!-- CURRENT RUN -->
-    <div class="sidebar-section hidden" id="currentRunSection">
-      <h3>Current Run</h3>
-    </div>
-    <div class="run-panel hidden" id="currentRunPanel">
-      <div class="run-info">
-        <div class="run-time" id="runTime"></div>
-        <div class="run-stats" id="runStats"></div>
-        <div class="run-actions" id="runActions"></div>
+      <div>
+        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="cpu" class="w-3 h-3"></i> LLM 模型（实时切换）</label>
+        <select id="model-select" class="agent-trigger w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none">
+          <option value="deepseek">DeepSeek · deepseek-chat</option>
+          <option value="qwen">Qwen · qwen3.6-plus</option>
+          <option value="glm" selected>GLM · glm-5.1</option></select>
       </div>
-    </div>
-
-    <!-- ACTIONS -->
-    <div class="sidebar-section">
-      <h3>Actions</h3>
-      <button class="sidebar-btn" onclick="showModal('market')" aria-label="Market analysis for job categories">
-        <span class="icon">&#x1F4C8;</span>Market Analysis...
-      </button>
-
-      <!-- Resume group (collapsible) -->
-      <div class="sidebar-group" id="resumeGroup">
-        <div class="sidebar-group-header" onclick="toggleResumeGroup()"
-             role="button" tabindex="0" aria-expanded="true"
-             onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleResumeGroup(); }">
-          <span class="fg-arrow" id="resumeGroupArrow">&#9660;</span>
-          <span class="icon">&#x1F4DD;</span>Generate Resume
-        </div>
-        <div class="sidebar-group-body" id="resumeGroupBody">
-          <button class="sidebar-btn" onclick="showModal('jd')" aria-label="Resume from job description text">
-            <span class="icon">&#x1F4CB;</span>From JD Text...
-          </button>
-          <button class="sidebar-btn" onclick="showModal('role')" aria-label="Resume by role direction">
-            <span class="icon">&#x1F3AF;</span>By Role Direction...
-          </button>
-          <button class="sidebar-btn" onclick="sendQuick('生成通用简历')" aria-label="Generate general resume">
-            <span class="icon">&#x1F4C4;</span>General Resume
-          </button>
-        </div>
+      <div>
+        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="arrow-down-up" class="w-3 h-3"></i> 搜索排序（实时切换）</label>
+        <div class="flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+          <button data-sort="date" class="sortbtn flex-1 py-1.5 bg-indigo-600 text-white">按发布时间</button>
+          <button data-sort="relevance" class="sortbtn flex-1 py-1.5 bg-white text-slate-500">按相关度</button></div>
       </div>
-
-      <button class="sidebar-btn" onclick="sendQuick('看看我的档案')" aria-label="View user profile">
-        <span class="icon">&#x1F464;</span>View Profile
-      </button>
-      <button class="sidebar-btn" onclick="sendQuick('看看搜索配置')" aria-label="View search configuration">
-        <span class="icon">&#x2699;</span>View Config
-      </button>
-    </div>
-
-    <div class="sidebar-divider"></div>
-
-    <!-- HISTORY -->
-    <div class="sidebar-section" style="cursor:pointer;" onclick="toggleHistory()" role="button" tabindex="0"
-         aria-expanded="true" aria-label="Toggle run history"
-         onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleHistory(); }">
-      <h3><span class="fg-arrow" id="historyArrow">&#9660;</span> History <span class="fg-count" id="historyCount">0</span></h3>
-    </div>
-    <div id="historyWrap">
-      <div id="historyPanel" style="padding:0 16px 4px;">
-        <div class="files-empty">No previous runs</div>
-      </div>
-    </div>
-
-    <div class="sidebar-divider"></div>
-
-    <!-- RUN FILES -->
-    <div class="sidebar-section"><h3 id="filesPanelTitle">Run Files</h3></div>
-    <div class="files-panel" id="filesPanel">
-      <div class="files-empty">No files yet</div>
-    </div>
-
-    <div class="sidebar-divider"></div>
-
-    <!-- MARKET REPORTS -->
-    <div class="sidebar-section">
-      <h3 id="marketReportsHeader" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none"
-          onclick="toggleMarketReports()" role="button" tabindex="0" aria-expanded="false"
-          onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleMarketReports(); }">
-        Market Reports
-        <span class="fg-arrow" id="marketReportsArrow" style="font-size:10px;transition:transform 0.2s ease">&#9654;</span>
-      </h3>
-    </div>
-    <div class="files-panel hidden" id="marketPanel">
-      <div class="files-empty">No reports yet</div>
+      <div id="status-pill" class="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700">
+        <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span id="status-text">Agent 空闲</span></div>
     </div>
   </aside>
 
-  <!-- ============================================================
-       Main
-       ============================================================ -->
-  <main class="main">
-    <div class="chat-area" id="chatArea" role="log" aria-live="polite" aria-label="Chat messages">
-      <section class="welcome" id="welcome">
-        <h2>JobsDB Agent</h2>
-        <p>AI-powered job search, matching, resume generation, and market analysis for Hong Kong.</p>
-        <button class="start-btn" onclick="doFindAndMatch()" aria-label="Start full job search and match pipeline">
-          &#x1F680; Find & Match Jobs
-        </button>
-        <div class="hint">
-          Click the button above to start the full pipeline (search + match).<br>
-          You can also type anything below &mdash; e.g. "generate resume for #1",
-          "analyze Java market", or any natural language request.
+  <!-- ============ MAIN ============ -->
+  <main class="flex-1 flex flex-col min-w-0">
+    <div class="md:hidden flex items-center gap-3 px-4 py-3 bg-white border-b border-slate-200">
+      <button onclick="document.getElementById('sidebar').classList.toggle('hidden');document.getElementById('sidebar').classList.toggle('flex')" class="text-slate-600"><i data-lucide="menu" class="w-5 h-5"></i></button>
+      <span class="font-bold text-sm">JobPilot</span>
+    </div>
+
+    <div class="flex-1 overflow-hidden relative">
+
+      <!-- ===== WORKSPACE ===== -->
+      <section id="view-workspace" class="view h-full flex flex-col">
+        <div class="px-6 pt-5 pb-3 shrink-0 border-b border-slate-200 bg-white">
+          <h1 class="text-lg font-bold text-slate-900">工作台</h1>
+          <p class="text-sm text-slate-500">自然语言对话，或用快捷操作一键触发完整流程</p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+            <button onclick="startPipeline()" class="agent-trigger text-left p-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition">
+              <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm"><i data-lucide="zap" class="w-4 h-4"></i> 一键找工作</div>
+              <div class="text-xs text-slate-500 mt-1">搜索 → 匹配 → 方向聚合简历</div>
+              <div class="text-[11px] text-indigo-500 mt-1.5">点击后先选简历语言 · 排序：<span id="qa-sort">按发布时间</span></div></button>
+            <button onclick="switchView('market')" class="text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition">
+              <div class="flex items-center gap-2 text-slate-700 font-semibold text-sm"><i data-lucide="line-chart" class="w-4 h-4"></i> 市场调研</div>
+              <div class="text-xs text-slate-500 mt-1">指定岗位类别，分析市场行情</div></button>
+            <button onclick="switchView('resume')" class="text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition">
+              <div class="flex items-center gap-2 text-slate-700 font-semibold text-sm"><i data-lucide="file-text" class="w-4 h-4"></i> 简历生成</div>
+              <div class="text-xs text-slate-500 mt-1">5 种模式 · 三语可选</div></button>
+          </div>
+        </div>
+        <div id="chat-messages" class="flex-1 overflow-y-auto px-6 py-5 space-y-5 bg-slate-50"></div>
+        <div class="shrink-0 border-t border-slate-200 bg-white px-6 py-3">
+          <div id="suggest-chips" class="flex flex-wrap gap-2 mb-2"></div>
+          <div class="flex items-end gap-2">
+            <textarea id="chat-input" rows="1" placeholder="输入指令，例如：帮我找工作 / 分析 Web3 市场行情 / 看看匹配结果"
+              class="flex-1 resize-none border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none max-h-32"></textarea>
+            <button id="send-btn" onclick="sendChat()" class="agent-trigger w-10 h-10 shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center"><i data-lucide="send" class="w-4 h-4"></i></button>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1.5">支持：找工作 · 市场调研 · 简历生成 · 粘贴岗位 URL 查看 JD · 联网搜索 · 查看档案</p>
         </div>
       </section>
-    </div>
 
-    <div class="progress-container collapsed" id="progressContainer"
-         role="region" aria-label="Progress log" aria-live="polite">
-      <div class="progress-header" onclick="toggleProgress()"
-           role="button" tabindex="0" aria-expanded="false"
-           onkeydown="if(event.key==='Enter'||event.key===' ') { event.preventDefault(); toggleProgress(); }">
-        <span id="progressTitle">Progress Log</span>
-        <span id="progressToggle">&#9650;</span>
-      </div>
-      <div class="progress-log" id="progressLog"></div>
-    </div>
+      <!-- ===== MATCHES ===== -->
+      <section id="view-matches" class="view h-full overflow-y-auto hidden">
+        <div class="p-6">
+          <h1 class="text-lg font-bold text-slate-900">匹配结果</h1>
+          <p class="text-sm text-slate-500">五维动态权重评分 + 及格线复评。<b class="text-slate-600">每个 Run 有独立的匹配结果</b>，下方按 Run 查看。</p>
+          <div class="bg-white border border-slate-200 rounded-xl p-3 mt-4 flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2">
+              <i data-lucide="database" class="w-4 h-4 text-indigo-500"></i>
+              <span class="text-xs text-slate-400">数据来源 Run</span>
+              <select id="match-run" onchange="MF.run=this.value;renderMatches()" class="text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none"></select>
+            </div>
+            <code id="match-source" class="text-[11px] text-slate-400 bg-slate-50 px-2 py-1 rounded"></code>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-xl p-3 mt-3 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-slate-500 flex items-center gap-1"><i data-lucide="filter" class="w-3.5 h-3.5"></i> 筛选条件</span>
+              <button onclick="resetFilters()" class="text-[11px] text-slate-400 hover:text-indigo-600 flex items-center gap-1"><i data-lucide="rotate-ccw" class="w-3 h-3"></i> 重置</button>
+            </div>
+            <div id="match-dir-chips" class="flex flex-wrap gap-1.5"></div>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div><label class="text-[11px] text-slate-400">推荐等级</label>
+                <select id="f-rec" onchange="MF.rec=this.value;renderMatches()" class="w-full mt-0.5 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
+                  <option value="all">全部</option><option value="strong">🟢 强烈推荐 (≥80)</option><option value="consider">🟡 可考虑 (60-79)</option><option value="no">🔴 不推荐 (&lt;60)</option></select></div>
+              <div><label class="text-[11px] text-slate-400">复评置信度</label>
+                <select id="f-conf" onchange="MF.conf=this.value;renderMatches()" class="w-full mt-0.5 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
+                  <option value="all">全部</option><option value="verified">复评一致 verified</option><option value="uncertain">评分波动 uncertain</option></select></div>
+              <div><label class="text-[11px] text-slate-400">排序</label>
+                <select id="f-sort" onchange="MF.sort=this.value;renderMatches()" class="w-full mt-0.5 text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
+                  <option value="total_desc">总分高 → 低</option><option value="total_asc">总分低 → 高</option><option value="skill_desc">技能分高 → 低</option></select></div>
+              <div><label class="text-[11px] text-slate-400">最低总分 <span id="f-min-val" class="text-indigo-600 font-medium">0</span></label>
+                <input id="f-min" type="range" min="0" max="100" value="0" oninput="MF.min=+this.value;document.getElementById('f-min-val').textContent=this.value;renderMatches()" class="w-full mt-1.5"></div>
+            </div>
+            <div class="relative">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5"></i>
+              <input id="f-q" oninput="MF.q=this.value;renderMatches()" placeholder="按职位名 / 公司搜索…" class="w-full text-xs border border-slate-200 rounded-lg pl-8 pr-2 py-1.5 focus:ring-2 focus:ring-indigo-200 outline-none">
+            </div>
+          </div>
+          <div id="match-count" class="text-xs text-slate-400 mt-3 mb-2"></div>
+          <div id="match-list" class="space-y-3"></div>
+        </div>
+      </section>
 
-    <div class="input-bar">
-      <input type="text" id="chatInput" placeholder="e.g. 帮我找工作 / 分析Web3市场 / 生成简历..." autocomplete="off"
-             aria-label="Chat message input"
-             onkeydown="if(event.key==='Enter')sendMessage()">
-      <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send message">Send</button>
-    </div>
+      <!-- ===== RESUME ===== -->
+      <section id="view-resume" class="view h-full overflow-y-auto hidden">
+        <div class="p-6 max-w-4xl">
+          <h1 class="text-lg font-bold text-slate-900">简历生成</h1>
+          <p class="text-sm text-slate-500 mb-4">支持 5 种生成模式，最终输出语言由你勾选</p>
 
-    <div class="ai-disclaimer" id="aiDisclaimer" style="display:none">
-      &#x26A0; AI-generated content may be inaccurate. Please verify important information.
+          <div class="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+            <div>
+              <label class="text-xs font-semibold text-slate-600 flex items-center gap-1"><i data-lucide="languages" class="w-3.5 h-3.5"></i> 产出语言 <span class="text-[10px] text-slate-400 font-normal">（至少选 1 项，可多选）</span></label>
+              <div id="rs-lang-chips" class="flex flex-wrap gap-2 mt-2"></div>
+              <div class="flex items-start gap-1.5 mt-2 text-[11px] text-slate-400 bg-slate-50 rounded-lg px-2.5 py-2">
+                <i data-lucide="info" class="w-3.5 h-3.5 shrink-0 mt-0.5"></i>
+                <span>系统内部统一先用英文撰写并完成质量审查与重写，再翻译为你勾选的语言输出。英文仅作内部基准，<b class="text-slate-500">是否导出英文版完全由你决定</b>。</span>
+              </div>
+            </div>
+            <div class="border-t border-slate-100 pt-3">
+              <label class="text-xs font-semibold text-slate-600 flex items-center gap-1"><i data-lucide="database" class="w-3.5 h-3.5"></i> 匹配数据来源 Run</label>
+              <select id="rs-run" onchange="RS.run=this.value;renderResumeModes()" class="mt-2 text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none"></select>
+              <p class="text-[11px] text-slate-400 mt-1.5">仅「方向聚合」「匹配岗位」会用到此 Run；「JD 文本 / 岗位方向 / 通用」不依赖 Run。</p>
+            </div>
+          </div>
+
+          <div id="resume-modes" class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4"></div>
+          <div id="resume-panel" class="mt-4"></div>
+        </div>
+      </section>
+
+      <!-- ===== MARKET ===== -->
+      <section id="view-market" class="view h-full overflow-y-auto hidden">
+        <div class="p-6 max-w-4xl">
+          <div class="flex items-start justify-between gap-2">
+            <div><h1 class="text-lg font-bold text-slate-900">市场调研</h1>
+            <p class="text-sm text-slate-500">抓取全量 JD → LLM 分析 11+ 维度 → 差距分析 → 报告，每次产出 <b>5 个文件</b></p></div>
+            <button onclick="switchView('files');fileTab('market');syncRangeUI()" class="shrink-0 text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 历史报告</button>
+          </div>
+
+          <div class="flex rounded-lg border border-slate-200 overflow-hidden text-sm w-fit my-4">
+            <button id="mkt-tab-single" onclick="mktTab('single')" class="px-4 py-1.5 bg-indigo-600 text-white">单个分析</button>
+            <button id="mkt-tab-batch" onclick="mktTab('batch')" class="px-4 py-1.5 bg-white text-slate-500">批量分析</button>
+          </div>
+
+          <div id="mkt-single" class="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+            <div>
+              <label class="text-xs font-medium text-slate-500">岗位类别 <span class="text-red-500">*</span> <span class="text-[10px] text-amber-600">（大小写敏感）</span></label>
+              <input id="mkt-cat" value="Web3" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">
+              <div class="flex items-center gap-1.5 mt-2 flex-wrap"><span class="text-[10px] text-slate-400">预设：</span><span id="mkt-cat-chips" class="contents"></span></div>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-slate-500">行业分类 classification（可选） <span class="text-[10px] text-slate-400">与岗位类别相互独立</span></label>
+              <input id="mkt-class" value="information-communication-technology" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">
+              <div class="flex items-center gap-1.5 mt-2 flex-wrap"><span class="text-[10px] text-slate-400">预设：</span><span id="mkt-class-chips" class="contents"></span></div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-slate-100 pt-3">
+              <div><label class="text-xs font-medium text-slate-500">地点 location</label>
+                <input id="mkt-loc" value="Hong Kong" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none"></div>
+              <div><label class="text-xs font-medium text-slate-500">排序 sort_by</label>
+                <select id="mkt-sort" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-200 outline-none">
+                  <option value="">跟随全局配置</option><option value="date">按发布时间</option><option value="relevance">按相关度</option></select></div>
+            </div>
+            <label class="flex items-center gap-2 text-sm text-slate-600"><input id="mkt-gap" type="checkbox" checked class="rounded text-indigo-600"> 包含个人差距分析 (include_gap_analysis)</label>
+            <button onclick="runMarket()" class="agent-trigger px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="play" class="w-4 h-4"></i> 开始分析</button>
+          </div>
+
+          <div id="mkt-batch" class="bg-white border border-slate-200 rounded-xl p-4 space-y-3 hidden">
+            <div><label class="text-xs font-semibold text-slate-600">从岗位类别预设快速添加</label>
+              <div id="mkt-batch-cats" class="flex flex-wrap gap-1.5 mt-2"></div></div>
+            <div id="batch-rows" class="space-y-2 border-t border-slate-100 pt-3"></div>
+            <button onclick="addBatchRow()" class="text-xs text-indigo-600 flex items-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 添加任务</button>
+            <div><button onclick="runMarketBatch()" class="agent-trigger px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="play" class="w-4 h-4"></i> 开始批量分析</button></div>
+          </div>
+
+          <div id="market-panel" class="mt-4"></div>
+        </div>
+      </section>
+
+      <!-- ===== RUNS ===== -->
+      <section id="view-runs" class="view h-full overflow-y-auto hidden">
+        <div class="p-6">
+          <h1 class="text-lg font-bold text-slate-900">运行历史</h1>
+          <p class="text-sm text-slate-500 mb-4">每次「找工作」创建一个 Run 目录，匹配与简历输出写入同一目录</p>
+          <div id="runs-list" class="space-y-2"></div>
+        </div>
+      </section>
+
+      <!-- ===== FILES ===== -->
+      <section id="view-files" class="view h-full overflow-y-auto hidden">
+        <div class="p-6 max-w-4xl">
+          <h1 class="text-lg font-bold text-slate-900">文件管理</h1>
+          <p class="text-sm text-slate-500 mb-4">先选择查看「找工作」还是「市场分析」的产物，再按时间与阶段查看下载</p>
+
+          <div class="flex rounded-lg border border-slate-200 overflow-hidden text-sm w-fit mb-4">
+            <button id="ftab-jobs" onclick="fileTab('jobs')" class="px-4 py-1.5 bg-indigo-600 text-white flex items-center gap-1.5"><i data-lucide="briefcase" class="w-4 h-4"></i> 找工作文件</button>
+            <button id="ftab-market" onclick="fileTab('market')" class="px-4 py-1.5 bg-white text-slate-500 flex items-center gap-1.5"><i data-lucide="line-chart" class="w-4 h-4"></i> 市场分析文件</button>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-3">
+            <span class="text-xs text-slate-400 flex items-center gap-1"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> 时间筛选</span>
+            <div class="flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+              <button data-range="all" onclick="setFileRange('all')" class="rangebtn px-3 py-1.5 bg-indigo-600 text-white">全部</button>
+              <button data-range="7d" onclick="setFileRange('7d')" class="rangebtn px-3 py-1.5 bg-white text-slate-500">近 7 天</button>
+              <button data-range="30d" onclick="setFileRange('30d')" class="rangebtn px-3 py-1.5 bg-white text-slate-500">近 30 天</button>
+              <button data-range="custom" onclick="setFileRange('custom')" class="rangebtn px-3 py-1.5 bg-white text-slate-500">自定义</button>
+            </div>
+            <div id="custom-range" class="hidden items-center gap-2">
+              <input type="date" id="range-from" onchange="FILE_FILTER.from=this.value;renderFiles()" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5">
+              <span class="text-xs text-slate-400">至</span>
+              <input type="date" id="range-to" onchange="FILE_FILTER.to=this.value;renderFiles()" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5">
+            </div>
+          </div>
+
+          <div id="files-jobs">
+            <div class="flex items-center gap-2 mb-4 flex-wrap">
+              <select id="file-source" onchange="JOB_SRC=this.value;renderJobFiles()" class="border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-200 outline-none"></select>
+              <button onclick="expandAllCats()" class="text-xs text-slate-500 border border-slate-200 rounded-lg px-2 py-2 hover:text-indigo-600">全部展开</button>
+              <button onclick="collapseAllCats()" class="text-xs text-slate-500 border border-slate-200 rounded-lg px-2 py-2 hover:text-indigo-600">全部折叠</button>
+            </div>
+            <div id="files-jobs-list" class="space-y-3"></div>
+          </div>
+
+          <div id="files-market" class="hidden">
+            <p class="text-xs text-slate-400 mb-3">目录：<code class="bg-slate-100 px-1 rounded">output/market/</code> · 每次市场调研产出 5 个文件</p>
+            <div id="files-market-list" class="space-y-3"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== SETTINGS ===== -->
+      <section id="view-settings" class="view h-full overflow-y-auto hidden">
+        <div class="p-6 max-w-3xl">
+          <h1 class="text-lg font-bold text-slate-900">设置</h1>
+          <p class="text-sm text-slate-500 mb-4">在 Web 端编辑个人画像与搜索配置（对应 <code class="text-xs bg-slate-100 px-1 rounded">me.yaml</code> / <code class="text-xs bg-slate-100 px-1 rounded">search_config.yaml</code>）</p>
+          <div class="flex rounded-lg border border-slate-200 overflow-hidden text-sm w-fit mb-4">
+            <button id="set-tab-profile" onclick="setTab('profile')" class="px-4 py-1.5 bg-indigo-600 text-white">个人画像</button>
+            <button id="set-tab-config" onclick="setTab('config')" class="px-4 py-1.5 bg-white text-slate-500">搜索配置</button>
+          </div>
+          <div id="set-profile"></div>
+          <div id="set-config" class="hidden"></div>
+        </div>
+      </section>
+
     </div>
   </main>
 </div>
 
-<!-- ============================================================
-     Modal overlay
-     ============================================================ -->
-<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()"
-     role="dialog" aria-modal="true" aria-label="Dialog">
-  <div class="modal" id="modalBox"></div>
+<!-- ============ YAML / FRIENDLY MODAL ============ -->
+<div id="modal-overlay" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onclick="closeModal()"></div>
+  <div class="relative h-full flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-full flex flex-col pop overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+        <div class="flex items-center gap-2.5">
+          <div id="modal-icon" class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center"><i data-lucide="user-round" class="w-4 h-4 text-indigo-600"></i></div>
+          <div><div id="modal-title" class="font-semibold text-sm text-slate-800"></div><div id="modal-sub" class="text-[11px] text-slate-400 font-mono"></div></div>
+        </div>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="px-5 pt-3 shrink-0">
+        <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
+          <button id="mm-friendly" onclick="setModalMode('friendly')" class="px-3 py-1.5">友好视图</button>
+          <button id="mm-raw" onclick="setModalMode('raw')" class="px-3 py-1.5">原始 YAML</button>
+        </div>
+      </div>
+      <div id="modal-body" class="flex-1 overflow-auto px-5 py-4"></div>
+      <div class="flex justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50 shrink-0">
+        <button onclick="closeModal()" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-lg px-3 py-1.5">关闭</button>
+        <button id="modal-edit" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="pencil" class="w-3.5 h-3.5"></i> 前往编辑</button>
+      </div>
+    </div>
+  </div>
 </div>
 
+<!-- ============ LANGUAGE SELECT MODAL ============ -->
+<div id="lang-overlay" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onclick="closeLangModal()"></div>
+  <div class="relative h-full flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md pop overflow-hidden">
+      <div class="px-5 py-4 border-b border-slate-100">
+        <div class="font-semibold text-slate-800 flex items-center gap-2"><i data-lucide="languages" class="w-4 h-4 text-indigo-600"></i> 选择简历产出语言</div>
+        <p class="text-xs text-slate-500 mt-1">一键找工作会自动生成简历，请先选择最终输出语言（至少 1 种，可多选）。</p>
+      </div>
+      <div class="px-5 py-4 space-y-2" id="lang-modal-opts"></div>
+      <div class="px-5 pb-1"><p class="text-[11px] text-slate-400 flex items-start gap-1.5"><i data-lucide="info" class="w-3.5 h-3.5 shrink-0 mt-0.5"></i> <span>系统内部统一先用英文撰写并审查，再翻译为你勾选的语言；是否输出英文版由你决定。</span></p></div>
+      <div class="flex justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50">
+        <button onclick="closeLangModal()" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-lg px-3 py-1.5">取消</button>
+        <button onclick="confirmLang()" class="text-xs bg-indigo-600 text-white rounded-lg px-4 py-1.5 flex items-center gap-1"><i data-lucide="play" class="w-3.5 h-3.5"></i> 开始</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-wrap" class="fixed bottom-5 right-5 z-50 space-y-2"></div>
+
 <script>
-/* ============================================================
-   State
-   ============================================================ */
-let sid = null;
-let eventSource = null;
-let busy = false;
+/* ===================== STATE ===================== */
+const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', sid:null };
+const MODELS = { deepseek:'deepseek-chat', qwen:'qwen3.6-plus', glm:'glm-5.1' };
+const DIR_META = {
+  payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
+  solutions:{cls:'bg-blue-100 text-blue-700'}, technical:{cls:'bg-indigo-100 text-indigo-700'}, default:{cls:'bg-slate-100 text-slate-600'},
+};
 
-/* ============================================================
-   Model Switcher
-   ============================================================ */
-async function loadModelConfig() {
-  try {
-    const resp = await fetch('/api/config/model');
-    const data = await resp.json();
-    const sel = document.getElementById('modelSelect');
-    if (sel && data.presets) {
-      sel.innerHTML = '';
-      for (const [provider, model] of Object.entries(data.presets)) {
-        const opt = document.createElement('option');
-        opt.value = provider;
-        opt.textContent = provider + ' (' + model + ')';
-        sel.appendChild(opt);
-      }
-      if (data.current_provider) sel.value = data.current_provider;
-    }
-  } catch(e) {}
+/* ===================== UTILITIES ===================== */
+const $ = s => document.querySelector(s);
+const refreshIcons = () => { if(window.lucide) lucide.createIcons(); };
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function fmtSize(b){ if(!b||b===0) return '0 B'; if(b>=1048576) return (b/1048576).toFixed(1)+' MB'; if(b>=1024) return (b/1024).toFixed(0)+' KB'; return Math.round(b)+' B'; }
+function fmtTs(ts){ if(!ts) return ''; const d=ts.slice(0,8),t=ts.slice(9); return `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)} ${t.slice(0,2)}:${t.slice(2,4)}:${t.slice(4,6)}`; }
+function recBadge(t){ if(t>=80) return ['🟢','bg-emerald-50 text-emerald-700 border-emerald-200']; if(t>=60) return ['🟡','bg-amber-50 text-amber-700 border-amber-200']; return ['🔴','bg-red-50 text-red-600 border-red-200']; }
+function scoreColor(v){ return v>=80?'bg-emerald-500':v>=60?'bg-amber-500':'bg-red-400'; }
+function riskCls(v){ return v==='高'?'text-red-600 bg-red-50':v==='中'?'text-amber-600 bg-amber-50':'text-emerald-600 bg-emerald-50'; }
+
+/* ===================== API LAYER ===================== */
+async function api(method, path, body){
+  const opts = { method, headers:{'Content-Type':'application/json'} };
+  if(body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if(res.status === 429){ toast('Agent 正在工作中，同一时间仅允许一个任务','warn'); return null; }
+  if(!res.ok){ const d = await res.json().catch(()=>({})); toast('请求失败: '+(d.error||res.status),'err'); return null; }
+  return res.json();
 }
-async function switchModel(provider) {
-  const ok = document.getElementById('modelSwitchOk');
-  try {
-    const resp = await fetch('/api/config/model', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({provider})
-    });
-    const data = await resp.json();
-    if (data.error) { alert('Switch failed: ' + data.error); return; }
-    ok.classList.add('show');
-    setTimeout(() => ok.classList.remove('show'), 2000);
-  } catch(e) { alert('Switch failed: ' + e.message); }
+async function apiGet(path){ return api('GET', path); }
+async function apiPost(path, body){ return api('POST', path, body); }
+
+/* ===================== SESSION ===================== */
+async function initSession(){
+  const data = await apiPost('/api/session', {});
+  if(data){ STATE.sid = data.sid; }
+}
+async function loadModelConfig(){
+  const data = await apiGet('/api/config/model');
+  if(data){
+    STATE.model = data.current_provider;
+    $('#model-select').value = STATE.model;
+    const presets = data.presets;
+    $('#model-select').innerHTML = Object.entries(presets).map(([k,v])=>
+      `<option value="${k}" ${k===STATE.model?'selected':''}>${k} · ${v}</option>`
+    ).join('');
+  }
 }
 
-/* ============================================================
-   Init
-   ============================================================ */
-async function init() {
-  const resp = await fetch('/api/session', { method: 'POST' });
-  const data = await resp.json();
-  sid = data.sid;
-  refreshRuns();
-  loadModelConfig();
-  // Global Escape key listener for modal
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      const overlay = document.getElementById('modalOverlay');
-      if (overlay.classList.contains('active')) closeModal();
-    }
+/* ===================== TOAST ===================== */
+function toast(msg,type='info'){
+  const c={info:'bg-slate-800',ok:'bg-emerald-600',warn:'bg-amber-600',err:'bg-red-600'};
+  const el=document.createElement('div');
+  el.className=`${c[type]} text-white text-sm px-4 py-2.5 rounded-lg shadow-lg fade-in`; el.textContent=msg;
+  $('#toast-wrap').appendChild(el);
+  setTimeout(()=>{el.style.transition='opacity .3s';el.style.opacity='0';setTimeout(()=>el.remove(),300);},2600);
+}
+
+/* ===================== BUSY LOCK ===================== */
+function setBusy(b){
+  STATE.busy=b;
+  document.body.classList.toggle('busy',b);
+  $('#status-dot').className=b?'w-2 h-2 rounded-full bg-amber-500 spin':'w-2 h-2 rounded-full bg-emerald-500';
+  $('#status-pill').className='flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg '+(b?'bg-amber-50 text-amber-700':'bg-emerald-50 text-emerald-700');
+  $('#status-text').textContent=b?'Agent 工作中…':'Agent 空闲';
+}
+function guardBusy(){ if(STATE.busy){ toast('Agent 正在工作中，同一时间仅允许一个任务（HTTP 429）','warn'); return true; } return false; }
+
+/* ===================== SSE STREAM ===================== */
+function startSSE(box, resultCb, doneCb){
+  setBusy(true);
+  const es = new EventSource('/stream/'+STATE.sid);
+  const files = [];
+
+  es.addEventListener('progress', e => {
+    const d = JSON.parse(e.data);
+    logLine(box, {t:'p', x:d.text});
   });
-}
+  es.addEventListener('status', e => {
+    const d = JSON.parse(e.data);
+    logLine(box, {t:'status', x:d.text});
+  });
+  es.addEventListener('tool_call', e => {
+    const d = JSON.parse(e.data);
+    logLine(box, {t:'tool', x:d.tool, a:d.args||''});
+  });
+  es.addEventListener('done', e => {
+    const d = JSON.parse(e.data);
+    es.close();
+    setBusy(false);
+    if(d.files) d.files.forEach(f => files.push(f));
+    if(resultCb) resultCb(d.reply||'', files);
+    if(doneCb) doneCb();
+  });
+  es.addEventListener('error', e => {
+    const d = e.data ? JSON.parse(e.data) : {text:'SSE 连接错误'};
+    logLine(box, {t:'err', x:d.text||'连接中断'});
+    es.close();
+    setBusy(false);
+    if(doneCb) doneCb();
+  });
+  es.addEventListener('ping', () => {});
 
-/* ============================================================
-   SSE
-   ============================================================ */
-function connectSSE() {
-  if (eventSource) { eventSource.close(); eventSource = null; }
-  eventSource = new EventSource('/stream/' + sid);
-  eventSource.onmessage = (e) => {
-    const ev = JSON.parse(e.data);
-    handleEvent(ev);
+  es.onerror = () => {
+    if(!STATE.busy) es.close();
   };
-  eventSource.onerror = () => {
-    if (busy) setTimeout(connectSSE, 3000);
-  };
 }
 
-function closeSSE() {
-  if (eventSource) { eventSource.close(); eventSource = null; }
+/* ===================== CHAT / LOG ===================== */
+const chatBox = $('#chat-messages');
+function scrollChat(){ chatBox.scrollTop=chatBox.scrollHeight; }
+function chatUser(t){
+  const el=document.createElement('div'); el.className='flex justify-end fade-in';
+  el.innerHTML=`<div class="max-w-md bg-indigo-600 text-white rounded-2xl rounded-br-sm px-4 py-2.5 text-sm whitespace-pre-wrap">${escapeHtml(t)}</div>`;
+  chatBox.appendChild(el); scrollChat();
+}
+function chatTurn(){
+  const w=document.createElement('div'); w.className='flex gap-3 fade-in';
+  w.innerHTML=`<div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0"><i data-lucide="bot" class="w-4 h-4 text-indigo-600"></i></div><div class="flex-1 min-w-0 space-y-2"><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto hidden"></div><div class="result"></div></div>`;
+  chatBox.appendChild(w); refreshIcons(); scrollChat();
+  return {log:w.querySelector('.logbox'),result:w.querySelector('.result')};
+}
+function logLine(box,ev){
+  box.classList.remove('hidden');
+  const el=document.createElement('div'); el.className='ln text-xs leading-relaxed';
+  if(ev.t==='tool') el.innerHTML=`<span class="text-cyan-400">⚙ ${ev.x}</span> <span class="text-cyan-300">${escapeHtml(ev.a||'')}</span>`;
+  else if(ev.t==='status') el.innerHTML=`<span class="text-amber-400">◐</span> <span class="text-slate-300">${escapeHtml(ev.x)}</span>`;
+  else if(ev.t==='ok') el.innerHTML=`<span class="text-emerald-400">✓</span> <span class="text-slate-200">${escapeHtml(ev.x)}</span>`;
+  else if(ev.t==='err') el.innerHTML=`<span class="text-red-400">✗ ${escapeHtml(ev.x)}</span>`;
+  else el.innerHTML=`<span class="text-slate-400">${escapeHtml(ev.x)}</span>`;
+  box.appendChild(el); box.scrollTop=box.scrollHeight; scrollChat();
+}
+function fileChips(files){
+  if(!files||!files.length) return '';
+  return `<div class="flex flex-wrap gap-1.5 mt-2">${files.map(f=>{
+    const name = Array.isArray(f) ? f[0] : f;
+    const path = Array.isArray(f) ? f[0] : f;
+    const ext = (name||'').split('.').pop();
+    return `<a href="/download/${name}" target="_blank" class="inline-flex items-center gap-1 text-[11px] bg-white border border-slate-200 hover:border-indigo-300 rounded-md px-2 py-1 text-slate-600"><i data-lucide="${ext==='pdf'||ext==='md'?'file-text':'braces'}" class="w-3 h-3 text-slate-400"></i>${escapeHtml(name.split('/').pop())}</a>`;
+  }).join('')}</div>`;
 }
 
-function handleEvent(ev) {
-  switch (ev.type) {
-    case 'progress':
-      addProgressLine(ev.text);
-      break;
-    case 'tool_call':
-      addProgressLine('→ ' + ev.tool + '(' + truncate(ev.args, 60) + ')', 'tool');
-      break;
-    case 'status':
-      addProgressLine(ev.text, 'info');
-      break;
-    case 'done':
-      addAgentMessage(ev.reply);
-      refreshRuns();
-      setIdle();
-      closeSSE();
-      break;
-    case 'error':
-      addProgressLine('ERROR: ' + ev.text, 'error');
-      addAgentMessage('❌ Error: ' + ev.text);
-      setIdle();
-      closeSSE();
-      break;
-    case 'ping':
-      break;
-  }
-}
+/* ===================== SEND CHAT ===================== */
+function sendChat(){
+  const inp=$('#chat-input'); const text=inp.value.trim();
+  if(!text) return; if(guardBusy()) return;
+  if(!STATE.sid){ toast('正在连接服务器…','warn'); return; }
+  inp.value=''; inp.style.height='auto';
+  chatUser(text);
 
-/* ============================================================
-   Sort mode
-   ============================================================ */
-function onSortModeChange() {
-  const sel = document.querySelector('input[name="sortMode"]:checked');
-  console.log('Sort mode:', sel ? sel.value : 'not set');
-}
+  const t = chatTurn();
+  const box = t.log;
+  setBusy(true);
 
-/* ============================================================
-   Primary workflow: Find & Match (direct pipeline)
-   ============================================================ */
-async function doFindAndMatch() {
-  if (busy) return;
-  hideWelcome();
-  addUserMessage('Find & Match Jobs');
-  setBusy();
-
-  document.getElementById('progressLog').innerHTML = '';
-  showProgress();
-  connectSSE();
-
-  const sortBy = document.querySelector('input[name="sortMode"]:checked')?.value || 'date';
-
-  const resp = await fetch('/api/pipeline', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sid, action: 'search_match', sort_by: sortBy }),
+  apiPost('/api/chat', {sid:STATE.sid, message:text}).then(data => {
+    if(!data){ setBusy(false); logLine(box, {t:'err', x:'请求失败'}); return; }
+    startSSE(box,
+      (reply, files) => {
+        t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(reply)}</div>${fileChips(files)}</div>`;
+        refreshIcons(); scrollChat();
+      },
+      () => { refreshIcons(); scrollChat(); }
+    );
+  }).catch(err => {
+    setBusy(false);
+    logLine(box, {t:'err', x:'网络错误: '+err.message});
   });
-
-  if (!resp.ok) {
-    const err = await resp.json();
-    addAgentMessage('❌ Error: ' + (err.error || 'Unknown error'));
-    setIdle();
-  }
 }
+$('#chat-input').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
+$('#chat-input').addEventListener('input',e=>{ e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,128)+'px'; });
+$('#send-btn').addEventListener('click', sendChat);
 
-/* ============================================================
-   Chat
-   ============================================================ */
-function sendMessage() {
-  const input = document.getElementById('chatInput');
-  const msg = input.value.trim();
-  if (!msg || busy) return;
-  input.value = '';
-  doSend(msg);
+/* ===================== PIPELINE ===================== */
+let PIPE_LANGS = ['en','hk','cn'];
+const LANGS = [['en','英文 EN'],['hk','繁體中文 HK'],['cn','简体中文 CN']];
+const LANG_SHORT = {en:'英文',hk:'繁中',cn:'简中'};
+let LANG_MODAL = { sel:new Set(), cb:null };
+
+function openLangModal(defaults, cb){
+  LANG_MODAL.sel=new Set(defaults&&defaults.length?defaults:['en','hk','cn']);
+  LANG_MODAL.cb=cb;
+  $('#lang-overlay').classList.remove('hidden');
+  renderLangModalOpts();
 }
-
-function sendQuick(msg) {
-  if (busy) return;
-  doSend(msg);
-}
-
-async function doSend(msg) {
-  hideWelcome();
-  addUserMessage(msg);
-  setBusy();
-  showAIDisclaimer();
-
-  document.getElementById('progressLog').innerHTML = '';
-  showProgress();
-  connectSSE();
-
-  const resp = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sid, message: msg }),
-  });
-
-  if (!resp.ok) {
-    const err = await resp.json();
-    addAgentMessage('❌ Error: ' + (err.error || 'Unknown error'));
-    setIdle();
-    return;
-  }
-}
-
-/* ============================================================
-   UI helpers
-   ============================================================ */
-function addUserMessage(text) {
-  const area = document.getElementById('chatArea');
-  const div = document.createElement('div');
-  div.className = 'msg user';
-  div.innerHTML = '<div class="msg-bubble">' + escapeHtml(text) + '</div>';
-  area.appendChild(div);
-  area.scrollTop = area.scrollHeight;
-}
-
-function addAgentMessage(text) {
-  removeTyping();
-  const area = document.getElementById('chatArea');
-  const div = document.createElement('div');
-  div.className = 'msg agent';
-  div.innerHTML = '<div class="msg-bubble">' + renderMarkdown(text) + '</div>';
-  area.appendChild(div);
-  area.scrollTop = area.scrollHeight;
-}
-
-function addTypingIndicator() {
-  const area = document.getElementById('chatArea');
-  let el = document.getElementById('typingIndicator');
-  if (el) return;
-  el = document.createElement('div');
-  el.id = 'typingIndicator';
-  el.className = 'msg agent';
-  el.innerHTML = '<div class="msg-bubble"><div class="typing"><span></span><span></span><span></span></div></div>';
-  area.appendChild(el);
-  area.scrollTop = area.scrollHeight;
-}
-
-function removeTyping() {
-  const el = document.getElementById('typingIndicator');
-  if (el) el.remove();
-}
-
-function addProgressLine(text, cls) {
-  const log = document.getElementById('progressLog');
-  const line = document.createElement('div');
-  line.className = 'progress-line' + (cls ? ' ' + cls : classifyLine(text));
-  line.textContent = text;
-  log.appendChild(line);
-  const container = document.getElementById('progressContainer');
-  container.scrollTop = container.scrollHeight;
-}
-
-function classifyLine(text) {
-  if (/✅|OK|✓/.test(text)) return ' success';
-  if (/❌|error|FAIL/i.test(text)) return ' error';
-  if (/[⚠⏳]/.test(text)) return ' warning';
-  if (/[🧠📊📝]/.test(text)) return ' info';
-  return '';
-}
-
-function showProgress() {
-  const c = document.getElementById('progressContainer');
-  c.classList.remove('collapsed');
-  c.querySelector('.progress-header').setAttribute('aria-expanded', 'true');
-  document.getElementById('progressToggle').innerHTML = '&#9660;';
-}
-
-function toggleProgress() {
-  const c = document.getElementById('progressContainer');
-  c.classList.toggle('collapsed');
-  const expanded = !c.classList.contains('collapsed');
-  c.querySelector('.progress-header').setAttribute('aria-expanded', String(expanded));
-  document.getElementById('progressToggle').innerHTML = expanded ? '&#9660;' : '&#9650;';
-}
-
-function setBusy() {
-  busy = true;
-  document.getElementById('statusDot').classList.add('busy');
-  document.getElementById('sendBtn').disabled = true;
-  document.getElementById('chatInput').disabled = true;
-  document.getElementById('chatInput').placeholder = 'Task running...';
-  addTypingIndicator();
-}
-
-function setIdle() {
-  busy = false;
-  document.getElementById('statusDot').classList.remove('busy');
-  document.getElementById('sendBtn').disabled = false;
-  document.getElementById('chatInput').disabled = false;
-  document.getElementById('chatInput').placeholder = 'e.g. 帮我找工作 / 分析Web3市场 / 生成简历...';
-  document.getElementById('chatInput').focus();
-  removeTyping();
-}
-
-function hideWelcome() {
-  const el = document.getElementById('welcome');
-  if (el) el.style.display = 'none';
-}
-
-/* ── Sidebar toggle helpers ── */
-
-function toggleResumeGroup() {
-  const g = document.getElementById('resumeGroup');
-  g.classList.toggle('collapsed');
-  const expanded = !g.classList.contains('collapsed');
-  g.querySelector('.sidebar-group-header').setAttribute('aria-expanded', String(expanded));
-}
-
-function toggleMarketReports() {
-  const panel = document.getElementById('marketPanel');
-  const arrow = document.getElementById('marketReportsArrow');
-  panel.classList.toggle('hidden');
-  const expanded = !panel.classList.contains('hidden');
-  arrow.innerHTML = expanded ? '&#9660;' : '&#9654;';
-  document.getElementById('marketReportsHeader').setAttribute('aria-expanded', String(expanded));
-}
-
-function showAIDisclaimer() {
-  const el = document.getElementById('aiDisclaimer');
-  if (el) el.style.display = 'block';
-}
-
-/* ============================================================
-   Runs & Files
-   ============================================================ */
-async function refreshRuns() {
-  try {
-    const resp = await fetch('/api/runs');
-    const runs = await resp.json();
-
-    const cur = runs.find(r => r.is_current) || (runs.length > 0 ? runs[0] : null);
-
-    if (cur) {
-      showCurrentRun(cur);
-      loadRunFiles(cur.id, cur.time);
-    } else {
-      hideCurrentRun();
-      document.getElementById('filesPanel').innerHTML =
-        '<div class="files-empty">No files yet</div>';
-    }
-
-    renderHistory(runs);
-    refreshMarketFiles();
-  } catch(e) {
-    console.error('refreshRuns error', e);
-  }
-}
-
-function showCurrentRun(run) {
-  document.getElementById('currentRunSection').classList.remove('hidden');
-  document.getElementById('currentRunPanel').classList.remove('hidden');
-
-  document.getElementById('runTime').textContent = run.time || run.id;
-
-  let stats = '';
-  if (run.job_count !== undefined) stats += 'Searched: ' + run.job_count + ' jobs';
-  if (run.match_count !== undefined) stats += ' | Matched: ' + run.match_count;
-  document.getElementById('runStats').textContent = stats || 'Processing...';
-
-  const actionsEl = document.getElementById('runActions');
-  let actionsHtml = '';
-
-  if (run.has_raw && !run.has_matched) {
-    actionsHtml += '<button class="sidebar-btn" onclick="sendQuick(\'匹配分析\')" aria-label="Run match analysis on current results">'
-      + '<span class="icon">&#x1F4CA;</span>Run Match Analysis</button>';
-  }
-
-  if (run.has_matched) {
-    actionsHtml += '<button class="sidebar-btn" onclick="sendQuick(\'看看匹配结果\')" aria-label="View match results">'
-      + '<span class="icon">&#x1F4CB;</span>View Match Results</button>';
-    actionsHtml += '<button class="sidebar-btn" onclick="showModal(\'matched\')" aria-label="Generate resume from matched job">'
-      + '<span class="icon">&#x1F4DD;</span>Generate Resume...</button>';
-  }
-
-  actionsEl.innerHTML = actionsHtml;
-}
-
-function hideCurrentRun() {
-  document.getElementById('currentRunSection').classList.add('hidden');
-  document.getElementById('currentRunPanel').classList.add('hidden');
-}
-
-function toggleHistory() {
-  const wrap = document.getElementById('historyWrap');
-  const arrow = document.getElementById('historyArrow');
-  wrap.classList.toggle('collapsed');
-  const expanded = !wrap.classList.contains('collapsed');
-  arrow.innerHTML = expanded ? '&#9660;' : '&#9654;';
-  arrow.parentElement.parentElement.setAttribute('aria-expanded', String(expanded));
-}
-
-function renderHistory(runs) {
-  const panel = document.getElementById('historyPanel');
-  document.getElementById('historyCount').textContent = runs.length;
-  if (!runs.length) {
-    panel.innerHTML = '<div class="files-empty">No previous runs</div>';
-    return;
-  }
-  panel.innerHTML = runs.slice(0, 10).map(r => {
-    const stageCls = r.stage === 'matched' ? 'matched' : 'searched';
-    const stageLabel = r.stage === 'matched' ? 'Matched' : 'Searched';
-    return '<div class="history-entry" onclick="browseRun(\'' + r.id + '\',\'' + (r.time || r.id) + '\')"'
-      + ' title="' + r.id + '" role="button" tabindex="0"'
-      + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \') { event.preventDefault(); browseRun(\'' + r.id + '\',\'' + (r.time || r.id) + '\'); }">'
-      + '<span class="he-time">' + (r.time || r.id) + '</span>'
-      + '<span class="he-stage ' + stageCls + '">' + stageLabel + '</span>'
-      + '</div>';
+function closeLangModal(){ $('#lang-overlay').classList.add('hidden'); }
+function renderLangModalOpts(){
+  $('#lang-modal-opts').innerHTML=LANGS.map(([k,l])=>{
+    const on=LANG_MODAL.sel.has(k);
+    return `<button onclick="toggleLangModal('${k}')" class="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border transition ${on?'border-indigo-300 bg-indigo-50':'border-slate-200 bg-white hover:border-indigo-200'}"><span class="text-sm ${on?'text-indigo-700 font-medium':'text-slate-600'}">${l}</span><span class="w-5 h-5 rounded-md border flex items-center justify-center ${on?'bg-indigo-600 border-indigo-600':'border-slate-300'}">${on?'<i data-lucide="check" class="w-3.5 h-3.5 text-white"></i>':''}</span></button>`;
   }).join('');
+  refreshIcons();
+}
+function toggleLangModal(k){
+  if(LANG_MODAL.sel.has(k)){ if(LANG_MODAL.sel.size===1){ toast('至少选择一种语言','warn'); return; } LANG_MODAL.sel.delete(k); }
+  else LANG_MODAL.sel.add(k);
+  renderLangModalOpts();
+}
+function confirmLang(){
+  const langs=['en','hk','cn'].filter(l=>LANG_MODAL.sel.has(l));
+  if(!langs.length){ toast('至少选择一种语言','warn'); return; }
+  closeLangModal();
+  const cb=LANG_MODAL.cb; LANG_MODAL.cb=null;
+  if(cb) cb(langs);
 }
 
-async function browseRun(runId, runTime) {
-  loadRunFiles(runId, runTime);
+function startPipeline(){
+  if(guardBusy()) return;
+  if(!STATE.sid){ toast('正在连接服务器…','warn'); return; }
+  openLangModal(PIPE_LANGS, langs => { PIPE_LANGS=langs; runPipeline(langs); });
+}
+function runPipeline(langs){
+  if(guardBusy()) return; switchView('workspace');
+  chatUser('一键找工作（产出语言：'+langs.map(l=>LANG_SHORT[l]).join('/')+'）');
+  const t = chatTurn(); const box = t.log;
+
+  apiPost('/api/pipeline', {sid:STATE.sid, action:'search_match', sort_by:STATE.sort}).then(data => {
+    if(!data){ setBusy(false); logLine(box, {t:'err', x:'请求失败'}); return; }
+    startSSE(box,
+      (reply, files) => {
+        t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="font-semibold text-slate-800 text-sm mb-1">✅ 找工作流程完成</div><p class="text-sm text-slate-600">结果已写入当前 Run。</p>${fileChips(files)}<div class="flex gap-2 mt-3"><button onclick="switchView('matches')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button><button onclick="switchView('files')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button></div></div>`;
+        refreshIcons(); scrollChat();
+      },
+      () => { refreshIcons(); scrollChat(); }
+    );
+  }).catch(err => {
+    setBusy(false);
+    logLine(box, {t:'err', x:'网络错误: '+err.message});
+  });
 }
 
-async function loadRunFiles(runId, runTime) {
-  const titleEl = document.getElementById('filesPanelTitle');
-  titleEl.textContent = runTime ? 'Files - ' + runTime : 'Run Files';
+/* ===================== SUGGEST CHIPS ===================== */
+const SUGGEST=['帮我找工作','分析 Web3 市场行情','看看匹配结果','生成 Solutions Engineer 方向的简历','查看 me.yaml'];
+function renderSuggests(){
+  $('#suggest-chips').innerHTML=SUGGEST.map(s=>`<button onclick="$('#chat-input').value='${s}';sendChat()" class="agent-trigger text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-full px-2.5 py-1">${s}</button>`).join('');
+}
 
-  try {
-    const resp = await fetch('/api/runs/' + runId + '/files');
-    const files = await resp.json();
-    const panel = document.getElementById('filesPanel');
-    if (!files.length) {
-      panel.innerHTML = '<div class="files-empty">No files</div>';
-      return;
+/* ===================== VIEW SWITCH ===================== */
+function switchView(v){
+  STATE.view=v;
+  document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden'));
+  const target = $('#view-'+v); if(target) target.classList.remove('hidden');
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  if(v==='runs') renderRuns();
+  if(v==='files') renderFiles();
+  if(v==='resume') loadRunsForSelect();
+  if(v==='settings') renderSettings();
+  if(window.innerWidth<768){ $('#sidebar').classList.add('hidden'); $('#sidebar').classList.remove('flex'); }
+  refreshIcons();
+}
+document.querySelectorAll('.navbtn').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
+
+/* ===================== SIDEBAR LIVE CONTROLS ===================== */
+$('#model-select').addEventListener('change', async e => {
+  if(guardBusy()){ e.target.value=STATE.model; return; }
+  const provider = e.target.value;
+  const data = await apiPost('/api/config/model', {provider});
+  if(data && !data.error){
+    STATE.model = provider;
+    toast('已切换 LLM：'+provider+'（'+MODELS[provider]+'）','ok');
+  } else {
+    e.target.value = STATE.model;
+  }
+});
+document.querySelectorAll('.sortbtn').forEach(b=>b.addEventListener('click',()=>{
+  STATE.sort=b.dataset.sort;
+  document.querySelectorAll('.sortbtn').forEach(x=>{
+    const on=x.dataset.sort===STATE.sort;
+    x.className='sortbtn flex-1 py-1.5 '+(on?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  });
+  $('#qa-sort').textContent=STATE.sort==='date'?'按发布时间':'按相关度';
+  toast('排序方式：'+(STATE.sort==='date'?'按发布时间（最新在前）':'按相关度'),'info');
+}));
+
+/* ===================== RUNS VIEW ===================== */
+function stageBadge(s){
+  const m={empty:['空目录','bg-slate-100 text-slate-500'],searched:['已搜索','bg-blue-50 text-blue-600'],matched:['已匹配','bg-emerald-50 text-emerald-700']};
+  const[l,c]=m[s]||['未知','bg-slate-100 text-slate-500'];
+  return `<span class="text-[11px] px-2 py-0.5 rounded-full ${c}">${l}</span>`;
+}
+async function renderRuns(){
+  const data = await apiGet('/api/runs');
+  const runs = data || [];
+  $('#runs-list').innerHTML = runs.length ? runs.map(r=>{
+    const badges = [];
+    if(r.has_raw) badges.push('<span class="text-emerald-500">raw</span>');
+    if(r.has_matched) badges.push('<span class="text-emerald-500">matched</span>');
+    if(r.has_resumes) badges.push('<span class="text-emerald-500">resumes</span>');
+    if(!badges.length) badges.push('<span class="text-slate-300">empty</span>');
+
+    return `<div class="bg-white border ${r.is_current?'border-indigo-300':'border-slate-200'} rounded-xl p-4 flex flex-wrap items-center gap-3"><div class="flex-1 min-w-0"><div class="flex items-center gap-2 flex-wrap"><code class="text-sm font-semibold text-slate-800">${r.id}</code>${stageBadge(r.stage)}${r.is_current?'<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-600 text-white">当前活跃</span>':''}</div><div class="text-xs text-slate-400 mt-1 flex items-center gap-3 flex-wrap"><span class="flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i>${r.time}</span><span>抓取 ${r.job_count}</span><span>匹配 ${r.match_count}</span><span class="flex gap-1">${badges.join('')}</span></div></div><div class="flex gap-2"><button onclick="JOB_SRC='${r.id}';switchView('files');renderFiles()" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 文件</button></div></div>`;
+  }).join('') : `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">还没有找工作的 Run，去工作台开始你的第一次搜索。</div>`;
+  $('#nav-match-count').textContent = ''; // updated by matches view (Phase 2)
+  refreshIcons();
+}
+
+/* ===================== FILES VIEW ===================== */
+let FILE_TAB='jobs', JOB_SRC=null;
+const COLLAPSED=new Set();
+
+function fileTab(t){
+  FILE_TAB=t;
+  $('#files-jobs').classList.toggle('hidden',t!=='jobs');
+  $('#files-market').classList.toggle('hidden',t!=='market');
+  $('#ftab-jobs').className='px-4 py-1.5 flex items-center gap-1.5 '+(t==='jobs'?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  $('#ftab-market').className='px-4 py-1.5 flex items-center gap-1.5 '+(t==='market'?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  renderFiles();
+  refreshIcons();
+}
+function fileRowFull(name,path,desc,size){
+  const icon=name.endsWith('.pdf')||name.endsWith('.md')?'file-text':'braces';
+  return `<div class="flex items-start gap-3 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2.5"><i data-lucide="${icon}" class="w-4 h-4 text-slate-400 shrink-0 mt-0.5"></i><div class="flex-1 min-w-0"><div class="text-sm text-slate-700 font-mono truncate">${escapeHtml(name)}</div>${desc?`<div class="text-[11px] text-slate-400 mt-0.5">${desc}</div>`:''}</div><span class="text-[11px] text-slate-400 shrink-0 mt-0.5">${fmtSize(size)}</span><a href="/download/${path}" target="_blank" class="text-slate-400 hover:text-indigo-600 shrink-0 mt-0.5"><i data-lucide="download" class="w-4 h-4"></i></a></div>`;
+}
+function fileChipMini(path,label){
+  return `<a href="/download/${path}" target="_blank" class="inline-flex items-center gap-1 text-[11px] bg-white border border-slate-200 hover:border-indigo-300 rounded px-2 py-1 text-slate-600"><i data-lucide="download" class="w-3 h-3"></i>${label}</a>`;
+}
+function toggleCat(k){ if(COLLAPSED.has(k)) COLLAPSED.delete(k); else COLLAPSED.add(k); renderFiles(); }
+function expandAllCats(){ COLLAPSED.clear(); renderFiles(); }
+function collapseAllCats(){ document.querySelectorAll('[data-cat-key]').forEach(el=>COLLAPSED.add(el.dataset.catKey)); renderFiles(); }
+
+const FILE_LABELS = {
+  'scan_listings.json':'第一层扫描的全量职位列表（过滤前）',
+  'raw_jobs.json':'全量抓取的完整 JD（清洗后）· 含 source 标记',
+  'rejected_jobs.json':'被基础清洗排除的岗位 + 原因',
+  'filter_stats.json':'各层过滤数量统计',
+  'matched_jobs.json':'达标岗位五维评分数据',
+  'unmatched_jobs.json':'未达标岗位（低于最低分）',
+  'job_report.md':'Markdown 匹配排名报告',
+  'direction_analysis.json':'各方向聚合分析 · 三级技能分类',
+};
+const FILE_CATS_DEF = {
+  search:{label:'搜索 & 抓取',icon:'search',color:'blue', files:['scan_listings.json','raw_jobs.json']},
+  filter:{label:'筛选 & 清洗',icon:'filter',color:'amber', files:['rejected_jobs.json','filter_stats.json']},
+  match:{label:'匹配评分',icon:'target',color:'emerald', files:['matched_jobs.json','unmatched_jobs.json','job_report.md']},
+  resume:{label:'简历产出',icon:'file-text',color:'indigo', files:['direction_analysis.json']},
+};
+const CAT_COLORS = {blue:'text-blue-600 bg-blue-50',amber:'text-amber-600 bg-amber-50',emerald:'text-emerald-600 bg-emerald-50',indigo:'text-indigo-600 bg-indigo-50'};
+
+function catSection(key,cat,count,inner){
+  const open=!COLLAPSED.has(key);
+  return `<div class="border border-slate-200 rounded-xl overflow-hidden bg-white" data-cat-key="${key}"><button onclick="toggleCat('${key}')" class="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-left"><div class="w-7 h-7 rounded-lg flex items-center justify-center ${CAT_COLORS[cat.color]}"><i data-lucide="${cat.icon}" class="w-4 h-4"></i></div><span class="font-semibold text-sm text-slate-700">${cat.label}</span><span class="text-[11px] bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">${count}</span><i data-lucide="chevron-${open?'down':'right'}" class="w-4 h-4 text-slate-400 ml-auto"></i></button><div class="${open?'':'hidden'} px-3 pb-3 space-y-1.5">${inner}</div></div>`;
+}
+
+async function renderFiles(){
+  if(FILE_TAB==='jobs') await renderJobFiles(); else await renderMarketFiles();
+}
+async function renderJobFiles(){
+  const runsData = await apiGet('/api/runs');
+  const runs = runsData || [];
+  const sel=$('#file-source'); const list=$('#files-jobs-list');
+
+  if(!runs.length){ list.innerHTML=`<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">还没有找工作的 Run，去工作台开始你的第一次搜索。</div>`; refreshIcons(); return; }
+
+  if(!JOB_SRC || !runs.find(r=>r.id===JOB_SRC)) JOB_SRC = runs[0].id;
+  sel.innerHTML = runs.map(r=>`<option value="${r.id}" ${r.id===JOB_SRC?'selected':''}>📁 ${r.id}${r.is_current?'（当前）':''} · ${r.time}</option>`).join('');
+
+  const runId = JOB_SRC;
+  const filesData = await apiGet('/api/runs/'+runId+'/files');
+  const files = filesData || [];
+
+  if(!files.length){ list.innerHTML=`<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">该 Run 暂无文件</div>`; refreshIcons(); return; }
+
+  // Group files by category
+  const groups = {search:[], filter:[], match:[], resume:[]};
+  const resumesDir = [];
+
+  files.forEach(f => {
+    const name = f.name;
+    const path = f.path;
+    const size = f.size;
+    let placed = false;
+
+    for(const [catKey, catDef] of Object.entries(FILE_CATS_DEF)){
+      if(catDef.files.includes(name)){
+        groups[catKey].push(fileRowFull(name, path, FILE_LABELS[name]||'', size));
+        placed = true;
+        break;
+      }
     }
 
-    const groups = {
-      resumes:  { icon: '📄', label: 'Resumes & Cover Letters', files: [] },
-      match:    { icon: '📊', label: 'Match Results',           files: [] },
-      search:   { icon: '🔍', label: 'Search Data',             files: [] },
-    };
-
-    for (const f of files) {
-      const n = f.name.toLowerCase();
-      if (n.startsWith('resume') || n.startsWith('cover_letter')) {
-        groups.resumes.files.push(f);
-      } else if (n === 'matched_jobs.json' || n === 'job_report.md') {
-        groups.match.files.push(f);
+    // Resume files (inside resumes/ subdir)
+    if(!placed && path.includes('resumes/')){
+      const parts = path.split('/');
+      const fileName = parts[parts.length-1];
+      const ext = fileName.split('.').pop();
+      const langMap = {en:'EN', hk:'繁中', cn:'简中'};
+      let label = '';
+      if(fileName.startsWith('resume_') && ext==='pdf'){
+        const lang = fileName.split('_').pop().replace('.pdf','');
+        label = '简历 '+ (langMap[lang]||lang);
+      } else if(fileName.startsWith('cover_letter_') && ext==='pdf'){
+        const lang = fileName.split('_').pop().replace('.pdf','');
+        label = 'Cover Letter '+ (langMap[lang]||lang);
+      } else if(fileName.startsWith('resume_review_')){
+        label = '审查报告 JSON';
       } else {
-        groups.search.files.push(f);
+        label = fileName;
       }
+      resumesDir.push(fileChipMini(path, label));
+      placed = true;
     }
-
-    let html = '';
-    for (const g of Object.values(groups)) {
-      if (!g.files.length) continue;
-      html += '<div class="file-group">';
-      html += '<div class="file-group-header" onclick="this.parentElement.classList.toggle(\'collapsed\')"'
-        + ' role="button" tabindex="0"'
-        + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \') { event.preventDefault(); this.parentElement.classList.toggle(\'collapsed\'); }">';
-      html += '<span class="fg-arrow">&#9660;</span>';
-      html += '<span class="fg-icon">' + g.icon + '</span>' + g.label;
-      html += '<span class="fg-count">' + g.files.length + '</span>';
-      html += '</div><div class="file-group-body">';
-      for (const f of g.files) {
-        const display = friendlyName(f.name);
-        html += '<div class="file-item">'
-          + '<span class="fname" title="' + escapeHtml(f.path) + '">' + escapeHtml(display) + '</span>'
-          + '<span class="fsize">' + formatSize(f.size) + '</span>'
-          + '<a href="/download/' + f.path + '" target="_blank" aria-label="Download ' + escapeHtml(f.name) + '">DL</a>'
-          + '</div>';
-      }
-      html += '</div></div>';
+    if(!placed){
+      groups['search'].push(fileRowFull(name, path, '', size));
     }
-    panel.innerHTML = html;
-  } catch(e) {
-    console.error('loadRunFiles error', e);
-  }
-}
-
-function friendlyName(name) {
-  const map = {
-    'raw_jobs.json': 'Raw Jobs Data',
-    'filter_stats.json': 'Filter Statistics',
-    'matched_jobs.json': 'Match Scores (JSON)',
-    'job_report.md': 'Match Report (MD)',
-  };
-  if (map[name]) return map[name];
-  if (name.match(/^resume_.*\.pdf$/i)) return name.replace(/^resume_/, 'Resume - ').replace(/\.pdf$/, ' (PDF)');
-  if (name.match(/^resume_.*\.md$/i)) return name.replace(/^resume_/, 'Resume - ').replace(/\.md$/, ' (MD)');
-  if (name.match(/^cover_letter_.*\.pdf$/i)) return name.replace(/^cover_letter_/, 'Cover Letter - ').replace(/\.pdf$/, ' (PDF)');
-  if (name.match(/^cover_letter_.*\.md$/i)) return name.replace(/^cover_letter_/, 'Cover Letter - ').replace(/\.md$/, ' (MD)');
-  return name;
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + 'B';
-  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + 'K';
-  return (bytes/1024/1024).toFixed(1) + 'M';
-}
-
-/* ============================================================
-   Market Reports
-   ============================================================ */
-async function refreshMarketFiles() {
-  try {
-    const resp = await fetch('/api/market/files');
-    const files = await resp.json();
-    const panel = document.getElementById('marketPanel');
-    const arrow = document.getElementById('marketReportsArrow');
-    const header = document.getElementById('marketReportsHeader');
-    if (!files.length) {
-      panel.innerHTML = '<div class="files-empty">No reports yet</div>';
-      // Auto-collapse when empty
-      if (!panel.classList.contains('hidden')) {
-        panel.classList.add('hidden');
-        if (arrow) arrow.innerHTML = '&#9654;';
-        if (header) header.setAttribute('aria-expanded', 'false');
-      }
-      return;
-    }
-    // Auto-expand when reports exist
-    if (panel.classList.contains('hidden')) {
-      panel.classList.remove('hidden');
-      if (arrow) arrow.innerHTML = '&#9660;';
-      if (header) header.setAttribute('aria-expanded', 'true');
-    }
-    let html = '';
-    for (const f of files) {
-      const display = marketFriendlyName(f.name);
-      html += '<div class="file-item">'
-        + '<span class="fname" title="' + escapeHtml(f.path) + '">' + escapeHtml(display) + '</span>'
-        + '<span class="fsize">' + formatSize(f.size) + '</span>'
-        + '<a href="/download/' + f.path + '" target="_blank" aria-label="Download ' + escapeHtml(f.name) + '">DL</a>'
-        + '</div>';
-    }
-    panel.innerHTML = html;
-  } catch(e) {
-    console.error('refreshMarketFiles error', e);
-  }
-}
-
-function marketFriendlyName(name) {
-  const m = name.match(/^market_(.+?)_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:_(scan|jds))?\.(pdf|md|json)$/);
-  if (m) {
-    const label = m[1].replace(/_/g, ' ');
-    const date = m[3] + '-' + m[4] + ' ' + m[5] + ':' + m[6];
-    const suffix = m[8];
-    const ext = m[9].toUpperCase();
-    const typeMap = { scan: 'Scan', jds: 'JDs' };
-    const tag = suffix ? typeMap[suffix] + ' ' + ext : ext;
-    return label + ' (' + tag + ') - ' + date;
-  }
-  return name;
-}
-
-/* ============================================================
-   Modals
-   ============================================================ */
-function showModal(type) {
-  const box = document.getElementById('modalBox');
-  let html = '';
-  switch(type) {
-    case 'matched':
-      html = '<h3>Generate Resume by Matched Job</h3>'
-        + '<input type="number" id="modalJobIndex" placeholder="Job ranking number (e.g. 1)" min="1" aria-label="Job ranking number">'
-        + '<div class="modal-actions">'
-        + '<button onclick="closeModal()">Cancel</button>'
-        + '<button class="primary" onclick="submitModal(\'matched\')">Generate</button>'
-        + '</div>';
-      break;
-    case 'jd':
-      html = '<h3>Generate Resume from JD Text</h3>'
-        + '<textarea id="modalJdText" placeholder="Paste the job description here..." aria-label="Job description text"></textarea>'
-        + '<div class="modal-actions">'
-        + '<button onclick="closeModal()">Cancel</button>'
-        + '<button class="primary" onclick="submitModal(\'jd\')">Generate</button>'
-        + '</div>';
-      break;
-    case 'role':
-      html = '<h3>Generate Resume by Role Direction</h3>'
-        + '<input type="text" id="modalRole" placeholder="e.g. Solutions Engineer, Backend Developer" aria-label="Role direction">'
-        + '<div class="modal-actions">'
-        + '<button onclick="closeModal()">Cancel</button>'
-        + '<button class="primary" onclick="submitModal(\'role\')">Generate</button>'
-        + '</div>';
-      break;
-    case 'market':
-      html = '<h3>Market Analysis</h3>'
-        + '<div id="marketRows">'
-        + '<div class="market-row">'
-        + '<input type="text" class="mkt-cat" placeholder="Job category (e.g. Web3)" aria-label="Job category">'
-        + '<input type="text" class="mkt-cls" placeholder="Industry (optional)" aria-label="Industry classification">'
-        + '</div>'
-        + '</div>'
-        + '<button class="add-row-btn" onclick="addMarketRow()" aria-label="Add another market category">+ Add More</button>'
-        + '<div class="sort-toggle" style="margin-top:10px" role="radiogroup" aria-label="Market analysis sort order">'
-        + '<label class="sort-option">'
-        + '<input type="radio" name="mktSort" value="date" checked>'
-        + '<span>&#x1F4C5; Sort by Date</span>'
-        + '</label>'
-        + '<label class="sort-option">'
-        + '<input type="radio" name="mktSort" value="relevance">'
-        + '<span>&#x1F50D; Sort by Relevance</span>'
-        + '</label>'
-        + '</div>'
-        + '<div class="modal-actions">'
-        + '<button onclick="closeModal()">Cancel</button>'
-        + '<button class="primary" onclick="submitModal(\'market\')">Analyze</button>'
-        + '</div>';
-      break;
-  }
-  box.innerHTML = html;
-  document.getElementById('modalOverlay').classList.add('active');
-  // Lock body scroll
-  document.body.style.overflow = 'hidden';
-  // Focus first input
-  setTimeout(() => {
-    const inp = box.querySelector('input,textarea');
-    if (inp) inp.focus();
-  }, 100);
-}
-
-function addMarketRow() {
-  const container = document.getElementById('marketRows');
-  const row = document.createElement('div');
-  row.className = 'market-row';
-  row.innerHTML = '<input type="text" class="mkt-cat" placeholder="Job category" aria-label="Job category" style="flex:1;margin-bottom:0">'
-    + '<input type="text" class="mkt-cls" placeholder="Industry (optional)" aria-label="Industry classification" style="flex:1;margin-bottom:0">'
-    + '<span class="market-row-remove" onclick="this.parentElement.remove()" title="Remove" role="button" tabindex="0"'
-    + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \') { event.preventDefault(); this.parentElement.remove(); }">✕</span>';
-  container.appendChild(row);
-  row.querySelector('.mkt-cat').focus();
-}
-
-function closeModal() {
-  document.getElementById('modalOverlay').classList.remove('active');
-  // Restore body scroll
-  document.body.style.overflow = '';
-}
-
-function submitModal(type) {
-  let msg = '';
-  switch(type) {
-    case 'matched': {
-      const idx = document.getElementById('modalJobIndex').value;
-      if (!idx) return;
-      msg = '为第' + idx + '个生成简历';
-      break;
-    }
-    case 'jd': {
-      const jd = document.getElementById('modalJdText').value.trim();
-      if (!jd) return;
-      msg = '根据以下JD生成简历：\n' + jd;
-      break;
-    }
-    case 'role': {
-      const role = document.getElementById('modalRole').value.trim();
-      if (!role) return;
-      msg = '生成 ' + role + ' 方向的简历';
-      break;
-    }
-    case 'market': {
-      const rows = document.querySelectorAll('#marketRows .market-row');
-      const tasks = [];
-      rows.forEach(row => {
-        const cat = row.querySelector('.mkt-cat').value.trim();
-        const cls = row.querySelector('.mkt-cls').value.trim();
-        if (cat) tasks.push({category: cat, classification: cls});
-      });
-      if (tasks.length === 0) return;
-      const mktSort = document.querySelector('input[name="mktSort"]:checked')?.value || 'date';
-      const sortHint = mktSort === 'relevance' ? '，按相关度排序' : '，按发布时间排序';
-      if (tasks.length === 1) {
-        const t = tasks[0];
-        msg = t.classification
-          ? '分析 ' + t.classification + ' 行业的 ' + t.category + ' 市场行情' + sortHint
-          : '分析 ' + t.category + ' 市场行情' + sortHint;
-      } else {
-        msg = '批量市场分析（' + sortHint + '）：\n'
-          + tasks.map((t, i) => (i+1) + '. ' + t.category + (t.classification ? ' (' + t.classification + ')' : '')).join('\n');
-      }
-      break;
-    }
-  }
-  closeModal();
-  if (msg) doSend(msg);
-}
-
-/* ============================================================
-   Markdown renderer
-   ============================================================ */
-function renderMarkdown(text) {
-  if (!text) return '';
-  let html = escapeHtml(text);
-
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
-    '<pre><code>' + code + '</code></pre>');
-
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/^---$/gm, '<hr>');
-
-  html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)+)/gm, (_, header, sep, body) => {
-    const thCells = header.split('|').filter(c => c.trim());
-    const rows = body.trim().split('\n');
-    let t = '<table><thead><tr>' + thCells.map(c => '<th>' + c.trim() + '</th>').join('') + '</tr></thead><tbody>';
-    for (const row of rows) {
-      const cells = row.split('|').filter(c => c.trim());
-      t += '<tr>' + cells.map(c => '<td>' + c.trim() + '</td>').join('') + '</tr>';
-    }
-    return t + '</tbody></table>';
   });
 
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-  html = html.replace(/^[*-] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, (m) => '<ul>' + m + '</ul>');
-  html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/^(?!<[hupolt]|<li|<hr|<table|<pre|<block)(.+)$/gm, '<p>$1</p>');
-  html = html.replace(/\n{2,}/g, '\n');
+  // Render resume section
+  if(resumesDir.length){
+    groups['resume'].push(`<div class="text-[11px] font-medium text-slate-400 px-1 pt-1">resumes/ · 简历文件</div>`);
+    groups['resume'].push(`<div class="flex flex-wrap gap-1.5">${resumesDir.join('')}</div>`);
+  }
 
-  return html;
+  let html='';
+  for(const [k,cat] of Object.entries(FILE_CATS_DEF)){
+    const items = groups[k];
+    if(!items.length) continue;
+    html += catSection(k, cat, items.length, items.join(''));
+  }
+
+  list.innerHTML = html || `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">该 Run 暂无文件</div>`;
+  refreshIcons();
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+async function renderMarketFiles(){
+  const list = $('#files-market-list');
+  const data = await apiGet('/api/market/files');
+  const files = data || [];
+
+  if(!files.length){
+    list.innerHTML = `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">还没有市场分析报告，去工作台对话说「分析 Web3 市场行情」。</div>`;
+    refreshIcons(); return;
+  }
+
+  // Group market files by category
+  const groups = {};
+  files.forEach(f => {
+    const name = f.name;
+    const m = name.match(/^market_(.+?)_(\d{8}_\d{6})\./);
+    if(m){
+      const cat = m[1].replace(/_/g,' ');
+      const ts = m[2];
+      if(!groups[ts]) groups[ts] = {category:cat, date:ts, report:[], data:[], raw:[]};
+      if(name.endsWith('.md')) groups[ts].report.push(f);
+      else if(name.endsWith('.pdf')) groups[ts].report.push(f);
+      else if(name.endsWith('_scan.json')) groups[ts].raw.push(f);
+      else if(name.endsWith('_jds.json')) groups[ts].raw.push(f);
+      else if(name.endsWith('.json')) groups[ts].data.push(f);
+    }
+  });
+
+  list.innerHTML = Object.entries(groups).sort((a,b)=>b[0].localeCompare(a[0])).map(([ts,g])=>{
+    const k='mkt_'+ts; const open=!COLLAPSED.has(k);
+    let inner = '';
+
+    if(g.report.length){
+      inner += `<div class="text-[11px] font-medium text-slate-400 px-1">分析报告</div>`;
+      inner += g.report.map(f=>fileRowFull(f.name, f.path, '', f.size)).join('');
+    }
+    if(g.data.length){
+      inner += `<div class="text-[11px] font-medium text-slate-400 px-1 pt-1">结构化数据</div>`;
+      inner += g.data.map(f=>fileRowFull(f.name, f.path, '', f.size)).join('');
+    }
+    if(g.raw.length){
+      inner += `<div class="text-[11px] font-medium text-slate-400 px-1 pt-1">原始数据</div>`;
+      inner += g.raw.map(f=>fileRowFull(f.name, f.path, '', f.size)).join('');
+    }
+
+    const totalFiles = g.report.length+g.data.length+g.raw.length;
+    return `<div class="border border-slate-200 rounded-xl overflow-hidden bg-white" data-cat-key="${k}"><button onclick="toggleCat('${k}')" class="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-left"><div class="w-7 h-7 rounded-lg flex items-center justify-center text-indigo-600 bg-indigo-50"><i data-lucide="line-chart" class="w-4 h-4"></i></div><span class="font-semibold text-sm text-slate-700">${escapeHtml(g.category)}</span><span class="text-[11px] text-slate-400">${fmtTs(g.date)}</span><span class="text-[11px] bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">${totalFiles} 文件</span><i data-lucide="chevron-${open?'down':'right'}" class="w-4 h-4 text-slate-400 ml-auto"></i></button><div class="${open?'':'hidden'} px-3 pb-3 space-y-2">${inner}</div></div>`;
+  }).join('') || `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">还没有市场分析报告。</div>`;
+
+  refreshIcons();
 }
 
-function truncate(s, n) {
-  return s.length > n ? s.slice(0, n) + '...' : s;
+/* ===================== RESUME / MARKET / MATCHES — PHASE 2 PLACEHOLDER ===================== */
+async function loadRunsForSelect(){
+  const data = await apiGet('/api/runs');
+  const runs = (data||[]).filter(r=>r.has_matched);
+  $('#rs-run').innerHTML = runs.length ? runs.map(r=>`<option value="${r.id}">${r.id}${r.is_current?'（当前）':''} · ${r.match_count} 个达标</option>`).join('') : '<option>暂无匹配数据</option>';
 }
 
-/* ============================================================
-   Start
-   ============================================================ */
-init();
+function renderMatches(){ $('#match-list').innerHTML = `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl space-y-2"><div class="text-slate-500">匹配结果结构化看板将在 Phase 2 上线</div><div class="text-xs">当前请在工作台对话中使用「看看匹配结果」查看（LLM 会返回排名列表）</div><button onclick="switchView('workspace');$('#chat-input').value='看看匹配结果';sendChat()" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 mt-2">去工作台查看</button></div>`; }
+
+// Resume modes: trigger through chat for now
+function renderResumeModes(){
+  $('#resume-modes').innerHTML = `<div class="col-span-full text-sm text-slate-400 py-8 text-center bg-white border border-slate-200 rounded-xl space-y-2"><div class="text-slate-500">简历生成专用页将在 Phase 2 上线</div><div class="text-xs">当前请在工作台对话中使用自然语言指令生成简历（5 种模式均支持）</div><button onclick="switchView('workspace')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 mt-2">去工作台</button></div>`;
+  $('#resume-panel').innerHTML = '';
+}
+
+function renderMarket(){ /* placeholder — market form visible, submit triggers chat */ }
+function renderResume(){ loadRunsForSelect(); renderResumeModes(); }
+
+// Market: keep the form but trigger via chat
+function runMarket(){
+  if(guardBusy()) return;
+  const cat=$('#mkt-cat').value.trim(); if(!cat) return toast('请填写岗位类别','warn');
+  switchView('workspace');
+  $('#chat-input').value = '分析 '+cat+' 市场行情';
+  sendChat();
+}
+function runMarketBatch(){
+  if(guardBusy()) return;
+  const rows=[...document.querySelectorAll('#batch-rows .batch-row')];
+  const tasks=rows.map(r=>({cat:r.querySelector('.bcat').value.trim(),cls:r.querySelector('.bclass').value.trim()})).filter(t=>t.cat);
+  if(!tasks.length) return toast('请至少添加一个任务','warn');
+  const names = tasks.map(t=>t.cat).join('，');
+  switchView('workspace');
+  $('#chat-input').value = '帮我分析 '+names+' 三个方向的市场行情';
+  sendChat();
+}
+
+/* ===================== YAML MODAL (READ-ONLY FOR PHASE 1) ===================== */
+let MODAL = { which:'me', mode:'friendly' };
+function hlYaml(text){
+  return escapeHtml(text).split('\n').map(line=>{
+    if(/^\s*#/.test(line)) return `<span class="text-slate-500">${line}</span>`;
+    line = line.replace(/^(\s*-?\s*)([A-Za-z0-9_./\-]+)(:)/, (m,a,b,c)=>`${a}<span class="text-cyan-300">${b}</span><span class="text-slate-500">${c}</span>`);
+    return line;
+  }).join('\n');
+}
+function openYamlModal(which){
+  MODAL.which=which; MODAL.mode='friendly';
+  $('#modal-overlay').classList.remove('hidden');
+  $('#modal-title').textContent = which==='me'?'个人画像':'搜索与匹配配置';
+  $('#modal-sub').textContent = which==='me'?'profiles/me.yaml':'profiles/search_config.yaml';
+  $('#modal-icon').innerHTML = `<i data-lucide="${which==='me'?'user-round':'sliders-horizontal'}" class="w-4 h-4 text-indigo-600"></i>`;
+  $('#mm-raw').className = 'px-3 py-1.5 bg-white text-slate-500';
+  $('#mm-friendly').className = 'px-3 py-1.5 bg-indigo-600 text-white';
+  $('#modal-body').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">配置详情请查看 <code class="bg-slate-100 px-1 rounded">profiles/${which==='me'?'me':'search_config'}.yaml</code> 文件。<br>在线编辑功能将在 Phase 3 上线。</div>`;
+  $('#modal-edit').onclick = ()=>{ closeModal(); switchView('settings'); };
+  refreshIcons();
+}
+function setModalMode(m){ MODAL.mode=m; /* raw YAML not available until Phase 3 */ }
+function closeModal(){ $('#modal-overlay').classList.add('hidden'); }
+$('#mm-friendly').addEventListener('click', ()=>setModalMode('friendly'));
+$('#mm-raw').addEventListener('click', ()=>setModalMode('raw'));
+
+/* ===================== SETTINGS VIEW (Phase 3 placeholder) ===================== */
+function renderSettings(){
+  $('#set-profile').innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-6 text-center"><div class="text-sm text-slate-500 mb-2">个人画像在线编辑将在 Phase 3 上线</div><div class="text-xs text-slate-400">当前请手动编辑 <code class="bg-slate-100 px-1 rounded">profiles/me.yaml</code> 文件</div><button onclick="openYamlModal('me')" class="text-xs text-indigo-600 mt-3 flex items-center gap-1 justify-center"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看当前配置</button></div>`;
+  $('#set-config').innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-6 text-center"><div class="text-sm text-slate-500 mb-2">搜索配置在线编辑将在 Phase 3 上线</div><div class="text-xs text-slate-400">当前请手动编辑 <code class="bg-slate-100 px-1 rounded">profiles/search_config.yaml</code> 文件</div><button onclick="openYamlModal('config')" class="text-xs text-indigo-600 mt-3 flex items-center gap-1 justify-center"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看当前配置</button></div>`;
+  refreshIcons();
+}
+
+/* ===================== MARKET PRESETS (static for Phase 1) ===================== */
+function renderMarketPresets(){
+  $('#mkt-cat-chips').innerHTML = `<span class="text-[11px] text-slate-400">手动输入岗位类别（大小写敏感），预设功能将在 Phase 3 上线</span>`;
+  $('#mkt-class-chips').innerHTML = `<span class="text-[11px] text-slate-400">手动输入行业分类（大小写敏感）</span>`;
+  $('#mkt-batch-cats').innerHTML = `<span class="text-[11px] text-slate-400">手动添加任务</span>`;
+  refreshIcons();
+}
+function mktTab(tab){
+  $('#mkt-single').classList.toggle('hidden',tab!=='single');
+  $('#mkt-batch').classList.toggle('hidden',tab!=='batch');
+  $('#mkt-tab-single').className='px-4 py-1.5 '+(tab==='single'?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  $('#mkt-tab-batch').className='px-4 py-1.5 '+(tab==='batch'?'bg-indigo-600 text-white':'bg-white text-slate-500');
+}
+function addBatchRow(){
+  const row=document.createElement('div'); row.className='batch-row flex gap-2';
+  row.innerHTML=`<input placeholder="岗位类别（大小写敏感）" class="bcat flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><input placeholder="行业分类（可选）" class="bclass flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><button onclick="this.closest('.batch-row').remove()" class="text-slate-400 hover:text-red-500 px-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
+  $('#batch-rows').appendChild(row); refreshIcons();
+}
+
+/* ===================== INIT ===================== */
+(async function init(){
+  await initSession();
+  if(STATE.sid){
+    await loadModelConfig();
+    $('#status-text').textContent = 'Agent 空闲';
+  } else {
+    $('#status-text').textContent = '连接失败';
+  }
+  renderSuggests();
+  renderMarketPresets();
+  renderResume();
+  renderSettings();
+  addBatchRow();
+  switchView('workspace');
+  refreshIcons();
+  // Welcome message
+  const t = chatTurn();
+  t.log.remove();
+  t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 fade-in">👋 你好，我是 JobPilot，你的智能求职助手。我可以帮你完成职位搜索、匹配评分、简历生成、市场调研全流程。在下方输入指令或点击「一键找工作」即可开始。</div>`;
+  refreshIcons();
+})();
 </script>
 </body>
 </html>
