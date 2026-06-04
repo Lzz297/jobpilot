@@ -1,7 +1,6 @@
-# JobsDB 智能求职 Agent — 功能规格文档
+# JobsDB 智能求职 Agent — 项目完整介绍
 
-> 面向产品经理和 UI 设计师的项目说明。涵盖完整的后端逻辑、用户交互流程、数据输入输出和 API 契约。
-> 当前 UI 的实现参考见 `UI_CURRENT_REFERENCE.md`（仅供对照改代码使用，不是产品规格）。
+> 一个基于 LLM + 工具调用架构的全自动求职系统，覆盖「职位搜索 → 智能筛选 → 匹配评分 → 简历生成 → 市场调研」完整链路。支持终端 CLI 和 Web UI 两种交互模式。
 
 ---
 
@@ -9,374 +8,357 @@
 
 ### 1.1 项目定位
 
-一个 AI 驱动的香港 JobsDB 求职助手。用户通过自然语言与系统对话、或在界面上触发快捷操作，系统自动完成职位搜索、智能匹配评分、多模式简历生成和独立市场调研。
+本项目是一个 **AI Agent 驱动的自动化求职助手**，面向香港 JobsDB 市场，自动完成以下流程：
 
-### 1.2 用户是谁
+1. **职位搜索** — 从 JobsDB 批量抓取职位信息（Playwright 无头浏览器 + 4 层解析回退）
+2. **基础清洗** — 排除空标题 + 排除指定公司，不经过 LLM 预过滤
+3. **匹配评分** — 从技能、经验、职级、行业、加分项 5 个维度评分（LLM 动态权重 + 及格线复评）
+4. **简历生成** — 5 种模式 × 三语（英/繁中/简中）× 质量自检，每次产出 7 个文件
+5. **市场调研** — 独立模块：指定岗位类别 → 全量抓取 → LLM 分析 11+ 个市场维度 → 差距分析 → 报告生成
 
-一位有 WaaS（Wallet-as-a-Service）支付系统经验的 Web3 后端工程师，目标岗位集中在支付工程师、方案工程师、Web3 后端开发等方向，工作地点在香港。用户画像详见配置：`profiles/me.yaml`。
+### 1.2 技术栈
 
-### 1.3 系统能做什么（功能全景）
+| 组件 | 技术选型 | 说明 |
+|------|----------|------|
+| 编程语言 | Python 3.13 | 主开发语言 |
+| LLM | DeepSeek / Qwen / GLM（可配置切换） | 通过 OpenAI SDK 兼容接口调用，`config.py` 中的 `llm_call()` 为统一入口 |
+| LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 15 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出 |
+| 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
+| HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
+| PDF 渲染 | Playwright/Chromium | Markdown → HTML → PDF，两个独立浏览器实例（爬虫 + 渲染器各一个） |
+| 网络搜索 | DuckDuckGo (ddgs) | 联网搜索 |
+| Web 框架 | Flask + SSE | Web UI 服务器，SSE 实时进度推送 |
+| 前端 | 原生 HTML/CSS/JS（单页应用） | Web UI，通过 SSE 实时推送进度，支持对话模式和快捷操作模式 |
+| 配置管理 | YAML | 用户画像、搜索策略、Prompt、简历模板/指南均为 YAML |
+| 环境管理 | python-dotenv | API Key 通过 `.env` 文件管理 |
 
-| 功能 | 用户怎么触发 | 系统产出 |
-|------|-------------|---------|
-| 找工作（全流程） | 对话「帮我找工作」或快捷按钮 | 搜索到岗位 → 匹配评分排名 → 按方向生成三语简历+CL |
-| 查看匹配结果 | 对话「看看匹配结果」 | 已评分岗位的排名列表（五维分数） |
-| 为特定岗位生成简历 | 对话「为第1个生成简历」 | 针对该岗位的三语简历+CL（7个文件） |
-| 基于方向生成简历 | 对话「生成 SE 方向的简历」 | 面向该方向的三语简历+CL（7个文件） |
-| 基于粘贴 JD 生成简历 | 粘贴 JD + 「根据这个生成简历」 | 针对该 JD 的三语简历+CL（7个文件） |
-| 生成通用简历 | 对话「生成通用简历」 | 基于个人画像的通用三语简历+CL（7个文件） |
-| 单类市场调研 | 对话「分析 Web3 市场行情」 | 搜索该类岗位 → 多维度分析报告+PDF+数据文件（5个文件） |
-| 批量市场调研 | 对话「帮我分析 AI Agent，Web3，Java 三个方向」 | 依次执行多个单类调研 |
-| 查看单个岗位详情 | 对话「查看这个岗位 [URL]」 | 该岗位的完整 JD 信息 |
-| 查看用户档案 | 对话「看看我的档案」 | me.yaml 的内容 |
-| 查看搜索配置 | 对话「看看搜索配置」 | search_config.yaml 的内容 |
-| 联网搜索 | 对话「搜索 xxx」 | DuckDuckGo 搜索结果 |
-| 切换 LLM 模型 | 界面操作或配置修改 | 实时切换 DeepSeek/Qwen/GLM |
+### 1.3 项目结构
+
+```text
+D:\job-agent/
+│
+├── agent.py                  # [入口] Agent 主循环 — 终端对话交互 + 工具调用循环
+├── web_app.py                # [入口] Flask Web UI — SSE 实时推送 + 直接流水线模式
+├── config.py                 # [配置中心] llm_call() 统一入口、LLM Client 管理、YAML 加载、
+│                             #            JSON 解析、文件追踪、emit 双模式输出、Prompt 模板引擎
+├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
+├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
+│
+├── scraper.py                # [爬虫] JobsDB 页面抓取（~1032 行），4 层列表解析 + 3 层详情解析
+├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
+├── job_match.py              # [匹配] LLM 五维评分 + 动态权重 + 及格线复评 + 方向分类
+├── resume_gen.py             # [简历] 5 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
+├── pdf_renderer.py           # [渲染] Markdown → HTML → PDF（独立 Playwright 实例）
+├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
+│
+├── profiles/                 # [配置文件目录]
+│   ├── me.yaml               #     用户个人画像
+│   ├── search_config.yaml    #     搜索策略 + LLM 配置 + 匹配权重 + 市场调研参数
+│   ├── prompts.yaml          #     17 个 LLM prompt 模板
+│   ├── resume_template.yaml  #     简历模板
+│   └── resume_guide.yaml     #     简历撰写指南
+│
+├── static/
+│   └── index.html            #     Web UI 前端（单页应用，~1520 行）
+│
+├── output/                   # [输出目录]
+│   ├── run_{timestamp}/      #     每次"找工作"的输出
+│   │   ├── scan_listings.json
+│   │   ├── rejected_jobs.json
+│   │   ├── filter_stats.json
+│   │   ├── raw_jobs.json
+│   │   ├── matched_jobs.json
+│   │   ├── unmatched_jobs.json
+│   │   ├── job_report.md
+│   │   ├── direction_analysis.json
+│   │   └── resumes/
+│   └── market/               #     市场调研输出
+│
+├── .env                      # API Key
+├── CONFIG_GUIDE.md           # 配置文件详细说明（独立手册）
+├── RESUME_PROMPTS_FOR_REVIEW.md  # 简历 prompt 审查汇总
+└── .venv/                    # Python 虚拟环境
+```
 
 ---
 
-## 二、用户交互模式
+## 二、系统架构
 
-系统支持两种交互模式，共用同一套后端功能。
+### 2.1 整体架构：双入口 + 统一 LLM 调用层
 
-### 2.1 对话模式（Agent 模式）
+```text
+┌──────────────────────────────────────────────────┐
+│                    入口层                          │
+│  ┌──────────────┐          ┌──────────────┐       │
+│  │  agent.py    │          │  web_app.py   │       │
+│  │  (终端 CLI)  │          │  (Flask Web)  │       │
+│  └──────┬───────┘          └──────┬───────┘       │
+│         │                         │                │
+│         │    ┌────────────────────┤                │
+│         │    │  /api/chat         │                │
+│         │    │  (LLM Agent 模式)  │                │
+│         │    │                    │                │
+│         │    │  /api/pipeline     │                │
+│         │    │  (直接流水线模式)   │                │
+│         ▼    ▼                    │                │
+│  ┌─────────────────────────────────────────┐      │
+│  │              config.py                   │      │
+│  │  ┌──────────────────────────────────┐   │      │
+│  │  │  llm_call()  统一 LLM 调用入口    │   │      │
+│  │  │  · 15 处调用点全部收敛到这里      │   │      │
+│  │  │  · 指数退避重试（429/超时/5xx）  │   │      │
+│  │  │  · 错误分类（不可重试直接抛出）   │   │      │
+│  │  │  · 3 Provider 运行时切换         │   │      │
+│  │  └──────────────────────────────────┘   │      │
+│  │  emit() 双模式输出 + JSON 解析 + Prompt  │      │
+│  └────────────────────┬────────────────────┘      │
+│                       │                            │
+│                       ▼                            │
+│  ┌─────────────────────────────────────────┐      │
+│  │            tools_defs.py                 │      │
+│  │  14 个工具的 JSON Schema + 分发 + 去重  │      │
+│  └────────────────────┬────────────────────┘      │
+│                       │                            │
+│     ┌──────────┬──────┼──────┬──────────┐         │
+│     ▼          ▼      ▼      ▼          ▼         │
+│  tools_     job_   job_   resume_   market_       │
+│  basic     search  match   gen     analysis       │
+│     │          │      │      │          │         │
+│     │      scraper.py │  pdf_renderer.py          │
+│     ▼          ▼      ▼      ▼          ▼         │
+│  [控制台/  [output/  [output/  [output/ [output/  │
+│   SSE]     run_*/]  run_*/]  run_*/] market/]     │
+└──────────────────────────────────────────────────┘
+```
 
-用户通过自然语言描述需求。LLM 理解意图后，自动决策何时调用哪个工具、以什么参数调用。用户可以在一个对话中交替使用不同功能。
+**两种运行时模式**：
 
-**执行方式**：`python agent.py`（终端），或 Web UI 对话框。
+| 触发方式 | 入口 | 特点 |
+|---------|------|------|
+| `python agent.py` | 终端 CLI | 交互式对话，LLM 决定工具调用顺序 |
+| `python web_app.py` → Web 按钮 | `/api/pipeline` | 直接调用 search→match→resume 三步函数，不经过 LLM 决策，更快 |
+| `python web_app.py` → Web 对话框 | `/api/chat` | 同 CLI 模式，LLM Agent 决策，通过 SSE 推送进度 |
 
-### 2.2 快捷模式（Pipeline 模式）
+### 2.2 llm_call() — 统一 LLM 调用入口（P0 重构）
 
-用户通过界面按钮一键触发「找工作」全流程。系统按固定顺序执行搜索→匹配→简历生成，不经过 LLM 决策，更快。
+所有模块的 LLM 调用不再直接使用 `client.chat.completions.create()`，而是通过 `config.py` 中的 `llm_call()` 函数：
 
-**执行方式**：Web UI 中触发 `/api/pipeline` 端点，传入 `action="search_match"`。
+```python
+llm_call(messages, *, temperature=None, tools=None, max_retries=2)
+# 返回：message 对象（含 .content 和 .tool_calls 属性）
+```
 
-**对比**：
+**错误处理策略**：
 
-| | Agent 模式 | Pipeline 模式 |
-|---|---|---|
-| 触发方式 | 对话输入 | 快捷按钮 |
-| 执行决策 | LLM 决定调用哪些工具 | 固定调用 search → match → resume |
-| 灵活性 | 高（可单独执行某一步或组合） | 低（固定三步） |
-| 速度 | 较慢（LLM 多轮决策） | 较快（直接调用函数） |
-| 适用场景 | 探索式操作 | 一键出结果 |
+| 错误类型 | 行为 |
+|----------|------|
+| 429 Rate Limit | 指数退避重试（1s / 2s / 上限 30s），最多 2 次 |
+| 超时 (APITimeoutError) | 同上 |
+| 连接中断 (APIConnectionError) | 同上 |
+| 5xx 服务端错误 | 同上 |
+| 401 / 403 认证错误 | 直接抛出，不重试 |
+| 400 请求错误 | 直接抛出，不重试 |
+| 所有重试耗尽 | 抛出最后一个异常，由调用方现有 `except` 块捕获 |
 
-### 2.3 实时反馈机制（SSE）
+**设计要点**：
+- `temperature` 参数为 `None` 时不传给 API（使用默认值 1.0，用于简历生成等创造性任务）
+- `temperature=0` 时显式传递（用于匹配评分、市场分析等确定性任务）
+- `tools` 参数为 `None` 时不传（纯文本分析类调用不需要工具）
+- 所有 15 处调用点已收敛，新增任何 LLM 功能（如 token 统计、缓存、fallback）只需改这一处
 
-无论哪种模式，后端通过 SSE（Server-Sent Events）向界面推送实时进度：
+### 2.3 核心工作流
 
-| 事件类型 | 含义 | 数据字段 |
-|---------|------|---------|
-| `progress` | 后端 `emit()` 输出的日志文本 | `{"type": "progress", "text": "..."}` |
-| `status` | 阶段状态提示 | `{"type": "status", "text": "正在..."}` |
+```text
+用户说「帮我找工作」→ Agent 自动执行三步流水线：
+
+search_jobs()  →  match_jobs()  →  generate_resume(by_direction=True)
+     │                  │                    │
+     ▼                  ▼                    ▼
+三层漏斗抓取      五维匹配评分         方向聚合 + 三语简历 PDF
+(扫描→清洗→JD)  (动态权重+复评)     (英文先行→审查→翻译)
+```
+
+---
+
+## 三、模块详解
+
+### 3.1 config.py — 共享配置中心
+
+**职责**：LLM 调用统一入口、多 Provider 管理、YAML 加载、JSON 解析、文件追踪、emit 双模式输出、Run 目录管理、Prompt 模板引擎。
+
+#### 3.1.1 llm_call() — 统一 LLM 调用入口
+
+见 §2.2。
+
+#### 3.1.2 多 Provider LLM 管理
+
+```python
+_LLM_PRESETS = {
+    "deepseek": {"base_url": "https://api.deepseek.com", "default_model": "deepseek-chat"},
+    "qwen":     {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "default_model": "qwen3.6-plus"},
+    "glm":      {"base_url": "https://open.bigmodel.cn/api/paas/v4", "default_model": "glm-5.1"},
+}
+```
+
+- `switch_model(provider, model)`：运行时切换 LLM，原地修改全局 `client` 的 `base_url` 和 `api_key`（所有模块持有同一引用，立即生效），同时回写 `search_config.yaml`
+- `get_model_info()`：返回当前 provider、model 及所有可选预设列表
+- 启动时从 `search_config.yaml` 的 `llm` 段读取配置，支持自定义 `base_url` 和 `api_key_env`
+
+#### 3.1.3 emit 双模式输出
+
+```python
+def emit(text):
+    if 当前线程绑定了 SSE 队列:
+        推送到 SSE 队列  # Web 模式
+    else:
+        print(text)       # 终端模式
+```
+
+通过 `threading.local()` 实现线程隔离。Web 模式下每个请求线程独立绑定 SSE 队列。
+
+#### 3.1.4 JSON 解析器（多层容错）
+
+```python
+def parse_json_response(text):
+    # 策略 1：去除 ```json ``` 代码块包裹 → json.loads()
+    # 策略 2：find("[") / rfind("]") 截取 JSON 数组
+    # 策略 3：find("{") / rfind("}") 截取 JSON 对象
+```
+
+注意：此函数仅校验 JSON 语法，不校验字段语义和类型。未来计划引入 Instructor（Pydantic schema 校验 + 自动重试修正），参见 [GitHub Issue #1](https://github.com/Lzz297/jobsdb-agent/issues/1)。
+
+#### 3.1.5 Prompt 模板引擎
+
+```python
+load_prompts()           # 加载 prompts.yaml（有缓存）
+render_prompt(tpl, **kw)  # 替换 <key> 占位符（尖括号避免与 JSON {} 冲突）
+get_system_prompt()      # 获取 Agent 系统提示词，优先 YAML，缺失回退硬编码
+```
+
+所有模块通过 `render_prompt()` 将 `<key>` 占位符替换为实际值。如果 `prompts.yaml` 中未配置某个 prompt，各调用点回退到 Python 硬编码默认值。
+
+#### 3.1.6 Run 目录管理
+
+```python
+start_new_run()       # 创建 output/run_{YYYYmmdd_HHMMSS}/ 目录
+get_current_run_dir() # 获取当前活跃的 run 目录
+get_latest_run_dir()  # 查找最近一次 run（按文件名排序）
+```
+
+每次搜索创建一个新的 run 目录，后续匹配和简历输出都写入同一目录。
+
+#### 3.1.7 文件追踪系统
+
+```python
+track_file(filepath, description)  # 记录生成的文件
+get_session_files()                # 获取并清空本轮文件列表
+```
+
+每轮对话后汇总生成的文件列表（路径 + 大小），在终端打印或在 Web UI 中展示。
+
+---
+
+### 3.2 agent.py — Agent 主入口（终端模式）
+
+**职责**：对话循环 + 工具调用编排。
+
+**核心流程**：
+1. 初始化 `messages`（含系统 prompt）
+2. `while True:` 用户输入 → 追加到 messages → 调用 `llm_call(messages, tools=tools)`
+3. 如果返回 `tool_calls`，进入工具调用循环：
+   - `deduplicate_tool_calls()` 去重（`{name}:{arguments}` 为 key）
+   - 逐个 `execute_tool()` 执行 → 结果追加为 `{"role": "tool", ...}`
+   - 跳过重复调用的占位 tool result 追加 → 防止 LLM 报错
+   - 再次调用 `llm_call(messages, tools=tools)` 获取最终回复
+4. 打印回复 → `print_session_summary()` 打印本轮生成的文件总览
+5. 输入 `quit` 退出，调用 `cleanup_playwright()` + `cleanup_renderer()`
+
+---
+
+### 3.3 tools_defs.py — 工具注册与执行引擎
+
+**职责**：定义所有工具的 JSON Schema（OpenAI Function Calling 格式）+ 执行分发 + 去重。
+
+#### 3.3.1 注册的 14 个工具
+
+| 工具名 | 来源模块 | 必填参数 | 可选参数 | 功能 |
+|--------|----------|----------|----------|------|
+| `get_current_time` | tools_basic | 无 | — | 获取当前日期时间（中文格式 `2026年06月04日 14:30:00 星期四`） |
+| `write_file` | tools_basic | `filename`, `content` | — | 写入文件到 `output/` 目录 |
+| `read_file` | tools_basic | `filename` | — | 读取 `output/` 中的文件 |
+| `list_files` | tools_basic | 无 | — | 列出当前 run + market 目录中的所有文件 |
+| `web_search` | tools_basic | `query` | `max_results`（默认 5） | DuckDuckGo 联网搜索 |
+| `load_user_profile` | tools_basic | 无 | — | 查看 `profiles/me.yaml` 内容（JSON 格式化） |
+| `load_search_config` | tools_basic | 无 | — | 查看 `profiles/search_config.yaml` 内容（JSON 格式化） |
+| `search_jobs` | job_search | 无 | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
+| `match_jobs` | job_match | 无 | — | 五维动态权重匹配评分 + 及格线复评 |
+| `generate_resume` | resume_gen | 无（5 种模式，`by_direction` / `job_index` / `jd_text` / `role_direction` / 无参数） | 见 §3.9 | 多模式三语简历 + Cover Letter 生成 |
+| `list_matched_jobs` | job_match | 无 | — | 查看最近一次匹配排名结果（含五维分数 + 复评信息） |
+| `fetch_job_detail` | tools_basic | `url` | — | 抓取单个岗位 URL 的完整 JD |
+| `analyze_market` | market_analysis | `job_category` | `location`（默认 `"Hong Kong"`）、`include_gap_analysis`（默认 `true`）、`classification`、`sort_by` | 单类市场调研（四阶段） |
+| `batch_analyze_market` | market_analysis | `tasks`（数组，每项含 `category` + 可选 `classification`） | `location`、`include_gap_analysis`、`sort_by` | 批量市场调研（依次执行） |
+
+> **大小写敏感**：`analyze_market` 和 `batch_analyze_market` 的 `job_category` / `category` 参数**严格保留用户输入的原始大小写**，代码不会做任何修改。`classification` 参数同理。例如用户说「分析 Web3 市场行情」→ `job_category="Web3"`（不是 `"web3"`）。
+
+#### 3.3.2 执行分发
+
+```python
+def execute_tool(tool_call):
+    func_name = tool_call.function.name
+    args = json.loads(tool_call.function.arguments) or {}
+    func = tool_map[func_name]
+    return func(**args) if args else func()
+```
+
+无参数校验层——LLM 传的参数直接透传给工具函数。工具函数内部各自做错误处理。
+
+#### 3.3.3 去重机制
+
+`deduplicate_tool_calls()` 以 `{function.name}:{function.arguments}` 为 key 去重。被跳过的重复调用会追加一个占位 tool result（内容为 `"（重复调用已跳过）"`），否则 LLM 会因为缺少 tool result 而报错。
+
+
+### 3.4 web_app.py — Web UI 服务器
+
+**职责**：Flask Web 服务器 + SSE 流式事件推送 + Session 管理 + 直接流水线执行。
+
+#### 3.4.1 架构要点
+
+- **Session 管理**：`POST /api/session` 分配 `sid`（8 位 UUID），独立维护 `messages` 历史 + `queue.Queue()` SSE 推送队列
+- **全局 Agent 锁** (`_agent_lock`)：`threading.Lock()`，Playwright 不支持并发，同一时间只允许一个 Agent 执行。新请求在锁被占用时返回 429
+- **队列清理**：每次新请求前清空旧的 SSE 队列事件，防止残留数据干扰
+- **两种执行路径**：
+  - `/api/chat` → `_run_agent_turn()`：LLM Agent 模式（同 CLI 逻辑）
+  - `/api/pipeline` → `_run_pipeline()`：直接执行 `search_jobs → match_jobs → generate_resume(by_direction=True)` 三步流水线
+
+#### 3.4.2 SSE 事件类型
+
+| type | 含义 | payload |
+|------|------|---------|
+| `progress` | `emit()` 输出的进度文本 | `{"type": "progress", "text": "..."}` |
+| `status` | 状态提示 | `{"type": "status", "text": "Agent 正在工作..."}` |
 | `tool_call` | 正在调用的工具 | `{"type": "tool_call", "tool": "search_jobs", "args": "{}"}` |
-| `done` | 执行完成 | `{"type": "done", "reply": "...", "files": [["文件路径", "描述"], ...]}` |
+| `done` | 执行完成 | `{"type": "done", "reply": "...", "files": [["path", "desc"], ...]}` |
 | `error` | 执行出错 | `{"type": "error", "text": "..."}` |
 | `ping` | 30 秒心跳 | `{"type": "ping"}` |
 
-> **UI 设计注意**：以上事件类型是前端必需处理的 SSE 协议。`done` 事件中的 `reply` 字段是 LLM 生成的 Markdown 文本（应支持格式化渲染），`files` 数组是本次执行生成的所有文件列表。
+#### 3.4.3 完整 API 参考
+
+##### `GET /`
+返回 `static/index.html` 前端页面。
+
+##### `POST /api/session`
+创建新会话。
+
+**Request**: `{}`（空 body 或无 body）
+
+**Response**: `{"sid": "a1b2c3d4"}`
 
 ---
 
-## 三、功能详细说明
+##### `POST /api/chat`
+LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 
-### 3.1 找工作（三步全流程）
-
-用户说「帮我找工作」或点击快捷按钮后，系统按固定顺序执行三步：
-
-#### 第一步：职位搜索
-
-**触发条件**：无需前置条件。
-
-**用户输入（可见行为）**：无需手动输入参数。系统从配置文件 `search_config.yaml` 读取搜索关键词组、翻页数、结果上限等。
-
-**系统行为（底层逻辑）**：
-
-1. 从配置读取多组搜索关键词（每组含：`keywords`、`location`、`classification` 行业分类标签、`direction` 方向标记）
-2. 每组关键词在 JobsDB 搜索列表页翻页抓取（跨关键词自动按 job_id 去重）
-3. 基础清洗：排除标题为空的岗位、排除用户指定的公司名单（`exclude_companies` 配置）
-4. 全量抓取每个岗位的完整 JD（上限由 `max_total_results` 控制，默认 200）
-5. 如果详情页抓取失败，用列表页摘要兜底（标记 `source: "snippet"`）
-
-> **设计决策**：不做 LLM 预过滤——宁可多抓取，也不能基于不完整的标题+摘要误杀真正匹配的岗位。所有 JD 都完整保留，交给后续匹配评分做精确判断。
-
-**输出文件**：
-
-| 文件名 | 内容 | UI 可如何使用 |
-|--------|------|--------------|
-| `raw_jobs.json` | 全量完整 JD 数组（每个含 title/company/location/salary/description/url/jd_length/source/index） | 展示岗位列表 |
-| `scan_listings.json` | 第一层扫描的全量列表（过滤前，含 snippet 摘要） | 调试用 |
-| `rejected_jobs.json` | 被基础清洗排除的岗位 + 排除原因 | 调试用 |
-| `filter_stats.json` | 各层过滤数量统计（scan_total/basic_rejected/filter_passed/jd_fetched/full_jd_count/snippet_count） | 展示搜索统计 |
-
----
-
-#### 第二步：匹配评分
-
-**前置条件**：必须先执行第一步，有 `raw_jobs.json` 文件。
-
-**用户输入**：无需手动输入参数。
-
-**系统行为（底层逻辑）**：
-
-1. 从 `raw_jobs.json` 读取所有岗位，从 `me.yaml` 读取用户画像
-2. 将所有岗位分批评分（每批 5 个），发给 LLM 从 5 个维度打分（0-100）：
-
-| 维度 | 含义 | 权重可配置 |
-|------|------|-----------|
-| 技能匹配 | JD 要求的技术栈候选人的掌握程度 | ✅ |
-| 经验匹配 | 工作年限和行业经验的对口程度 | ✅ |
-| 职级匹配 | 岗位级别与候选人水平的匹配度 | ✅ |
-| 行业匹配 | 所在行业与候选人背景的吻合度 | ✅ |
-| 加分项 | 语言能力、认证、地点便利性等 | ✅ |
-
-3. LLM 同时判断岗位方向（payment/solutions/web3/technical/default），基于完整 JD 内容（非标题）
-4. 如果 LLM 返回的方向值无效，回退到标题关键词匹配
-5. 系统根据方向自动选择对应的权重方案，用该权重重新计算总分
-
-**5 种动态权重方案**：
-
-| 方向 | 技能 | 经验 | 职级 | 行业 | 加分 | 适用于 |
-|------|------|------|------|------|------|--------|
-| default | 30% | 25% | 15% | 15% | 15% | 无法分类的通用岗位 |
-| technical | 35% | 20% | 15% | 15% | 15% | 纯技术开发岗 |
-| solutions | 25% | 20% | 15% | 20% | 20% | 方案/集成工程师 |
-| web3 | 25% | 15% | 10% | 30% | 20% | Web3/区块链岗位 |
-| payment | 25% | 20% | 10% | 25% | 20% | 支付/结算岗位 |
-
-**及格线复评**（可配置开关）：对得分处于"及格线附近"（`min_match_score ± borderline_range`，默认 45±8=37~53 分）的岗位，用其方向对应的权重做第二次独立评分。两轮取平均，计算波动：
-
-- 波动 ≤10 → 标注"已复评（可信）"
-- 波动 >10 → 标注"评分波动大（需人工判断）"
-
-**推荐等级划分**（基于总分）：
-
-| 分数 | 等级 | 建议的颜色标记 |
-|------|------|--------------|
-| ≥ 80 | 强烈推荐 | 绿色 |
-| ≥ 60 | 可考虑 | 黄色 |
-| < 60 | 不推荐 | 红色 |
-
-**输出文件**：
-
-| 文件名 | 内容 | UI 可如何使用 |
-|--------|------|--------------|
-| `matched_jobs.json` | 达标岗位（≥min_match_score）的完整评分数据：五维分项、总分、方向、权重方案、置信度、skill_match（✅❌⚠️）、missing_skills、推荐理由 | 排名列表、详情卡片、筛选和排序 |
-| `unmatched_jobs.json` | 未达标岗位的评分数据 | 可选展示 |
-| `job_report.md` | Markdown 格式的排名报告：权重方案表 + 每个达标岗位的详情 | 对话中展示或单独页面渲染 |
-
-**每个达标岗位包含的字段**：
-
-- `title` / `company` / `url` — 岗位基本信息
-- `total_score` — 加权总分
-- `scores` — 五维分项（skill/experience/level/industry/bonus）
-- `llm_direction` — LLM 判断的岗位方向
-- `weight_profile` — 使用的权重方案名
-- `confidence` — 评分置信度（high/verified/uncertain）
-- `score_rounds` — 复评各轮分数（单轮时为单元素数组）
-- `score_variance` — 复评分数波动
-- `skill_match` — 技能匹配详情（如 `["Python ✅", "Go ❌", "AWS ✅"]`）
-- `missing_skills` — 缺失的关键技能列表
-- `reason` — LLM 的匹配分析说明
-- `recommendation` — 推荐等级（强烈推荐/推荐/考虑/不推荐）
-
----
-
-#### 第三步：简历生成
-
-**前置条件**：需要先执行匹配评分（有 `matched_jobs.json`），取决于使用哪种简历生成模式。
-
-**用户输入（5 种模式）**：
-
-| 模式 | 用户怎么触发 | 需要的前置数据 | 适用场景 |
-|------|-------------|---------------|---------|
-| 方向聚合 | 对话「帮我找工作」后自动执行，或「按方向生成简历」 | matched_jobs.json（至少一个方向有 ≥2 个达标岗位） | 批量投递，按方向聚合 JD 共性生成 |
-| 匹配岗位 | 对话「为第N个生成简历」 | matched_jobs.json + 指定第 N 个（1-based） | 对某个高分岗位单独定制 |
-| JD 文本 | 粘贴一段 JD 文本 +「根据这个生成简历」 | 用户粘贴的 JD 文本 | 在其他平台看到的岗位 |
-| 岗位方向 | 对话「生成 SE 方向的简历」 | 只有方向名称 | 没有具体 JD，只有投递方向 |
-| 通用简历 | 对话「生成通用简历」 | 无（只需 me.yaml 个人画像） | 投递通用平台 |
-
-**方向聚合模式**（最核心的模式）的底层逻辑：
-
-1. 读取 `matched_jobs.json`，按 `llm_direction`（payment/solutions/web3/technical）分组
-2. **跳过 `default` 方向的岗位**——这些岗位无法归类，JD 共性不足，聚合无意义
-3. **每个方向至少需要 2 个达标岗位**，不足则跳过该方向
-4. 每个方向取前 15 个岗位的 JD，发给 LLM 做聚合分析——提取共性需求并做三级技能分类：
-
-| 分类 | 含义 | 在简历中的处理 |
-|------|------|--------------|
-| direct_match | 候选人具备的技能 | 简历重点展示，标熟练度 |
-| quick_learnable | 候选人不直接具备但属于通用技术栈、有相近基础 | Skills 区列出但不标精通，Cover Letter 中表态 |
-| hard_gap | 高门槛或完全不相关的技能 | 简历中不提及 |
-
-5. 保存聚合分析结果到 `direction_analysis.json`
-6. 对每个方向，生成一套完整的三语简历 + Cover Letter
-
-**所有模式的共同生成流程**：
-
-```
-1. 英文简历生成（主版本）
-2. 审查评分（A/B/C/D 评级）
-   ├── A/B → 英文简历定稿
-   └── C/D → 审查反馈注入 → 自动重写一次 → 定稿
-3. 英文 Cover Letter 生成
-4. 精确翻译为 繁體中文（hk）
-5. 精确翻译为 简体中文（cn）
-```
-
-翻译规则：结构完全一致、技术术语保留英文、公司名称保留英文、数字和量化指标不变。
-
-**审查维度**：6 秒可读性测试、关键词覆盖、业务/技术平衡、量化程度、弱点暴露风险、ATS 友好度。
-
-**每次生成的文件（7 个）**：
-
-| 文件 | 格式 | 用途 |
-|------|------|------|
-| `resume_{label}_{date}_en.pdf` | PDF | 英文简历（主版本，用于投递） |
-| `resume_{label}_{date}_hk.pdf` | PDF | 繁體中文简历 |
-| `resume_{label}_{date}_cn.pdf` | PDF | 简体中文简历 |
-| `cover_letter_{label}_{date}_en.pdf` | PDF | 英文 Cover Letter |
-| `cover_letter_{label}_{date}_hk.pdf` | PDF | 繁體中文 Cover Letter |
-| `cover_letter_{label}_{date}_cn.pdf` | PDF | 简体中文 Cover Letter |
-| `resume_review_{label}_{date}.json` | JSON | 审查报告 |
-
-> `{label}`：安全的文件标签（取前 30 字符，特殊字符转 `_`）
-> `{date}`：`YYYYMMDD` 格式
-
-**方向聚合模式额外文件**：
-
-| 文件 | 格式 | 内容 |
-|------|------|------|
-| `direction_analysis.json` | JSON | 每个方向的聚合分析结果：direct_match、quick_learnable、hard_gap 三级分类、典型岗位职责、常见加分项、简历策略建议 |
-
----
-
-### 3.2 市场调研
-
-独立于"找工作"流程。用户可以随时用任一岗位类别关键词发起市场调研。
-
-**用户输入**：
-
-| 参数 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `job_category` | 字符串 | ✅ 是 | — | 岗位类别关键词，**大小写敏感**（用户输入原样传给搜索） |
-| `location` | 字符串 | 否 | `"Hong Kong"` | 搜索地点 |
-| `include_gap_analysis` | 布尔 | 否 | `true` | 是否包含个人差距分析 |
-| `classification` | 字符串 | 否 | `""` | JobsDB 行业分类标签，**大小写敏感**。如 `"information-communication-technology"`、`"banking-financial-services"`。留空则搜索全行业 |
-| `sort_by` | 字符串 | 否 | 从配置读取 | `"date"`（按发布时间，最新在前）或 `"relevance"`（按相关度） |
-
-**系统行为（底层逻辑）**：
-
-系统分四个阶段执行：
-
-1. **数据采集**：在 JobsDB 搜索指定的岗位类别（翻 `max_pages` 页），全量抓取每个岗位的完整 JD（上限 `max_fetch_jd`，默认 100）。详情页抓取失败的岗位用列表页摘要兜底。
-
-2. **LLM 市场分析**：将所有 JD 分批发给 LLM（每批 `batch_size` 条，默认 5），LLM 从以下维度提取和统计：
-
-| 维度 | 内容 | 示例 |
-|------|------|------|
-| technical_skills | 技术技能排名（具体名称、分类、常用工具、说明、出现次数和占比、必须/优先/加分级别） | `"Ethers.js Web3 Library" 15次(60%)` |
-| soft_skills | 软技能/业务能力（名称、说明、出现次数和占比） | `"跨团队沟通" 12次(48%)` |
-| salary_overview | 薪资概况（按 Junior/Mid/Senior 级别分类，含范围和各级别岗位数） | Junior: HK$20-35K (8个岗位) |
-| experience_distribution | 经验要求分布（各经验区间的岗位数和占比） | 3-5年: 15个(60%) |
-| common_responsibilities | 最常见的岗位职责（完整句子描述） | `"设计和维护 RESTful API..."` |
-| industry_distribution | 行业分布（各行业岗位数） | ICT: 18个, 金融: 5个 |
-| key_trends | 关键趋势观察（具体趋势说明、重要性、对求职者的影响） | `"零知识证明需求上升..."` |
-| language_requirements | 语言要求（英语/中文，按流利/良好/基础级别统计岗位数） | 英语流利: 20个(80%) |
-| education_requirements | 学历要求分布 | 本科: 22个(88%) |
-| company_profile | 公司画像（规模分布 + 知名雇主列表 Top 10） | 中小企业: 15个 |
-| interview_hints | 面试线索（技术面/行为面/BQ 等类型统计） | 技术面: 18个(72%) |
-
-3. **差距分析**（可选，`include_gap_analysis=true` 时执行）：LLM 对比市场技能需求和用户画像，输出：
-   - **strengths**：候选人具备且市场需求高的优势技能（说明为什么是优势、在哪些项目中使用、比一般求职者强在哪里）
-   - **gaps**：市场需求高但候选人缺失/薄弱的技能（含具体的可执行学习路径——每一步列明学什么、怎么学、做什么练习、预计多久）
-   - **low_value_skills**：候选人掌握但市场需求低的技能（建议是继续深入还是转化为其他方向优势）
-   - **strategic_advice**：综合策略建议（优先补什么、后补什么、为什么是这个顺序）
-
-4. **报告撰写**：LLM 将上述结构化数据撰成专业 Markdown 报告 → 渲染为 PDF。若 LLM 报告生成失败，自动回退到 JSON dump 格式（确保分析数据不丢失）。
-
-**输出文件（每次调研生成 5 个文件）**：
-
-| 文件 | 格式 | 内容 |
-|------|------|------|
-| `market_{category}_{date}.md` | Markdown | LLM 撰写的完整市场分析报告（所有上述维度 + 差距分析） |
-| `market_{category}_{date}.pdf` | PDF | 同上（专业排版，含表格样式） |
-| `market_{category}_{date}.json` | JSON | 结构化分析数据（analysis + gap_analysis），供二次分析或前端可视化 |
-| `market_{category}_{date}_scan.json` | JSON | 全量扫描列表（过滤前），供数据验证 |
-| `market_{category}_{date}_jds.json` | JSON | 抓取的完整 JD 原文，供深入分析 |
-
-> `{category}`：岗位类别（空格和 `/` 转 `_`，截断至 30 字符）
-> `{date}`：`YYYYMMDD_HHMMSS` 格式
-
-**批量市场调研**：用户可以一次性提交多个岗位类别（每个可带独立的 `classification`），系统依次执行上述四阶段流程，最后汇总所有结果。
-
----
-
-### 3.3 辅助功能
-
-#### 3.3.1 查看匹配结果
-
-用户说「看看匹配结果」→ 系统返回最近一次匹配的前 8 名岗位摘要（含总分、五维分、复评状态、技能匹配详情）。如果有超过 8 个达标岗位，提示用户查看完整的 `job_report.md` 文件。
-
-#### 3.3.2 查看用户档案/搜索配置
-
-用户说「看看我的档案」或「看看搜索配置」→ 系统返回对应 YAML 配置文件的内容（以 JSON 格式化，对 LLM 更友好）。
-
-#### 3.3.3 单岗位抓取
-
-用户提供一个 JobsDB 岗位 URL → 系统抓取该岗位的完整 JD（标题、公司、地点、薪资、JD 文本长度、完整描述）。
-
-#### 3.3.4 联网搜索
-
-用户说「搜索 xxx」→ 系统通过 DuckDuckGo 搜索，返回格式化结果（标题+摘要+链接），默认 5 条。
-
-#### 3.3.5 LLM 模型切换
-
-用户可在 DeepSeek、Qwen（千问）、GLM（智谱）之间实时切换。切换立即生效，无需重启。每个 provider 有预设的 API 端点和默认模型：
-
-| Provider | 当前默认模型 |
-|----------|------------|
-| deepseek | deepseek-chat |
-| qwen | qwen3.6-plus |
-| glm | glm-5.1 |
-
-切换行为是全局的——当前会话中后续所有 LLM 调用都使用新模型。
-
-#### 3.3.6 文件管理
-
-系统每次执行任务都会生成一系列输出文件。文件按**运行（Run）**分组：
-
-- **找工作流程**：每次搜索创建一个以时间戳命名的 run 目录（如 `run_20260604_143000/`），该次搜索及后续的匹配评分、简历生成的所有文件都存入该目录
-- **市场调研**：所有输出存入 `output/market/` 共享目录
-
-用户需要能够：
-- 查看所有历史 run 列表（含时间、当前阶段、岗位数量、匹配数量）
-- 浏览每个 run 下的所有文件（含子目录递归）
-- 浏览市场调研文件
-- 下载任意文件
-- 区分当前活跃的 run 和已完成的 run
-
----
-
-## 四、API 接口规范
-
-> 以下接口是后端提供给前端的契约。前端必须通过以下接口与系统交互。每个接口的请求格式和响应格式是固定的。
-
-### 4.1 POST /api/session — 创建会话
-
-每个浏览器会话需要先创建 sid，后续所有请求携带 sid。
-
-**Request**：`{}`（空 body）
-
-**Response**：`{"sid": "a1b2c3d4"}`
-
-`sid` 为 8 位十六进制字符串。
-
----
-
-### 4.2 POST /api/chat — LLM Agent 对话
-
-**Request**：
+**Request**:
 ```json
 {
   "sid": "a1b2c3d4",
@@ -384,22 +366,16 @@
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `sid` | string | ✅ | 会话 ID |
-| `message` | string | ✅ | 用户的自然语言输入 |
+**Response** (立即): `{"status": "started"}`
 
-**Response**（立即返回）：`{"status": "started"}`
-
-**SSE 事件流**（通过 `/stream/{sid}` 获取）：实时推送 `progress` / `status` / `tool_call` / `done` / `error` / `ping` 事件。
-
-**并发控制**：同一时间只允许一个 Agent 执行。如果已有任务在运行，新请求返回 HTTP 429。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 `progress` / `tool_call` / `done` / `error` 事件。
 
 ---
 
-### 4.3 POST /api/pipeline — 快捷流水线
+##### `POST /api/pipeline`
+直接执行 search→match→resume 三步流水线（不经过 LLM 决策，更快）。
 
-**Request**：
+**Request**:
 ```json
 {
   "sid": "a1b2c3d4",
@@ -408,39 +384,35 @@
 }
 ```
 
-| 字段 | 类型 | 必填 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `sid` | string | ✅ | — | 会话 ID |
-| `action` | string | ✅ | — | 当前仅支持 `"search_match"` |
-| `sort_by` | string | 否 | 从配置文件读取 | `"date"`（按发布时间）/ `"relevance"`（按相关度） |
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `sid` | 是 | 会话 ID |
+| `action` | 是 | 固定 `"search_match"` |
+| `sort_by` | 否 | `"date"`（按发布时间）或 `"relevance"`（按相关度）。不传从配置读取 |
 
-**Response**（立即返回）：`{"status": "started"}`
+**Response** (立即): `{"status": "started"}`
 
-**SSE 事件流**：同 `/api/chat`，但 `status` 事件会依次显示 "Starting job search..." → "Starting match analysis..." → "Generating direction-based resumes..."。
-
-**并发控制**：同 `/api/chat`。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / done / error。
 
 ---
 
-### 4.4 GET /stream/{sid} — SSE 事件流
+##### `GET /stream/<sid>`
+SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发送 ping 心跳。当 session 不再 busy 且队列空时自动断开。
 
-浏览器通过 `EventSource` 连接此端点获取实时推送。
-
-**Response**：`Content-Type: text/event-stream`，每条事件格式为 `data: {JSON}\n\n`。
-
-**自动断连**：当 session 不再 busy 且事件队列为空时，流自动关闭。
+**Response**: `text/event-stream`，数据格式为 `data: {json}\n\n`。
 
 ---
 
-### 4.5 GET /api/runs — 获取运行历史
+##### `GET /api/runs`
+列出所有 run 目录及元数据。
 
-**Response**：
+**Response**:
 ```json
 [
   {
-    "id": "run_20260604_143000",
-    "path": "run_20260604_143000",
-    "time": "2026-06-04 14:30",
+    "id": "run_20260417_221145",
+    "path": "run_20260417_221145",
+    "time": "2026-04-17 22:11",
     "stage": "matched",
     "has_raw": true,
     "has_matched": true,
@@ -452,72 +424,42 @@
 ]
 ```
 
-| 字段 | 类型 | 含义 |
-|------|------|------|
-| `id` | string | Run 目录名 |
-| `time` | string | 创建时间（格式化为可读字符串） |
-| `stage` | string | `"empty"` / `"searched"`（有岗位） / `"matched"`（有匹配结果） |
-| `has_raw` | bool | 是否有搜索数据 |
-| `has_matched` | bool | 是否有匹配结果 |
-| `has_resumes` | bool | 是否有生成的简历 |
-| `job_count` | int | 搜索到的岗位总数（0 如果无数据） |
-| `match_count` | int | 达标岗位数量（0 如果无数据） |
-| `is_current` | bool | 是否为当前活跃 run |
+| 字段 | 含义 |
+|------|------|
+| `stage` | `"empty"`（空目录）/ `"searched"`（有 raw_jobs）/ `"matched"`（有 matched） |
+| `is_current` | 是否为当前活跃 run |
 
 ---
 
-### 4.6 GET /api/runs/{run_id}/files — 查看 Run 文件
+##### `GET /api/runs/<run_id>/files`
+查看指定 run 的文件列表（递归遍历所有子目录，含 resumes/）。
 
-**Response**：
-```json
-[
-  {
-    "name": "raw_jobs.json",
-    "path": "run_20260604_143000/raw_jobs.json",
-    "size": 12345,
-    "mtime": 1717500000.0
-  }
-]
-```
-
-递归遍历 run 目录下所有文件（含 `resumes/` 子目录），按修改时间倒序排列。
-
-`run_id` 不以 `run_` 开头或目录不存在时返回 404。
+**Response**: `[{"name": "raw_jobs.json", "path": "run_xxx/raw_jobs.json", "size": 12345, "mtime": 1234567890.0}, ...]`
 
 ---
 
-### 4.7 GET /api/files — 浏览所有输出文件
+##### `GET /api/files`
+列出整个 `output/` 目录下所有文件（递归）。
 
-递归遍历整个 `output/` 目录。返回格式同上。
+##### `GET /api/market/files`
+列出 `output/market/` 下所有文件（不递归）。
 
----
+##### `GET /api/config/model`
+获取当前 LLM 配置。
 
-### 4.8 GET /api/market/files — 浏览市场调研文件
-
-列出 `output/market/` 下所有文件（不递归子目录）。返回格式同上。
-
----
-
-### 4.9 GET /api/config/model — 获取 LLM 配置
-
-**Response**：
+**Response**:
 ```json
 {
   "current_provider": "glm",
   "current_model": "glm-5.1",
-  "presets": {
-    "deepseek": "deepseek-chat",
-    "qwen": "qwen3.6-plus",
-    "glm": "glm-5.1"
-  }
+  "presets": {"deepseek": "deepseek-chat", "qwen": "qwen3.6-plus", "glm": "glm-5.1"}
 }
 ```
 
----
+##### `POST /api/config/model`
+运行时切换 LLM provider/model。
 
-### 4.10 POST /api/config/model — 切换 LLM 模型
-
-**Request**：
+**Request**:
 ```json
 {
   "provider": "qwen",
@@ -525,112 +467,678 @@
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `provider` | string | ✅ | `"deepseek"` / `"qwen"` / `"glm"` |
-| `model` | string | 否 | 不传则使用该 provider 的默认模型 |
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `provider` | 是 | `"deepseek"` / `"qwen"` / `"glm"` |
+| `model` | 否 | 不传则使用该 provider 的默认模型 |
 
-**Response**（成功）：`{"provider": "qwen", "model": "qwen3.6-plus"}`
-**Response**（失败）：`{"error": "环境变量 DASHSCOPE_API_KEY 未设置"}`（HTTP 400）
+切换立即生效（原地修改全局 client 属性），同时回写 `search_config.yaml`。
 
-切换立即生效，同时持久化到配置文件。
-
----
-
-### 4.11 GET /download/{path} — 文件下载
-
-下载 `output/` 目录下的文件。`path` 参数为相对路径（如 `run_20260604_143000/resumes/resume_web3_20260604_en.pdf`）。
+##### `GET /download/<path>`
+文件下载。路径相对于 `output/` 目录。如 `/download/run_xxx/resumes/resume_web3_20260417_en.pdf`。
 
 ---
 
-## 五、配置项说明
+### 3.5 Web UI — 功能能力
 
-用户可通过配置文件调整系统行为（无需修改代码）。所有配置文件位于 `profiles/` 目录。
+Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能力包括：
 
-### 5.1 profiles/me.yaml — 用户画像
+- **自然语言对话**：用户输入文本指令，LLM 解析意图后调用对应工具，执行结果实时反馈
+- **快捷操作**：用户无需输入文本即可触发「找工作」完整流程（系统自动按固定顺序执行搜索→匹配→简历生成）
+- **实时进度反馈**：通过 SSE（Server-Sent Events）协议向界面推送执行进度，包括当前操作日志、工具调用状态、阶段完成通知和错误信息
+- **多 Provider 切换**：用户可在 DeepSeek / Qwen / GLM 之间实时切换 LLM，切换立即生效
+- **排序切换**：用户可切换搜索排序方式（按发布时间最新在前 / 按相关度），影响 `search_jobs` 和 `analyze_market` 的行为
+- **简历生成**：支持 5 种模式的简历生成触发方式（含基于粘贴 JD、基于岗位方向、基于通用画像等）
+- **市场调研**：用户可输入岗位类别参数直接触发市场调研
+- **文件管理**：浏览所有历史 Run 和市场调研的输出文件，支持文件下载
+- **运行历史**：查看历史 Run 列表（含时间、当前阶段、岗位数量），区分活跃 Run 和已完成 Run
 
-| 配置项 | 类型 | 说明 |
-|--------|------|------|
-| 基本信息 | — | 姓名、联系方式、所在地 |
-| 战略定位 | — | 核心画像描述、方向优先级、关键约束（英语水平、算法能力、经验年限） |
-| 求职意向 | — | 目标岗位列表（优先级排序）、目标行业、薪资期望、到岗时间 |
-| 专业技能 | 分组列表 | 数据库/API/编程语言/框架/区块链/DevOps/AI 工具/语言能力等 |
-| 工作经历 | 数组 | 公司/职位/时间/描述/技术栈/亮点/核心业务模块详情 |
-| 教育背景/证书 | — | 学历、证书列表 |
-
-此文件的准确性直接影响匹配评分和简历生成的质量。
-
-### 5.2 profiles/search_config.yaml — 核心配置
-
-| 配置项 | 类型 | 默认值 | 说明 |
-|--------|------|--------|------|
-| `llm.provider` | string | `"glm"` | LLM 提供商 |
-| `llm.model` | string | `"glm-5.1"` | 模型名称 |
-| `sort_mode` | string | `"date"` | 全局排序方式 |
-| `search_queries` | 数组 | — | 搜索关键词组（每项含 keywords/location/classification/direction/sort_by） |
-| `filters.exclude_companies` | 字符串数组 | `[]` | 排除的公司名（大小写不敏感） |
-| `max_pages_per_query` | int | `3` | 每组关键词翻几页 |
-| `max_total_results` | int | `200` | 最终抓取 JD 上限 |
-| `matching.min_match_score` | int | `45` | 最低达标分数 |
-| `matching.top_n` | int | `999` | 保留前 N 名 |
-| `matching.borderline_rescore` | bool | `true` | 及格线复评开关 |
-| `matching.borderline_range` | int | `8` | 复评区间（±8 分） |
-| `matching.weight_profiles` | 对象 | 5 种方案 | 见 §3.1 第二步权重表 |
-| `matching.weight_rules` | 对象 | 4 类关键词 | 标题关键词 → 权重方案映射 |
-| `market_analysis.max_pages` | int | `4` | 市场调研翻页数 |
-| `market_analysis.max_fetch_jd` | int | `100` | 最多抓取 JD 数 |
-| `market_analysis.batch_size` | int | `5` | LLM 每批分析条数 |
-| `market_analysis.jd_max_chars` | int | `6000` | 单条 JD 截断长度 |
-
-### 5.3 profiles/prompts.yaml — LLM 提示词
-
-所有 LLM 提示词可通过此文件定制（共 17 个模板）。文件不存在或某 key 缺失时，系统回退到内置默认值。详细列表见 `CONFIG_GUIDE.md`。
-
-### 5.4 profiles/resume_template.yaml — 简历模板
-
-控制简历输出格式：章节顺序（summary/skills/work_experience/projects/education/certifications）、页数限制（默认 2 页 A4）、是否自动按 JD 重排技能顺序和调整 Summary。
-
-### 5.5 profiles/resume_guide.yaml — 简历撰写规则
-
-ATS 友好规则、各段落内容规范、弱点处理策略（如不写精确工作年限、不夸大语言能力）、香港市场特殊要求。通过模板注入到简历生成提示词中。
+> 以上为功能能力描述。具体的 UI 布局、视觉风格、交互方式由产品设计决定。当前实现的参考见 `UI_CURRENT_REFERENCE.md`。
 
 ---
 
-## 六、完整输出文件清单
+### 3.6 tools_basic.py — 基础工具函数
 
-### 6.1 找工作流程 — 每个 run 目录
+**职责**：提供时间、文件操作、DuckDuckGo 搜索、配置查看、单岗位抓取等基础能力。
+
+| 工具 | 输出格式 | 要点 |
+|------|----------|------|
+| `get_current_time()` | `2026年06月04日 14:30:00 星期四` | 中文格式 |
+| `write_file(filename, content)` | 写入 `output/` 目录，自动创建子目录，自动 `track_file()` |
+| `read_file(filename)` | 全文返回 | 限定在 `output/` 目录内 |
+| `list_files()` | 分层列出当前 run + market 目录文件 | 无 run 时自动找最近一次 run |
+| `web_search(query)` | 标题 + 摘要 + 链接 | DuckDuckGo，默认 5 条，region=`wt-wt` |
+| `load_user_profile()` | `me.yaml` 转 JSON | 对 LLM 更友好的结构化格式 |
+| `load_search_config()` | `search_config.yaml` 转 JSON | 同上 |
+| `fetch_job_detail(url)` | 标题/公司/地点/薪资/完整 JD | 调用 `scraper.fetch_job_detail()` |
+
+---
+
+### 3.7 scraper.py — JobsDB 网页爬虫（核心模块，~1032 行）
+
+**职责**：抓取 JobsDB 职位列表页和详情页。
+
+#### 3.7.1 HTTP 请求层
+
+- **主引擎**：Playwright 无头浏览器（JobsDB 对所有 requests 请求返回 403）
+- **反爬措施**：
+  - 完整浏览器 Headers
+  - `navigator.webdriver` 属性覆盖 + `window.chrome` 注入
+  - Cloudflare 挑战页检测与额外等待（5s）
+  - 翻页间隔随机延迟 `random.uniform(1.5, 3.0)` 秒
+  - 失败时重建浏览器重试（1 次）
+  - 浏览器健康检查：`browser.contexts` 轻量探活，失效自动重启
+
+#### 3.7.2 列表页扫描（4 层解析策略）
+
+```
+策略 1: __NEXT_DATA__ JSON jobs 数组（最优先）
+  ├── 深度优先递归搜索（max_depth=10），定位 jobs 数组
+  ├── 支持 GraphQL edges 模式 ({node: {...}})
+  ├── _extract_field() 提取 title/company/salary/location/job_id
+  │
+  ├── 策略 1 有结果但超半数 title 为空 → 策略 2 补充
+  │   策略 2: HTML DOM 补充标题
+  │   _build_html_title_map() 构建 {job_id: title} 映射
+  │   两阶段回退：card 选择器 → <a> 标签链接文本
+  │
+  └── 策略 1 本页完全无结果 (page_count == 0) → 策略 3
+      策略 3: 纯 HTML Card 解析
+      _parse_html_job_cards()，多种选择器回退
+      article[data-testid] → div[data-job-id] → div[class*="job-card"]
+        │
+        └── 策略 3 也解析不到 → 策略 4
+            策略 4: <a> 标签链接提取（最后兜底）
+            过滤太短 (<3) 或太长 (>200) 的链接文本
+```
+
+#### 3.7.3 数据驱动的字段提取器
+
+`_FIELD_SPECS` + `_extract_field()` 系统。JobsDB 页面结构频繁变化，只需在 `_FIELD_SPECS` 中增加新 key 名称，无需改解析逻辑：
+
+```python
+_FIELD_SPECS = {
+    "title": {
+        "direct_keys": ["title", "jobTitle", "displayTitle", "heading", ...],  # Phase 1
+        "parent_keys": ["job", "content", "details", ...],                     # Phase 2
+        "sub_keys": ["title", "jobTitle", ...],                                # Phase 2
+        "recursive": True, "max_depth": 3, "min_len": 2,                      # Phase 3
+    },
+    "company": { ... }, "salary": { ... }, "location": { ... },
+}
+```
+
+#### 3.7.4 详情页解析（3 层策略）
+
+```
+策略 1: __NEXT_DATA__ 中的 pageProps → jobDetail
+策略 2: JSON-LD 结构化数据 (<script type="application/ld+json">)
+策略 3: HTML DOM 直接解析 (h1 + 多选择器找职位描述)
+```
+
+#### 3.7.5 URL 工具
+
+- `normalize_jobsdb_url(url)` → `https://hk.jobsdb.com/job/{id}`（去重用）
+- `is_listing_page(url)` / `is_job_detail_url(url)` / `classify_urls(urls)` → URL 分类
+
+
+### 3.8 job_search.py — 搜索管道
+
+**职责**：编排完整搜索流程。`search_jobs(sort_by=None)`。
+
+#### 三层漏斗
+
+```
+第一层（扫描）：scan_jobsdb_listings()
+  多组搜索关键词 × 多页翻页（跨关键词 job_id 去重）
+  sort_by: "date" → ?sortmode=ListedDate（最新在前）
+           "relevance" → 不传 sortmode（JobsDB 默认相关度排序）
+  结果字段：title, company, salary, snippet, url, job_id
+           │
+           ▼
+第二层（清洗）：basic_filter()
+  排除空标题 + 排除公司（search_config.yaml 的 exclude_companies）
+  成本：0（纯代码规则，毫秒完成）
+  诊断：超 80% 标题为空 → 返回爬虫选择器需要修复的提示
+           │
+           ▼
+第三层（抓取）：fetch_multiple_details()
+  全量抓取完整 JD（上限 max_total_results，默认 200）
+  随机延迟 1.5~3.5 秒防封
+  降级策略：详情页抓取失败 → 列表页 snippet 兜底（source: "snippet"）
+  结果字段：title, company, location, salary, description, url, jd_length,
+            posted_date, classification, source
+```
+
+#### 输出文件
+
+| 文件 | 内容 |
+|------|------|
+| `raw_jobs.json` | 全量抓取的完整 JD（含 source 字段标记 full_jd/snippet） |
+| `scan_listings.json` | 第一层扫描的全量列表（过滤前） |
+| `rejected_jobs.json` | 被基础清洗排除的岗位 + 原因 + 阶段标记 |
+| `filter_stats.json` | 过滤统计（各层数量 + 全量 JD/snippet 计数 + 被拒样本） |
+
+#### 设计理念
+
+不做 LLM 预过滤，全量抓取完整 JD 后交给 `match_jobs` 精确评分。虽然抓取时间更长（100 条约 150~350 秒），但避免基于标题+摘要的误杀。
+
+
+### 3.9 job_match.py — LLM 五维匹配评分
+
+**职责**：读取 `raw_jobs.json` + `me.yaml`，用 LLM 从 5 个维度评分。
+
+#### 五维评分体系 + 动态权重
+
+| 方案 | 技能 | 经验 | 职级 | 行业 | 加分 | 适用场景 |
+|------|------|------|------|------|------|----------|
+| default | 30% | 25% | 15% | 15% | 15% | 无法分类的通用岗位 |
+| technical | 35% | 20% | 15% | 15% | 15% | 纯技术开发岗 |
+| solutions | 25% | 20% | 15% | 20% | 20% | 方案/集成工程师 |
+| web3 | 25% | 15% | 10% | 30% | 20% | Web3/区块链岗位 |
+| payment | 25% | 20% | 10% | 25% | 20% | 支付/结算岗位 |
+
+#### 方向判断流程
+
+```
+1. LLM 评分时返回 direction 字段（基于完整 JD 内容判断）
+2. 检查 direction 是否在 {payment, solutions, web3, technical, default} 中
+   ├── 有效 → 采用为 llm_direction
+   └── 无效或未返回 → 回退到 classify_job() 标题关键词匹配
+                       ↓
+       检查顺序：payment → solutions → web3 → technical → default
+       （更具体的类别在前，防止误匹配到通用关键词）
+```
+
+#### 完整评分流程
+
+1. **第一轮**：所有岗位用 default 权重统一打分（分批评分，每批 5 个），LLM 同时返回 direction
+2. **方向权重重算**：用 `llm_direction` 对应权重重新计算 `total_score`
+3. **去重 + 排序**：按 URL 标准化去重 + `total_score` 降序排列
+4. **第二轮（可选）**：`borderline_rescore: true` 时，对 `min_match_score ± borderline_range` 区间内的岗位：
+   - 逐个用其方向权重重新评分
+   - 五维取两轮平均，计算波动
+   - 波动 ≤10 → `confidence: "verified"`（复评一致）
+   - 波动 >10 → `confidence: "uncertain"`（评分波动大，需人工判断）
+5. **筛选**：保留 ≥ `min_match_score`（默认 45）的岗位，上限 `top_n`
+
+#### LLM 评分 JSON 输出格式
+
+每个岗位 LLM 返回：
+```json
+{
+  "index": 1,
+  "title": "Backend Developer",
+  "company": "某公司",
+  "direction": "web3",
+  "scores": {"skill": 85, "experience": 70, "level": 60, "industry": 75, "bonus": 90},
+  "total_score": 76,
+  "skill_match": ["Python ✅", "Go ❌", "AWS ✅"],
+  "missing_skills": ["Go"],
+  "reason": "候选人的 WaaS 支付经验与岗位高度匹配...",
+  "recommendation": "强烈推荐"
+}
+```
+
+`total_score` 计算公式：
+```
+skill × w1 + experience × w2 + level × w3 + industry × w4 + bonus × w5
+（各权重根据方向方案动态变化）
+```
+
+#### 推荐等级
+
+| 分数 | 标记 | 含义 |
+|------|------|------|
+| ≥ 80 | 🟢 | 强烈推荐 |
+| ≥ 60 | 🟡 | 可考虑 |
+| < 60 | 🔴 | 不推荐 |
+
+#### 额外评估维度（prompts.yaml 中扩展，不参与加权计算）
+
+| 维度 | 值 | 含义 |
+|------|-----|------|
+| `english_risk` | 低/中/高 | 岗位英语要求对候选人的阻碍程度 |
+| `interview_risk` | 低/中/高 | 面试中算法/八股文等候选人的薄弱环节风险 |
+
+#### 输出文件
+
+| 文件 | 内容 |
+|------|------|
+| `matched_jobs.json` | 达标岗位（含五维 scores、total_score、llm_direction、weight_profile、confidence、score_rounds、score_variance） |
+| `unmatched_jobs.json` | 未达标岗位（低于 min_match_score） |
+| `job_report.md` | Markdown 排名报告（权重方案表 + 各岗位详情 + 技能匹配 + 复评信息） |
+
+
+### 3.10 resume_gen.py — 多模式简历生成
+
+**职责**：5 种生成模式 × 英文先行 × 三语翻译 × 质量自检。
+
+#### 5 种生成模式
+
+| 模式 | 参数 | 适用场景 |
+|------|------|----------|
+| 方向聚合 | `by_direction=true` | search+match 后批量投递，按方向（payment/web3/solutions/technical）聚合 JD 共性需求生成 |
+| 匹配岗位 | `job_index=N` | 从匹配排名中选某个高分岗位单独定制 |
+| JD 文本 | `jd_text="..."` | 在其他平台看到的岗位，粘贴完整 JD |
+| 岗位方向 | `role_direction="Solutions Engineer"` | 只有方向没有具体 JD，靠 LLM 对该角色的理解生成 |
+| 通用简历 | 不传参数 | 基于 me.yaml 生成通用版，投递通用平台 |
+
+#### 方向聚合模式详细流程
+
+1. 读取 `matched_jobs.json`，按 `llm_direction` 分组
+   - **跳过 `default` 方向的岗位**（无法归类，不参与聚合）
+   - **每个方向至少需要 2 个达标岗位**，不足则跳过
+2. 每个方向调用 LLM 聚合分析（取前 15 个岗位，每条 JD 截断至 2000 字符），输出三级技能分类：
+
+| 分类 | 含义 | 简历中的处理 |
+|------|------|-------------|
+| `direct_match` | 候选人具备 → 简历重点展示 | 标熟练度，工作经历突出相关成果 |
+| `quick_learnable` | 不直接具备但属于通用技术栈，有相近基础 | Skills 列出不标精通，Cover Letter 表态 |
+| `hard_gap` | 需要专门培训或完全不相关 | 简历不提 |
+
+3. 保存聚合数据到 `direction_analysis.json`
+4. 对每个方向生成三语简历 + Cover Letter
+
+#### 英文先行 + 翻译流程
+
+```
+Step 1: 英文简历生成
+Step 2: 审查（resume_review_prompt，输出 JSON 审查报告）
+  ├── 总评 A/B → 英文简历定稿
+  └── 总评 C/D → 审查反馈注入 prompt → 重新生成英文简历（最多重写一次）→ 定稿
+Step 3: 英文 Cover Letter 生成
+Step 4: 将定稿英文简历精确翻译为 繁體中文（hk）和 简体中文（cn）
+Step 5: 将定稿英文 Cover Letter 翻译为 繁體中文（hk）和 简体中文（cn）
+```
+
+**翻译规则**：
+- 保持完全一致的结构、段落顺序和 bullet points 数量
+- 技术术语保留英文原文（如 `Java`, `AWS Lambda`）
+- 公司名称保留英文（可在括号内加中文）
+- 学历、证书名称保留英文
+- 数字和量化指标保持不变
+
+#### 每次调用生成 7 个文件
+
+```
+resume_{label}_{date}_en.pdf          # 英文简历（主版本）
+resume_{label}_{date}_hk.pdf          # 繁體中文简历
+resume_{label}_{date}_cn.pdf          # 简体中文简历
+cover_letter_{label}_{date}_en.pdf    # 英文 Cover Letter
+cover_letter_{label}_{date}_hk.pdf    # 繁體中文 Cover Letter
+cover_letter_{label}_{date}_cn.pdf    # 简体中文 Cover Letter
+resume_review_{label}_{date}.json     # 审查报告
+```
+
+> `{label}` 是安全的文件名片段（`_make_safe_label()` 处理，取前 30 字符，非字母数字替换为 `_`）。
+> `{date}` 格式为 `YYYYMMDD`。
+
+#### 质量自检机制
+
+审查维度：6 秒测试、关键词覆盖、业务/技术平衡、量化程度、弱点暴露、ATS 友好度。
+
+审查输出 JSON 结构（示例）：
+```json
+{
+  "overall_score": "A",
+  "six_second_test": {"passed": true, "feedback": "..."},
+  "keyword_coverage": {"score": "A", "missing": []},
+  "quantification": {"score": "B", "suggestions": ["..."], "feedback": "..."},
+  "weakness_exposure": {"issues": [], "feedback": "..."},
+  "ats_friendliness": {"score": "A", "issues": [], "feedback": "..."},
+  "top_3_improvements": ["增加第2段经历的量化数据"]
+}
+```
+
+#### 输出文件（方向聚合模式）
+
+`direction_analysis.json` 结构：
+```json
+{
+  "payment": {
+    "direction": "payment",
+    "job_count": 5,
+    "common_requirements": {
+      "direct_match": [{"skill": "Python", "frequency": "80%", "candidate_level": "精通"}],
+      "quick_learnable": [{"skill": "Kafka", "frequency": "60%", "related_skill": "RabbitMQ", "reason": "消息队列原理相通"}],
+      "hard_gap": [{"skill": "Solidity审计", "frequency": "40%", "reason": "需要专门培训"}]
+    },
+    "typical_responsibilities": ["设计 RESTful API", "..."],
+    "common_bonus": ["粤语", "AWS 认证"],
+    "resume_strategy": "一段100字以内的简历撰写策略建议"
+  },
+  "web3": { ... },
+  ...
+}
+```
+
+
+### 3.11 pdf_renderer.py — Markdown → PDF 渲染
+
+**职责**：将 LLM 生成的 Markdown 简历/报告转为 A4 PDF。
+
+#### 渲染流程
+
+```
+Markdown → _fix_resume_markdown() 格式修复 → markdown_to_html() → 嵌入 CSS → Playwright Chromium page.pdf() → PDF
+```
+
+#### 格式修复 (`_fix_resume_markdown`)
+
+LLM 输出的 bullet points 之间有额外空行，会导致 markdown 库生成 `<li><p>` 嵌套，在 PDF 中产生多余间距。此函数自动去除相邻 bullet 之间的空行。
+
+#### 两个 CSS 样式
+
+| 样式 | 用途 | 特点 |
+|------|------|------|
+| `RESUME_CSS` | 简历 PDF | 深灰 `#222` 章节标题、全大写、`1.5px solid #333` 下划线分隔、`@page { margin: 2cm }` + `page.pdf()` 层叠 margin `1.5cm/2cm`、打印分页优化 |
+| `REPORT_CSS` | 市场分析报告 | 深蓝 `#1a5276` 标题色、表格样式（斑马纹：`tr:nth-child(even) { background: #fafbfc }`）、更宽间距 |
+
+#### 中文字体回退链
+
+`Arial → Calibri → Microsoft JhengHei → PingFang HK → PingFang SC → SimHei → sans-serif`
+
+#### 关键设计
+
+- 两个独立的 Playwright 浏览器实例（scraper.py 和 pdf_renderer.py 各一个，避免冲突）
+- 浏览器懒加载 + 全局复用 + 健康检查（`browser.contexts` 探活）+ 自动恢复
+- `python-markdown` 库优先（带 `extra/smarty/sane_lists` 扩展），缺失时回退内置简易转换器
+- `_render_in_thread()`：独立线程中完成 Playwright 渲染，解决 asyncio 冲突
+
+#### 两个渲染入口
+
+```python
+render_resume(markdown_text, md_filepath)  # → PDF 文件路径或 None
+render_report(markdown_text, md_filepath)  # → PDF 文件路径或 None（使用 REPORT_CSS）
+```
+
+
+### 3.12 market_analysis.py — 独立市场调研
+
+**职责**：指定岗位类别，主动搜索 JobsDB 并多维度分析市场行情。
+
+#### 四阶段流程
+
+```
+Phase A: 数据采集
+  scan_jobsdb_listings(job_category, ...) → 翻 max_pages 页
+  fetch_multiple_details() → 全量抓取完整 JD（上限 max_fetch_jd，默认 100）
+  无效 JD 用列表页 snippet 兜底
+           │
+           ▼
+Phase B: LLM 市场分析（分批评分 + 多批自动聚合）
+  每批 batch_size 条 JD（默认 5）发给 LLM
+  LLM 提取以下 11 个维度：
+   1. technical_skills      — 技术技能（排名、分类、工具、说明）
+   2. soft_skills           — 软技能/业务能力
+   3. salary_overview       — 薪资概况（按级别分类）
+   4. experience_distribution — 经验要求分布
+   5. common_responsibilities — 岗位职责共性
+   6. industry_distribution — 行业分布
+   7. key_trends            — 关键趋势观察
+   8. language_requirements — 语言要求（英语/中文，按级别统计）
+   9. education_requirements — 学历要求
+  10. company_profile       — 公司画像（规模分布、知名雇主）
+  11. interview_hints       — 面试线索（技术面/行为面/BQ 等）
+
+  单批结果直接使用；多批结果通过 _aggregate_batch_results() 自动合并
+  （计数累加 + 去重 + 百分比重算，覆盖上述全部 11 个维度）
+           │
+           ▼
+Phase C: 差距分析（可选，include_gap_analysis 控制）
+  对比候选人画像 vs 市场需求
+  输出：strengths（优势）、gaps（差距+学习路径）、
+        low_value_skills（低价值技能）、strategic_advice（策略建议）
+           │
+           ▼
+Phase D: LLM 撰写报告 + 保存所有文件
+  结构化数据 → LLM 撰写专业 Markdown 报告 → 渲染 PDF
+  若 LLM 报告生成失败 → 回退到 JSON dump 格式（确保数据不丢）
+```
+
+#### 函数签名
+
+```python
+analyze_market(job_category, location="Hong Kong", include_gap_analysis=True,
+               classification="", sort_by=None)
+
+batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
+                     sort_by=None)
+```
+
+| 参数 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `job_category` | str | 是 | — | 岗位类别关键词，**大小写敏感**，用户输入原样传入 |
+| `location` | str | 否 | `"Hong Kong"` | 搜索地点 |
+| `include_gap_analysis` | bool | 否 | `true` | 是否含个人差距分析 |
+| `classification` | str | 否 | `""` | JobsDB 行业分类，**大小写敏感**。如 `"information-communication-technology"`, `"banking-financial-services"` |
+| `sort_by` | str | 否 | 从 `sort_mode` 配置读取 | `"date"`（按发布时间）或 `"relevance"`（按相关度） |
+
+`batch_analyze_market` 的 `tasks` 参数格式：
+```json
+[
+  {"category": "AI Agent", "classification": "information-communication-technology"},
+  {"category": "Web3"},
+  {"category": "Java Developer", "classification": "banking-financial-services"}
+]
+```
+依次执行每个任务，每完成一个自动开始下一个，最后汇总所有结果。
+
+> **⚠️ 大小写敏感规则**：`job_category`（或 `category`）和 `classification` 的值会原样传给 JobsDB 搜索。用户说「分析 Web3 市场」→ `job_category="Web3"`（**不**变成 `"web3"`）。用户说「分析 science-technology 行业」→ `classification="science-technology"`（**不**变成 `"Science-Technology"`）。LLM 的 system prompt 中明确告知了此规则。
+
+#### 市场分析每个维度的输出格式
+
+**technical_skills**（每条技能）：
+```json
+{
+  "skill": "Ethers.js Web3 Library",
+  "category": "框架",
+  "description": "以太坊 JavaScript 库，用于与智能合约交互和构建 DApp 前端",
+  "typical_tools": ["Ethers.js v6", "Web3.js", "Wagmi", "Viem"],
+  "count": 15,
+  "percentage": "60%",
+  "level": "必须"
+}
+```
+- 技能名称必须具体到可以学习的程度（如 `"Ethers.js Web3 Library"` 而非 `"Web3"`）
+- `category` 取值范围：`编程语言 / 框架 / 数据库 / 云平台 / DevOps / 安全 / 协议 / 其他工具`
+- `level` 取值范围：`必须 / 优先 / 加分`
+- 按频次降序，最多 20 项
+
+**gap_analysis**（每条差距）：
+```json
+{
+  "skill": "Kubernetes",
+  "description": "容器编排平台，用于管理大规模微服务部署、自动伸缩和服务发现",
+  "market_demand": "高",
+  "learning_difficulty": "中",
+  "current_gap": "候选人有 Docker 和 docker-compose 经验但没在生产环境用过 K8s 编排",
+  "learning_path": [
+    "第 1 步：在 Minikube 上部署一个简单的 3 层应用（2 周，每天 1 小时）",
+    "第 2 步：学习 Helm Chart 打包和 ConfigMap/Secret 管理（1 周）",
+    "第 3 步：在 AWS EKS 或 GCP GKE 上部署一个带 CI/CD 的项目（2 周）"
+  ],
+  "priority": "高 — 18/25 条 JD 要求 K8s 经验"
+}
+```
+
+#### 输出文件
+
+`output/market/` 目录下，每次分析生成 **5 个文件**：
+
+| 文件 | 格式 | 内容 |
+|------|------|------|
+| `market_{category}_{date}.md` | Markdown | LLM 生成的专业分析报告（所有 11+ 维度） |
+| `market_{category}_{date}.pdf` | PDF | 同上，Playwright Chromium 渲染 |
+| `market_{category}_{date}.json` | JSON | 结构化分析数据（含 analysis + gap_analysis） |
+| `market_{category}_{date}_scan.json` | JSON | 全量扫描列表（过滤前的原始 listing 数据） |
+| `market_{category}_{date}_jds.json` | JSON | 抓取的完整 JD 原文（用于后续验证或深入分析） |
+
+> `{category}` = 岗位类别名（空格替换为 `_`，`/` 替换为 `_`，截断至 30 字符）
+> `{date}` = `YYYYMMDD_HHMMSS`
+
+---
+
+## 四、配置文件说明
+
+### 4.1 profiles/me.yaml — 用户画像
+
+```yaml
+基本信息:
+  姓名、电话、邮箱、LinkedIn、GitHub、所在地
+
+战略定位:
+  核心画像、方向优先级、关键约束（英语/算法/经验年限）
+
+求职意向:
+  target_titles（按优先级排序，当前：Web3 支付基础设施工程师 > 方案工程师 > Web3 后端 > 技术支持）
+  target_industries、薪资期望（25-35K HKD）、到岗时间
+
+专业技能:
+  数据库（MySQL/Redis/MongoDB）、API 集成（RESTful/Webhook/SDK）
+  编程语言（Java/Python/Go/JS）、框架（Spring Boot/FastAPI/MyBatis）
+  区块链（Ethereum/BSC/TRON + USDT/USDC/TRC20 代币接入）
+  DevOps（Docker/GitHub Actions/AWS EC2/S3）
+  AI 工具（Cursor/Claude Code/GitHub Copilot）
+  业务能力（WaaS 钱包即服务 / 支付清结算 / 商户对接）
+  语言能力（普通话/粤语/英语）
+
+工作经历:
+  某 Web3 科技公司 | Java 后端工程师 | 2024.08-2026.05
+  5 个核心业务模块详细描述：充值监听（5 层防假充值）、提款（5 层防重复出款）、
+  归集（3 阶段流水线）、B2B 商户对接、链上交易监控
+
+教育背景 / 项目经历 / 证书 / 自我评价
+```
+
+### 4.2 profiles/search_config.yaml — 搜索策略 + LLM + 匹配 + 市场
+
+详见文件内注释（255 行）。完整配置项汇总：
+
+| 配置段 | 配置项 | 默认值 | 说明 |
+|--------|--------|--------|------|
+| `llm` | `provider` | `"glm"` | `deepseek` / `qwen` / `glm` |
+| `llm` | `model` | `"glm-5.1"` | 模型名称 |
+| `llm` | `base_url` | （可选） | 自定义 API 端点 |
+| `llm` | `api_key_env` | （可选） | 自定义环境变量名 |
+| — | `sort_mode` | `"date"` | 全局排序：`"date"`（最新在前）/ `"relevance"`（相关度） |
+| — | `search_queries` | — | 搜索关键词组数组，每项含 `keywords` / `location` / `classification`(可选) / `direction` / `sort_by`(可选) |
+| `filters` | `exclude_companies` | `[]` | 排除的公司名列表（大小写不敏感） |
+| — | `max_pages_per_query` | `3` | 每组关键词翻页数 |
+| — | `max_total_results` | `200` | 最终抓取 JD 上限 |
+| `matching` | `min_match_score` | `45` | 最低达标分数 |
+| `matching` | `top_n` | `999` | 保留 Top N |
+| `matching` | `borderline_rescore` | `true` | 及格线复评开关 |
+| `matching` | `borderline_range` | `8` | 复评区间（min_score ± 8） |
+| `matching` | `weight_profiles` | 5 种方案 | 见 §3.9 权重表 |
+| `matching` | `weight_rules` | 4 类关键词 | 标题关键词 → 权重方案映射（检查顺序：payment → solutions → web3 → technical） |
+| `market_analysis` | `max_pages` | `4` | 列表页翻页数 |
+| `market_analysis` | `max_fetch_jd` | `100` | 最多抓取 JD 数 |
+| `market_analysis` | `batch_size` | `5` | LLM 每批分析条数 |
+| `market_analysis` | `jd_max_chars` | `6000` | 单条 JD 截断长度 |
+
+### 4.3 profiles/prompts.yaml — LLM 提示词配置
+
+所有模块的 LLM 提示词均可通过此文件配置（共 17 个 prompt 模板）。各调用点在文件不存在或对应 key 缺失时回退到 Python 硬编码默认值。
+
+```yaml
+agent:
+  system_prompt                           # Agent 对话系统提示词
+
+job_match:
+  scoring_system_prompt                   # 匹配评分（<profile_summary> <weights_text> <score_formula>）
+
+market_analysis:
+  analysis_system_prompt                  # JD 数据提取（<job_category>）
+  gap_analysis_prompt                     # 差距分析（<technical_skills> <profile>）
+  report_prompt                           # 报告撰写（<job_category> <location> <sample_size> <analysis_json> <gap_analysis_json>）
+
+resume:
+  base_rules                              # 简历核心规则（<guide>）
+  prompt_for_job                          # 匹配岗位模式（<template> <base_rules>）
+  prompt_for_jd_text                      # JD 文本模式
+  prompt_for_role                         # 岗位方向模式（<role>）
+  prompt_for_general                      # 通用模式
+  cover_letter_prompt                     # Cover Letter 生成
+  resume_review_prompt                    # 简历审查（输入为简历 Markdown）
+  aggregate_system_prompt                 # 方向聚合分析（<profile_summary>）
+  prompt_for_direction_data               # 方向简历生成（<direction> <template> <base_rules>）
+  cl_for_direction_data                   # 方向 Cover Letter（<direction>）
+  translate_resume_prompt                 # 简历翻译（<target_lang>）
+  translate_cl_prompt                     # Cover Letter 翻译（<target_lang>）
+```
+
+占位符用 `<name>` 尖括号格式（避免与 JSON `{}` 冲突），通过 `render_prompt()` 替换。
+
+> **注意**：`agent.system_prompt` 在 `prompts.yaml` 中的版本与 `config.py` 中的硬编码回退版本内容有所不同——YAML 版本包含详细的候选人战略定位和方向优先级，而 `config.py` 版本更简洁通用。两个版本都描述了 `generate_resume` 的全部 5 种模式。修改 Agent 行为时务必保持两者模式数量和工作流描述同步。
+
+### 4.4 profiles/resume_guide.yaml — 简历撰写指南
+
+通过 `<guide>` 占位符注入到简历生成 prompt 中：
+
+| 章节 | 内容 |
+|------|------|
+| `general` | 页数限制（1-2 页）、目标市场（香港 JobsDB） |
+| `ats_rules` | 单栏布局、标准标题（Summary/Skills/Work Experience/Education/Certifications）、Bullet points、无表格/图片/图表 |
+| `content_rules` | Summary 3 句结构、工作经历 "动词+做了什么+量化结果"格式、Skills 按市场需求排序（含好坏对比示例） |
+| `weakness_handling` | 4 类弱点处理策略（经验年限不写精确年数/Java 不写精通/英语不夸大/公司规模不强调/教育背景不写 GPA） |
+| `hk_specific` | 香港市场特殊规则（粤语优势在简历中标注等） |
+| `cover_letter` | Cover Letter 撰写规则（250-350 词，开头-中间-结尾结构） |
+
+### 4.5 profiles/resume_template.yaml — 简历模板
+
+```yaml
+format: "markdown"
+output_style: "professional"
+sections_order: [summary, skills, work_experience, projects, education, certifications]
+customization:
+  auto_reorder_skills: true       # 自动按目标岗位重排技能展示顺序
+  auto_adjust_summary: true       # 自动调整 Summary 呼应 JD 关键词
+  max_pages: 2                    # 最多 2 页
+```
+
+---
+
+## 五、完整输出文件清单
+
+### 5.1 找工作流程 — 每个 run 目录下
 
 ```
 output/run_{YYYYmmdd_HHMMSS}/
 │
-├── scan_listings.json        # 搜索阶段：第一层扫描的全量列表（过滤前）
-│                             #   字段：title, company, salary, snippet, url, job_id
+├── scan_listings.json        # 第一层扫描全量列表（过滤前）
+│                             字段：title, company, salary, snippet, url, job_id
 │
-├── rejected_jobs.json        # 搜索阶段：被基础清洗排除的岗位
-│                             #   字段：title, company, url, snippet, reject_reasons, reject_stage
+├── rejected_jobs.json        # 被基础清洗排除的岗位
+│                             字段：title, company, url, snippet, reject_reasons, reject_stage
 │
-├── filter_stats.json         # 搜索阶段：过滤统计数字
-│                             #   字段：scan_total, basic_rejected, filter_passed,
-│                             #         jd_fetched, full_jd_count, snippet_count
+├── filter_stats.json         # 过滤统计
+│                             字段：scan_total, basic_rejected, filter_passed,
+│                                   jd_fetched, full_jd_count, snippet_count, rejected_samples
 │
-├── raw_jobs.json             # 搜索阶段：全量完整 JD（清洗后）
-│                             #   字段：title, company, location, salary, description,
-│                             #         url, jd_length, posted_date, classification, source, index
+├── raw_jobs.json             # 全量抓取的完整 JD（洗后）
+│                             字段：title, company, location, salary, description, url,
+│                                   jd_length, posted_date, classification, source, index
 │
-├── matched_jobs.json         # 匹配阶段：达标岗位的完整评分
-│                             #   字段见 §3.1 第二步
+├── matched_jobs.json         # 达标岗位的匹配评分
+│                             字段：title, company, url, description, scores（5维）,
+│                                   total_score, llm_direction, weight_profile, confidence,
+│                                   score_rounds, score_variance, skill_match, missing_skills,
+│                                   reason, recommendation
 │
-├── unmatched_jobs.json       # 匹配阶段：未达标岗位（低于 min_match_score）
+├── unmatched_jobs.json       # 未达标岗位（低于 min_match_score）
+│                             字段同 matched_jobs.json
 │
-├── job_report.md             # 匹配阶段：Markdown 排名报告
+├── job_report.md             # Markdown 匹配排名报告
 │
-├── direction_analysis.json   # 简历阶段：各方向 JD 聚合分析（仅方向聚合模式生成）
-│                             #   结构：{"payment": {...}, "web3": {...}, ...}
-│                             #   每个方向含：direct_match / quick_learnable / hard_gap /
-│                             #             typical_responsibilities / common_bonus / resume_strategy
+├── direction_analysis.json   # 各方向聚合分析（三级技能分类）
+│                             结构：{"payment": {...}, "web3": {...}, ...}
+│                             每个方向含：direct_match, quick_learnable, hard_gap,
+│                                        typical_responsibilities, common_bonus, resume_strategy
 │
-└── resumes/                  # 简历阶段：生成的全部文件
-    ├── resume_{label}_{date}_en.pdf           # 英文简历（主版本）
+└── resumes/                  # 简历 + Cover Letter + 审查报告
+    ├── resume_{label}_{date}_en.pdf           # 英文简历
     ├── resume_{label}_{date}_hk.pdf           # 繁體中文简历
     ├── resume_{label}_{date}_cn.pdf           # 简体中文简历
     ├── cover_letter_{label}_{date}_en.pdf     # 英文 Cover Letter
@@ -639,92 +1147,194 @@ output/run_{YYYYmmdd_HHMMSS}/
     └── resume_review_{label}_{date}.json      # 审查报告
 ```
 
-### 6.2 市场调研流程
+### 5.2 市场调研流程 — output/market/ 目录下
 
 ```
 output/market/
 │
-├── market_{category}_{date}.md         # LLM 撰写的专业分析报告（Markdown）
-├── market_{category}_{date}.pdf        # 分析报告（PDF）
-├── market_{category}_{date}.json       # 结构化分析数据（含 analysis + gap_analysis）
-├── market_{category}_{date}_scan.json  # 全量扫描列表（过滤前）
-└── market_{category}_{date}_jds.json   # 抓取的完整 JD 原文
+├── market_{category}_{date}.md         # LLM 生成的专业分析报告（Markdown）
+├── market_{category}_{date}.pdf        # 分析报告（PDF，REPORT_CSS 样式）
+├── market_{category}_{date}.json       # 结构化分析结论（含全部分析 + 差距分析）
+├── market_{category}_{date}_scan.json  # 全量扫描列表（过滤前，所有 listing）
+└── market_{category}_{date}_jds.json   # 抓取的完整 JD 原文（有效 JD）
 ```
 
----
-
-## 七、关键业务规则
-
-### 7.1 大小写敏感规则
-
-| 场景 | 规则 |
-|------|------|
-| 市场调研 `job_category` 参数 | **保留用户原始输入**。用户说「Web3」→ 传 `"Web3"`（不变小写） |
-| 市场调研 `classification` 参数 | **保留用户原始输入**。`"science-technology"` 不变更大小写 |
-| 岗位分类（标题关键词匹配） | **大小写不敏感**（title.lower() 比较） |
-| 公司排除 | **大小写不敏感** |
-
-### 7.2 错误处理与降级
-
-| 场景 | 系统行为 |
-|------|---------|
-| LLM API 限流（429）/超时/5xx | 自动指数退避重试（1s→2s→上限 30s），最多 2 次 |
-| LLM 认证错误（401/403） | 直接报错，不浪费重试（可能是 Key 过期） |
-| 详情页抓取失败 | 用列表页摘要兜底（标记 `source: "snippet"`） |
-| 匹配评分某批次失败 | 跳过该批次，继续处理其余岗位 |
-| 简历审查失败 | 跳过审查，使用原始英文简历 |
-| 简历审查 C/D → 重写失败 | 使用原始英文简历 |
-| 简历翻译某语言失败 | 跳过该语言，继续其他语言 |
-| 市场分析某批次失败 | 跳过该批次，继续其他批次 |
-| 市场报告撰写失败 | 回退到 JSON dump（数据不丢） |
-| 所有重试耗尽 | 抛出错误，由上层捕获并展示给用户 |
-
-### 7.3 方向判断逻辑
-
-岗位方向（决定权重方案和简历聚合分组）的判断流程：
-
-1. LLM 基于完整 JD 内容返回 `direction` 字段
-2. 如果值有效（在 {payment, solutions, web3, technical, default} 中）→ 采用为 `llm_direction`
-3. 如果值无效或未返回 → **回退到标题关键词匹配**，按顺序检查：
-   ```
-   payment → solutions → web3 → technical → default
-   ```
-   匹配到第一个包含该分类关键词的即停止（更具体的类别在前，防止误匹配）
-
-### 7.4 方向聚合的过滤规则
-
-- `default` 方向的岗位**不参与聚合**（无法归类，JD 共性不足）
-- 每个方向**至少需要 2 个达标岗位**，不足则跳过该方向
-- 每个方向最多取前 15 个岗位的 JD 做聚合分析
-- LLM 提取的 JD 截断至 2000 字符（减少 token 消耗）
-
-### 7.5 排序控制
-
-搜索排序由三重优先级决定（从高到低）：
-
-1. **调用时传入的 `sort_by` 参数**（Web UI 排序切换或对话中的指令）
-2. **全局 `sort_mode` 配置**（search_config.yaml）
-3. **默认值** `"date"`（按发布时间，最新在前）
-
-`"date"` → JobsDB 搜索参数 `?sortmode=ListedDate`
-`"relevance"` → 不传 sortmode（使用 JobsDB 默认相关度排序）
+每次 `analyze_market()` 或 `batch_analyze_market()` 每个任务生成 **5 个文件**。
 
 ---
 
-## 八、技术背景（供产品团队了解约束）
+## 六、使用方式
 
-### 8.1 为什么搜索慢？
+### 6.1 环境准备
 
-全量抓取每个岗位的 JD 需要 150~350 秒（100 个岗位）。这是设计决策——宁可慢也要确保匹配评分基于完整信息，而非只看标题和两行摘要。
+```bash
+# 1. 安装 Python 依赖
+pip install openai python-dotenv playwright beautifulsoup4 lxml ddgs pyyaml markdown flask
 
-### 8.2 为什么同一时间只能一个任务？
+# 2. 安装 Playwright Chromium 浏览器
+playwright install chromium
 
-系统使用浏览器自动化抓取网页，Playwright 不支持并发操作。这是硬件约束，不是架构设计的限制。
+# 3. 配置 API Key
+# 在 search_config.yaml 中选择 provider，在 .env 中设置对应 Key
+echo "GLM_API_KEY=your_key_here" > .env
 
-### 8.3 为什么会失败？
+# 4. 编辑个人画像
+# 修改 profiles/me.yaml 填入真实信息
+```
 
-JobsDB 网站结构会不定期更新，爬虫的网页解析可能失效。此时搜索会返回错误提示（而非静默返回空结果），需要人工介入修复爬虫选择器。
+### 6.2 启动
 
-### 8.4 LLM 为什么有时返回不一致？
+```bash
+# 终端模式
+python agent.py
 
-LLM 本质上是概率模型。匹配评分引入了及格线复评机制来减少偶然性——对边界分数做两次独立评分取平均。简历审查也有自动重写机制来保证质量。
+# Web UI 模式
+python web_app.py
+# 浏览器访问 http://127.0.0.1:5000
+```
+
+### 6.3 对话示例（终端模式）
+
+```text
+# ── 找工作全流程 ──
+你: 帮我找工作
+    → Agent 依次调用 search_jobs → match_jobs → generate_resume(by_direction=true)
+
+# ── 匹配分析 ──
+你: 看看匹配结果
+    → list_matched_jobs → 显示排名列表（含五维分数、复评状态）
+你: 为第1个生成简历
+    → generate_resume(job_index=1) → 三语简历 + Cover Letter（7 个文件）
+
+# ── 基于方向生成简历 ──
+你: 生成 Solutions Engineer 方向的简历
+    → generate_resume(role_direction="Solutions Engineer") → 7 个文件
+
+# ── 基于粘贴的 JD ──
+你: [粘贴一段完整 JD] 根据这个生成简历
+    → generate_resume(jd_text="...") → 7 个文件
+
+# ── 通用简历 ──
+你: 生成通用简历
+    → generate_resume() → 7 个文件
+
+# ── 单岗位查看 ──
+你: 查看这个岗位 https://hk.jobsdb.com/job/12345678
+    → fetch_job_detail(url="...") → 完整 JD 信息
+
+# ── 市场调研 ──
+你: 分析 Web3 市场行情
+    → analyze_market(job_category="Web3") → 5 个文件（含差距分析）
+
+你: 分析 Java Developer 市场行情（不需要差距分析）
+    → analyze_market(job_category="Java Developer", include_gap_analysis=false)
+
+你: 分析 science-technology 行业的 Solutions Engineer
+    → analyze_market(job_category="Solutions Engineer", classification="science-technology")
+
+你: 按最新发布分析 Java 市场行情
+    → analyze_market(job_category="Java Developer", sort_by="date")
+
+你: 按相关度分析 Web3 市场
+    → analyze_market(job_category="Web3", sort_by="relevance")
+
+# ── 批量市场调研 ──
+你: 帮我分析 AI Agent，Web3，Java Developer 三个方向的市场行情
+    → batch_analyze_market(tasks=[
+        {"category": "AI Agent", "classification": "information-communication-technology"},
+        {"category": "Web3"},
+        {"category": "Java Developer"}
+      ])
+
+# ── 配置查看 ──
+你: 看看我的档案
+    → load_user_profile
+你: 看看搜索配置
+    → load_search_config
+
+# ── 联网搜索 ──
+你: 搜索香港 IT 行业薪资水平 2026
+    → web_search(query="香港 IT 行业薪资水平 2026")
+
+# ── 退出 ──
+你: quit
+    → 退出程序，清理 Playwright + 渲染器资源
+```
+
+### 6.4 Web UI 使用方式
+
+Web UI 提供图形化操作界面。使用上与终端模式功能对等：
+
+- **对话模式**：在输入框中输入自然语言指令（同终端模式的所有对话示例），系统通过 SSE 实时反馈进度和结果
+- **快捷模式**：通过界面上的快捷操作一键触发「找工作」全流程，无需输入文本
+- **模型切换**：通过界面切换 LLM Provider，立即生效
+- **文件管理**：浏览历史 Run 列表、查看文件、下载任意输出文件
+- **市场报告**：浏览所有市场调研报告文件
+
+> 完整的 API 接口规范见 §3.4.3，前端需通过以下端点与后端交互：`/api/session` → `/api/chat` 或 `/api/pipeline` → `/stream/{sid}`（获取 SSE 事件流）→ `/api/runs`（获取历史）→ `/download/{path}`（下载文件）。
+
+---
+
+## 七、关键设计决策
+
+| # | 决策 | 原因 |
+|---|------|------|
+| 1 | **全量抓取 JD 而非 LLM 预过滤** | 避免基于不完整信息（标题+摘要）误杀匹配岗位；完整 JD 让五维评分更准确；省掉 LLM 预过滤的 API 成本 |
+| 2 | **数据驱动的字段提取器** | JobsDB `__NEXT_DATA__` JSON 结构频繁变化；`_FIELD_SPECS` 只需加新 key 名称，无需重写解析逻辑 |
+| 3 | **完全放弃 requests 直接用 Playwright** | JobsDB 对所有 requests 请求返回 403，无头浏览器是唯一稳定的方式 |
+| 4 | **Playwright 而非 wkhtmltopdf 渲染 PDF** | Chromium CSS 支持最完整、原生 CJK 字体、复用爬虫的 Playwright 依赖 |
+| 5 | **简历英文先行 + 精确翻译** | 英文是通用求职语言；各语言独立生成会导致内容差异（面试时信息不一致）；翻译 prompt 严格控制结构一致性 |
+| 6 | **简历质量自检 + 自动重写** | LLM 生成的简历可能暴露候选人弱点（年限、英语水平）、缺少量化、ATS 不友好；审查 → 反馈 → 自动修正 |
+| 7 | **llm_call() 统一入口** | 消除 15 处分散调用点的维护负担；集中管理重试/退避/错误分类；任何新功能（缓存、fallback、token 统计）只需改一处 |
+| 8 | **方向聚合跳过 default** | `default` 方向的岗位无法归类到具体方向，聚合分析无意义（JD 之间共性不足） |
+| 9 | **LLM 判断方向优先 + 标题关键词回退** | LLM 基于完整 JD 判断更准确；标题关键词回退作为兜底（LLM 输出不可靠时） |
+
+---
+
+## 八、大小写敏感规则汇总
+
+| 场景 | 参数 | 规则 |
+|------|------|------|
+| 市场分析 | `job_category` | **严格保留用户原始输入**。`"Web3"` 不会变成 `"web3"`, `"Java Developer"` 不会变成 `"java developer"` |
+| 批量市场分析 | `tasks[].category` | 同上 |
+| 市场分析 | `classification` | **严格保留原始输入**。`"science-technology"` 不会变成 `"Science-Technology"` |
+| 批量市场分析 | `tasks[].classification` | 同上 |
+| 岗位分类（权重选择） | 标题关键词匹配 | **大小写不敏感**（`classify_job()` 中 `title.lower()` + `kw.lower()`） |
+| 公司排除 | `exclude_companies` | **大小写不敏感**（`basic_filter()` 中 `company_lower` 比较） |
+
+---
+
+## 九、错误处理与降级策略
+
+| 场景 | 降级策略 |
+|------|----------|
+| LLM 匹配评分失败 | 记录错误，跳过该批次，继续处理其他批次 |
+| LLM 简历审查失败 | 跳过审查，使用原始英文简历定稿 |
+| LLM 简历审查 C/D → 重写失败 | 打印警告，使用原版简历 |
+| LLM 市场分析批量失败 | 跳过该批次，继续处理其他批次 |
+| LLM 市场报告生成失败 | 回退到 JSON dump 格式（确保分析数据不丢失） |
+| LLM 翻译失败（某语言） | 跳过该语言，继续其他语言翻译 |
+| LLM 429/超时/5xx | `llm_call()` 自动指数退避重试（最多 2 次） |
+| LLM 401/403 | 直接抛出，不浪费重试时间 |
+| 详情页抓取失败 | 使用列表页 snippet 兜底（标记 `source: "snippet"`） |
+| 列表页解析全部失败 | 4 层回退策略（NEXT_DATA → HTML 补充 → Card 解析 → `<a>` 链接提取） |
+| Playwright 浏览器失效 | 健康检查探活 + 自动重启 |
+| PDF 渲染失败 | 返回 None，文件追踪中无 PDF 记录，不影响其他输出 |
+
+---
+
+## 十、项目亮点总结
+
+1. **双入口架构**：终端 CLI + Web UI（Flask + SSE），共用同一套 Agent 和工具系统
+2. **统一 LLM 调用层**：`llm_call()` 收敛 15 处调用点 + 内建指数退避重试 + 错误分类
+3. **多 Provider 支持**：DeepSeek / Qwen / GLM 运行时动态切换，不重启、立即生效
+4. **全量抓取 + 精准评分**：三层漏斗不经过 LLM 预过滤，确保匹配评分基于完整 JD
+5. **数据驱动爬虫**：通用字段提取器 + 4 层解析回退 + GraphQL 模式支持，适应 JobsDB 页面结构变化
+6. **动态权重匹配**：5 种权重方案 + LLM 自动判断方向 + 及格线复评取平均 + 置信度标注
+7. **5 种简历模式**：方向聚合（数据驱动批量投递）/ 匹配岗位 / JD 文本 / 岗位方向 / 通用
+8. **三语输出 + 质量闭环**：英文先行 → 审查评分 → 不合格自动重写 → 精确翻译，每次 7 个文件
+9. **独立市场调研**：四阶段流程 + 11+ 维度分析 + 差距分析（含可执行学习路径）+ 批量分析
+10. **全流程文件追踪**：每轮对话后自动汇总生成的文件列表（路径 + 大小）
+11. **双模式 emit**：`threading.local()` 实现终端 print / Web SSE 自动切换
+12. **Prompt 全配置化**：17 个 prompt 模板通过 YAML 控制，`<key>` 模板引擎支持动态替换
+13. **多层次降级**：详情页失败 → snippet 兜底；审查失败 → 跳过；报告生成失败 → JSON dump 保底；浏览器失效 → 自动重启
