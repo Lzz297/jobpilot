@@ -342,14 +342,26 @@ def execute_tool(tool_call):
 
 #### 3.4.2 SSE 事件类型
 
-| type | 含义 | payload |
-|------|------|---------|
-| `progress` | `emit()` 输出的进度文本 | `{"type": "progress", "text": "..."}` |
-| `status` | 状态提示 | `{"type": "status", "text": "Agent 正在工作..."}` |
-| `tool_call` | 正在调用的工具 | `{"type": "tool_call", "tool": "search_jobs", "args": "{}"}` |
-| `done` | 执行完成 | `{"type": "done", "reply": "...", "files": [["path", "desc"], ...]}` |
-| `error` | 执行出错 | `{"type": "error", "text": "..."}` |
-| `ping` | 30 秒心跳 | `{"type": "ping"}` |
+后端推送 JSON 到队列，前端通过 `EventSource` 接收。SSE 协议格式为：
+
+```
+event: {type}
+data: {json_payload}
+
+```
+
+前端监听 6 种事件类型，与后端一一对应：
+
+| type | 含义 | 后端 payload | 前端渲染 |
+|------|------|-------------|---------|
+| `status` | 阶段性状态提示 | `{"type": "status", "text": "Starting job search..."}` | 🟡 琥珀色圆点 + 文字 |
+| `progress` | 执行结果文本 | `{"type": "progress", "text": "搜索完成 → raw_jobs.json"}` | ⚪ 灰色文字 |
+| `tool_call` | 正在调用的工具 | `{"type": "tool_call", "tool": "search_jobs", "args": "{...}"}` | 🔵 青色工具名 + 参数 |
+| `done` | 任务完成 | `{"type": "done", "reply": "...", "files": [...]}` | 🟢 完成面板含文件列表 |
+| `error` | 执行出错 | `{"type": "error", "text": "..."}` | 🔴 红色错误信息 |
+| `ping` | 30 秒心跳保活 | `{}` | 忽略 |
+
+> 所有事件类型已在前后端对齐。前端统一通过 `startSSE()` 建立连接，内建指数退避重试（最多 3 次）。后端空闲连接有约 8 秒缓冲期，防止 pipeline 启动前的时序竞态关停连接。
 
 #### 3.4.3 完整 API 参考
 
@@ -407,9 +419,9 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 ---
 
 ##### `GET /stream/<sid>`
-SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发送 ping 心跳。当 session 不再 busy 且队列空时自动断开。
+SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发送 `event: ping` 心跳。空闲时有约 8 秒缓冲期（4 轮 × 2 秒超时），防止 pipeline API 调用前的时序竞态导致连接过早关闭。当 session 不再 busy 且队列连续空超过缓冲期后自动断开。
 
-**Response**: `text/event-stream`，数据格式为 `data: {json}\n\n`。
+**Response**: `text/event-stream`，协议格式为 `event: {type}\ndata: {json}\n\n`。
 
 ---
 
