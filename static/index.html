@@ -545,7 +545,6 @@ function sendChat(){
 }
 $('#chat-input').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
 $('#chat-input').addEventListener('input',e=>{ e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,128)+'px'; });
-$('#send-btn').addEventListener('click', sendChat);
 
 /* ===================== SMART ROUTER ===================== */
 function routeMessage(text){
@@ -633,6 +632,7 @@ function openLangModal(defaults, cb){
   renderLangModalOpts();
 }
 function closeLangModal(){ $('#lang-overlay').classList.add('hidden'); }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeModal(); closeLangModal(); } });
 function renderLangModalOpts(){
   $('#lang-modal-opts').innerHTML=LANGS.map(([k,l])=>{
     const on=LANG_MODAL.sel.has(k);
@@ -1352,7 +1352,7 @@ function setTab(t){
   renderMarketPresets();
   renderResume();
   renderSettings();
-  addBatchRow();
+  addBatchRow({category:'Web3', classification:'information-communication-technology'});
   switchView('workspace');
   refreshIcons();
   // Welcome message
