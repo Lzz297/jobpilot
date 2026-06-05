@@ -286,7 +286,7 @@ def stream(sid):
                         break
                 # Send ping every 30s to keep connection alive
                 if time.time() - last_ping > 30:
-                    yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+                    yield f"event: ping\ndata: {json.dumps({})}\n\n"
                     last_ping = time.time()
 
     return Response(
