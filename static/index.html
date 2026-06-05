@@ -1094,7 +1094,7 @@ function resumeTrigger(id){
   es.addEventListener('progress', e=>{ const d=JSON.parse(e.data); logLine(log,{t:'p',x:d.text}); });
   es.addEventListener('status', e=>{ const d=JSON.parse(e.data); logLine(log,{t:'status',x:d.text}); });
   es.addEventListener('tool_call', e=>{ const d=JSON.parse(e.data); logLine(log,{t:'tool',x:d.tool,a:d.args||''}); });
-  es.addEventListener('done', e=>{ const d=JSON.parse(e.data); cleanup(); if(d.files) d.files.forEach(f=>files.push(f)); $('#rs-result').innerHTML = `<div class=\"mt-3 fade-in\"><div class=\"text-sm text-emerald-700 font-medium mb-1\">✅ 生成完成 · ${files.length} 个文件</div>${fileChips(files)}<button onclick=\"switchView('files');fileTab('jobs')\" class=\"text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2\">在文件管理中查看</button></div>`; refreshIcons(); });
+  es.addEventListener('done', e=>{ const d=JSON.parse(e.data); cleanup(); if(d.files) d.files.forEach(f=>files.push(f)); $('#rs-result').innerHTML = `<div class=\"mt-3 fade-in\"><div class=\"text-sm text-emerald-700 font-medium mb-1\">✅ 生成完成 · ${files.length} 个文件</div><div class=\"bg-slate-50 rounded-lg p-3 mb-2 text-xs text-slate-500\">📋 TODO: 等待后端提供方向分组详情后展示按方向划分的简历/Cover Letter/审查报告统计。</div>${fileChips(files)}<button onclick=\"switchView('files');fileTab('jobs')\" class=\"text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2\">在文件管理中查看</button></div>`; refreshIcons(); });
   es.addEventListener('error', e=>{ if(!resolved){ const d=e.data?JSON.parse(e.data):null; if(d&&d.text){ logLine(log,{t:'err',x:d.text}); return; } cleanup(); logLine(log,{t:'err',x:'连接中断'}); } });
   es.addEventListener('ping', ()=>{});
 
@@ -1139,7 +1139,7 @@ function sseFirstThenApi(box, panelId, apiPath, body, doneMsg, fileTabName){
   es.addEventListener('progress', e=>{ const d=JSON.parse(e.data); logLine(box,{t:'p',x:d.text}); });
   es.addEventListener('status', e=>{ const d=JSON.parse(e.data); logLine(box,{t:'status',x:d.text}); });
   es.addEventListener('tool_call', e=>{ const d=JSON.parse(e.data); logLine(box,{t:'tool',x:d.tool,a:d.args||''}); });
-  es.addEventListener('done', e=>{ const d=JSON.parse(e.data); cleanup(); if(d.files) d.files.forEach(f=>files.push(f)); const el=$(panelId); if(el) el.innerHTML = `<div class=\"mt-3 fade-in\"><div class=\"text-sm text-emerald-700 font-medium mb-1\">✅ ${doneMsg} · ${files.length} 个文件</div>${fileChips(files)}<button onclick=\"switchView('files');fileTab('${fileTabName}')\" class=\"text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2\">在文件管理中查看</button></div>`; refreshIcons(); });
+  es.addEventListener('done', e=>{ const d=JSON.parse(e.data); cleanup(); if(d.files) d.files.forEach(f=>files.push(f)); const el=$(panelId); if(el) el.innerHTML = `<div class=\"mt-3 fade-in\"><div class=\"text-sm text-emerald-700 font-medium mb-1\">✅ ${doneMsg} · ${files.length} 个文件</div>${fileChips(files)}<div class=\"bg-slate-50 rounded-lg p-3 mt-3 text-xs text-slate-500\"><div class=\"font-medium mb-1\">📊 详细分析结果</div>TODO: 等待后端 market_*.json 结构化字段（技能表格、薪资、差距分析、学习路径）。当前请查看生成的文件。</div><button onclick=\"switchView('files');fileTab('${fileTabName}')\" class=\"text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2\">在文件管理中查看</button></div>`; refreshIcons(); });
   es.addEventListener('error', e=>{ if(!resolved){ const d=e.data?JSON.parse(e.data):null; if(d&&d.text){ logLine(box,{t:'err',x:d.text}); return; } cleanup(); logLine(box,{t:'err',x:'连接中断'}); } });
   es.addEventListener('ping', ()=>{});
 
@@ -1206,7 +1206,7 @@ async function renderSettings(){
       ${card('基本信息',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('姓名','p-name',me.name)}${field('英文名','p-name-en',me.name_en)}${field('所在地','p-loc',me.location)}${field('电话','p-phone',me.phone)}${field('邮箱','p-email',me.email)}${field('LinkedIn','p-linkedin',me.linkedin)}${field('GitHub','p-github',me.github)}</div>`)}
       ${card('求职意向',`<div class="space-y-3">${areaField('目标岗位（每行一个）','p-titles',(intent.target_titles||[]).join('\n'),4)}<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('薪资期望','p-salary',intent.salary_expectation||'')}${field('到岗时间','p-avail',intent.notice_period||intent.availability||'')}</div>${field('目标行业','p-industry',(intent.target_industries||[]).join(', '))}</div>`)}
       ${card('战略定位',areaField('核心画像','p-core',me.strategic_positioning||'',3))}
-      ${card('专业技能',`<div class="space-y-3">${field('数据库','p-db',skillVal(skills,'databases_and_data'))}${field('API 集成','p-api',skillVal(skills,'api_and_integration'))}${field('编程语言','p-lang',skillVal(skills,'programming_languages'))}${field('框架','p-fw',skillVal(skills,'frameworks'))}${field('区块链','p-chain',skillVal(skills,'blockchain'))}${field('DevOps','p-devops',skillVal(skills,'devops_and_tools'))}${field('AI 工具','p-ai',skillVal(skills,'ai_tools'))}${field('业务能力','p-biz',skillVal(skills,'business_skills'))}</div>`)}
+      ${card('专业技能',`<div class="space-y-3">${field('数据库','p-db',skillVal(skills,'databases_and_data'))}${field('API 集成','p-api',skillVal(skills,'api_and_integration'))}${field('编程语言','p-lang',skillVal(skills,'programming_languages'))}${field('框架','p-fw',skillVal(skills,'frameworks'))}${field('区块链','p-chain',skillVal(skills,'blockchain'))}${field('DevOps','p-devops',skillVal(skills,'devops_and_tools'))}${field('AI 工具','p-ai',skillVal(skills,'ai_tools'))}${field('业务能力','p-biz',skillVal(skills,'business_skills'))}${field('语言能力','p-spoken',skillVal(skills,'languages'))}</div>`)}
       ${card('自我评价',areaField('p-self',me.summary||'',3))}
       <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存到 me.yaml</button>`;
   }
@@ -1260,7 +1260,7 @@ async function saveYaml(name){
   if(name==='me'){
     const orig = await loadYaml('me') || {};
     const skills = {};
-    const skillKeys = {databases_and_data:'p-db',api_and_integration:'p-api',programming_languages:'p-lang',frameworks:'p-fw',blockchain:'p-chain',devops_and_tools:'p-devops',ai_tools:'p-ai',business_skills:'p-biz'};
+    const skillKeys = {databases_and_data:'p-db',api_and_integration:'p-api',programming_languages:'p-lang',frameworks:'p-fw',blockchain:'p-chain',devops_and_tools:'p-devops',ai_tools:'p-ai',business_skills:'p-biz',languages:'p-spoken'};
     for(const [key, elId] of Object.entries(skillKeys)){
       const el = $(`#${elId}`); if(el) skills[key] = el.value.split(',').map(s=>s.trim()).filter(Boolean);
     }
@@ -1299,8 +1299,92 @@ async function saveConfigYaml(){
     market_analysis: {max_pages:parseInt($('#c-mpages').value)||4,max_fetch_jd:parseInt($('#c-mjd').value)||100,batch_size:parseInt($('#c-mbatch').value)||5,jd_max_chars:parseInt($('#c-mchars').value)||6000},
   };
   const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
-  if(res && !res.error) toast('已保存到 profiles/search_config.yaml','ok');
-  else toast('保存失败: '+(res?.error||'未知错误'),'err');
+  if(res && !res.error){
+    toast('已保存到 profiles/search_config.yaml','ok');
+    // Sync global UI state
+    STATE.sort = newCfg.sort_mode||'date';
+    document.querySelectorAll('.sortbtn').forEach(x=>{ const on=x.dataset.sort===STATE.sort; x.className='sortbtn flex-1 py-1.5 '+(on?'bg-indigo-600 text-white':'bg-white text-slate-500'); });
+    const qaSort = document.getElementById('qa-sort'); if(qaSort) qaSort.textContent = STATE.sort==='date'?'按发布时间':'按相关度';
+    renderMarketPresets();
+  } else toast('保存失败: '+(res?.error||'未知错误'),'err');
+}
+
+/* ===================== YAML BUILDERS ===================== */
+function buildMeYamlText(data){
+  const intent = data.job_intent || {};
+  const skills = data.skills || {};
+  const exp = data.work_experience || [];
+  const tl = (intent.target_titles||[]).map(t=>`    - ${t}`).join('\n');
+  const sk = Object.entries(skills).map(([k,vs])=>`  ${k}: [${(Array.isArray(vs)?vs:[]).join(', ')}]`).join('\n');
+  const expYaml = exp.map(e=>`  - company: ${e.company||''}\n    title: ${e.title||''}\n    period: ${e.period||''}\n    highlights:\n${(e.highlights||[]).map(h=>`      - ${h}`).join('\n')}`).join('\n');
+  return `# profiles/me.yaml
+basic_info:
+  name: ${data.name||''}
+  name_en: ${data.name_en||''}
+  location: ${data.location||''}
+  phone: "${data.phone||''}"
+  email: ${data.email||''}
+  linkedin: ${data.linkedin||''}
+  github: ${data.github||''}
+
+job_intention:
+  target_titles:
+${tl}
+  salary_expectation: "${intent.salary_expectation||''}"
+  notice_period: "${intent.notice_period||''}"
+  target_industries: [${(intent.target_industries||[]).join(', ')}]
+
+strategic_positioning: >
+  ${data.strategic_positioning||''}
+
+skills:
+${sk}
+
+work_experience:
+${expYaml}
+
+summary: >
+  ${data.summary||''}`;
+}
+function buildConfigYamlText(data){
+  const q = (data.search_queries||[]).map(s=>`  - keywords: ${s.keywords||''}\n    location: ${s.location||''}${s.classification?`\n    classification: ${s.classification}`:''}`).join('\n');
+  const cats = (data.market_job_categories||[]).map(c=>`  - ${c}`).join('\n');
+  const cls = (data.market_classifications||[]).map(c=>`  - ${c}`).join('\n');
+  const m = data.matching || {};
+  const ma = data.market_analysis || {};
+  return `# profiles/search_config.yaml
+llm:
+  provider: ${(data.llm||{}).provider||'glm'}
+  model: ${(data.llm||{}).model||''}
+
+sort_mode: ${data.sort_mode||'date'}
+
+search_queries:
+${q}
+
+max_pages_per_query: ${data.max_pages_per_query||3}
+max_total_results: ${data.max_total_results||200}
+
+filters:
+  exclude_companies: [${(data.filters||{}).exclude_companies||[]}]
+
+matching:
+  min_match_score: ${m.min_match_score||45}
+  top_n: ${m.top_n||999}
+  borderline_rescore: ${m.borderline_rescore!==false}
+  borderline_range: ${m.borderline_range||8}
+
+market_job_categories:
+${cats}
+
+market_classifications:
+${cls}
+
+market_analysis:
+  max_pages: ${ma.max_pages||4}
+  max_fetch_jd: ${ma.max_fetch_jd||100}
+  batch_size: ${ma.batch_size||5}
+  jd_max_chars: ${ma.jd_max_chars||6000}`;
 }
 
 /* ===================== YAML MODAL ===================== */
@@ -1313,19 +1397,38 @@ async function openYamlModal(which){
   $('#modal-icon').innerHTML = `<i data-lucide="${which==='me'?'user-round':'sliders-horizontal'}" class="w-4 h-4 text-indigo-600"></i>`;
   const friendlyBtn = $('#mm-friendly'); const rawBtn = $('#mm-raw'); const body = $('#modal-body');
 
-  // Raw YAML: show JSON pretty-print (YAML format not available via API, but JSON is close)
-  const rawText = JSON.stringify(data, null, 2);
+  // Raw YAML: build YAML string from JSON data, then syntax-highlight
+  const rawText = which==='me' ? buildMeYamlText(data) : buildConfigYamlText(data);
 
   // Friendly view
   let friendlyHtml = '';
   if(which==='me'){
     const intent = data.job_intent || {};
     const skills = data.skills || {};
-    friendlyHtml = `<div class="space-y-4"><div class="flex items-center gap-3 pb-3 border-b"><div class="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-lg">${escapeHtml((data.name||'?').slice(0,1))}</div><div><div class="font-bold text-slate-800">${escapeHtml(data.name||'')} (${escapeHtml(data.name_en||'')})</div><div class="text-xs text-slate-500">${escapeHtml(data.location||'')} · ${escapeHtml(data.email||'')} · ${escapeHtml(data.phone||'')}</div></div></div><div class="text-sm font-semibold mt-2">求职意向</div><div class="flex flex-wrap gap-1">${(intent.target_titles||[]).map(t=>`<span class="text-xs bg-indigo-50 text-indigo-700 rounded px-2 py-1">${escapeHtml(t)}</span>`).join('')||'<span class="text-xs text-slate-400">未设置</span>'}</div><div class="text-xs text-slate-500 mt-1">薪资 ${escapeHtml(intent.salary_expectation||'未设置')} · ${escapeHtml(intent.notice_period||'')} · ${escapeHtml((intent.target_industries||[]).join('、')||'未设置')}</div><div class="text-sm font-semibold mt-3">战略定位</div><div class="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed bg-slate-50 rounded-lg p-3">${escapeHtml((data.strategic_positioning||'').slice(0,500))}</div><div class="text-sm font-semibold mt-3">技能</div><div class="space-y-1.5">${Object.entries(skills).map(([k,vs])=>`<div class="flex gap-2 text-xs"><span class="text-slate-400 w-24 shrink-0">${escapeHtml(k)}</span><span class="text-slate-600">${(Array.isArray(vs)?vs:[]).join('、')||'—'}</span></div>`).join('')||'<span class="text-xs text-slate-400">未设置</span>'}</div></div>`;
+    const exp = data.work_experience || [];
+    const header = `<div class="flex items-center gap-3.5 pb-4 mb-5 border-b border-slate-100"><div class="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0">${escapeHtml((data.name||'?').slice(0,1))}</div><div class="min-w-0"><div class="font-bold text-slate-800 text-lg leading-tight">${escapeHtml(data.name||'')}</div><div class="text-xs text-indigo-600 mt-0.5">${escapeHtml((data.strategic_positioning||'').split('，')[0])}</div></div></div>`;
+    const contact = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="user-round" class="w-3.5 h-3.5"></i> 联系方式</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${[['map-pin',data.location],['phone',data.phone],['mail',data.email],['linkedin',data.linkedin],['github',data.github]].map(([ic,v])=>`<div class="flex items-center gap-2 text-sm text-slate-600"><i data-lucide="${ic}" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i><span class="truncate">${escapeHtml(v||'')}</span></div>`).join('')}</div></section>`;
+    const titlesHtml = (intent.target_titles||[]).map((t,i)=>`<div class="flex items-center gap-2 text-sm text-slate-700"><span class="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] flex items-center justify-center font-medium shrink-0">${i+1}</span> ${escapeHtml(t)}</div>`).join('');
+    const intentSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> 求职意向</div><div class="space-y-1.5 mb-3">${titlesHtml}</div><div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${[['薪资期望',intent.salary_expectation],['到岗时间',intent.notice_period],['目标行业',(intent.target_industries||[]).join('、')]].map(([k,v])=>`<div class="bg-slate-50 rounded-lg px-3 py-2"><div class="text-[10px] text-slate-400">${k}</div><div class="text-sm text-slate-700 font-medium mt-0.5">${escapeHtml(v||'—')}</div></div>`).join('')}</div></section>`;
+    const pos = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="compass" class="w-3.5 h-3.5"></i> 战略定位</div><div class="bg-indigo-50 border-l-2 border-indigo-400 rounded-r-lg px-3 py-2.5 text-sm text-slate-700 leading-relaxed">${escapeHtml(data.strategic_positioning||'')}</div></section>`;
+    const skillsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="wrench" class="w-3.5 h-3.5"></i> 专业技能</div><div class="space-y-2.5">${Object.entries(skills).map(([k,vs])=>`<div class="flex gap-3 items-start"><div class="text-xs text-slate-400 w-16 shrink-0 pt-1">${escapeHtml(k)}</div><div class="flex flex-wrap gap-1.5">${(Array.isArray(vs)?vs:[]).map(v=>`<span class="text-xs bg-slate-100 text-slate-600 rounded-md px-2 py-1">${escapeHtml(v)}</span>`).join('')}</div></div>`).join('')}</div></section>`;
+    const expSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="briefcase" class="w-3.5 h-3.5"></i> 工作经历</div>${exp.map(e=>`<div class="border-l-2 border-slate-200 pl-3 mb-3"><div class="flex items-baseline justify-between gap-2 flex-wrap"><div class="font-medium text-slate-800 text-sm">${escapeHtml(e.title||'')} · ${escapeHtml(e.company||'')}</div><div class="text-[11px] text-slate-400">${escapeHtml(e.period||'')}</div></div><ul class="mt-1.5 space-y-1">${(e.highlights||[]).map(h=>`<li class="text-xs text-slate-600 flex gap-1.5"><span class="text-indigo-400">•</span> ${escapeHtml(h)}</li>`).join('')}</ul></div>`).join('')}</section>`;
+    const selfSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="quote" class="w-3.5 h-3.5"></i> 自我评价</div><p class="text-sm text-slate-600 leading-relaxed bg-slate-50 rounded-lg px-3 py-2.5">${escapeHtml(data.summary||'')}</p></section>`;
+    friendlyHtml = header+contact+intentSec+pos+skillsSec+expSec+selfSec;
   } else {
     const m = data.matching || {};
     const ma = data.market_analysis || {};
-    friendlyHtml = `<div class="space-y-3"><div class="flex items-center gap-2"><span class="text-xs bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 font-medium">${escapeHtml(data.llm?.provider||'glm')}</span><span class="text-sm text-slate-600">${escapeHtml(data.llm?.model||'')}</span></div><div class="text-xs text-slate-500">排序: ${escapeHtml(data.sort_mode||'date')} · 关键词组: ${(data.search_queries||[]).length} 组</div><div class="text-xs text-slate-500">抓取: 每组 ${data.max_pages_per_query||3} 页 · 上限 ${data.max_total_results||200} 条</div><div class="text-xs text-slate-500">匹配: 最低 ${m.min_match_score||45} 分 · 复评${m.borderline_rescore!==false?'开启 (±'+m.borderline_range+')':'关闭'} · 保留 Top ${m.top_n||999}</div><div class="text-xs text-slate-500">市场: 翻 ${ma.max_pages||4} 页 · 抓取 ${ma.max_fetch_jd||100} 条 · 每批 ${ma.batch_size||5} 条 · JD 截断 ${ma.jd_max_chars||6000} 字</div><div class="text-xs text-slate-500">预设岗位: ${(data.market_job_categories||[]).join('、')||'无'}</div><div class="text-xs text-slate-500">预设行业: ${(data.market_classifications||[]).join('、')||'无'}</div></div>`;
+    const queries = (data.search_queries||[]).map(q=>`<div class="bg-slate-50 rounded-lg px-3 py-2 mb-1.5"><div class="text-sm text-slate-700 font-medium">${escapeHtml(q.keywords||'')}</div><div class="text-[11px] text-slate-400 mt-0.5 flex gap-3 flex-wrap"><span class="flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3"></i>${escapeHtml(q.location||'')}</span>${q.classification?`<span class="font-mono">${escapeHtml(q.classification)}</span>`:''}</div></div>`).join('');
+    const wnames = {default:'通用',technical:'技术',solutions:'方案',web3:'Web3',payment:'支付'};
+    const wprofiles = m.weight_profiles || {};
+    const wtable = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> 权重方案（技能/经验/职级/行业/加分）</div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-[11px] text-slate-400 border-b border-slate-100"><th class="text-left py-1 font-medium">方案</th><th class="py-1">技能</th><th class="py-1">经验</th><th class="py-1">职级</th><th class="py-1">行业</th><th class="py-1">加分</th></tr></thead><tbody>${Object.entries(wprofiles).map(([k,w])=>`<tr class="border-b border-slate-50"><td class="py-1.5"><span class="text-xs px-1.5 py-0.5 rounded ${(({payment:'bg-emerald-100 text-emerald-700',web3:'bg-purple-100 text-purple-700',solutions:'bg-blue-100 text-blue-700',technical:'bg-indigo-100 text-indigo-700'})[k]||'bg-slate-100 text-slate-600')}">${wnames[k]||k}</span></td>${['skill','experience','level','industry','bonus'].map(d=>`<td class="text-center py-1.5 text-slate-600">${w[d]||0}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
+    const catsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="bookmark" class="w-3.5 h-3.5"></i> 岗位类别预设</div><div class="flex flex-wrap gap-1.5">${(data.market_job_categories||[]).map(c=>`<span class="text-xs bg-indigo-50 text-indigo-700 rounded-md px-2 py-1">${escapeHtml(c)}</span>`).join('')||'<span class="text-xs text-slate-400">无</span>'}</div></section>`;
+    const clsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="layers" class="w-3.5 h-3.5"></i> 行业分类预设</div><div class="flex flex-wrap gap-1.5">${(data.market_classifications||[]).map(c=>`<span class="text-xs bg-slate-100 text-slate-600 rounded-md px-2 py-1 font-mono">${escapeHtml(c)}</span>`).join('')||'<span class="text-xs text-slate-400">无</span>'}</div></section>`;
+    const llmCard = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="cpu" class="w-3.5 h-3.5"></i> 模型</div><div class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2.5"><span class="text-xs bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 font-medium">${escapeHtml(data.llm?.provider||'glm')}</span><span class="text-sm text-slate-700 font-mono">${escapeHtml(data.llm?.model||'')}</span></div></section>`;
+    const fetchKvs = [['每组翻页',data.max_pages_per_query||3],['抓取上限',data.max_total_results||200],['排序',data.sort_mode||'date']].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${escapeHtml(String(v))}</span></div>`).join('');
+    const matchKvs = [['最低达标分',m.min_match_score||45],['保留 Top N',m.top_n||999],['复评区间',m.borderline_range||8],['及格线复评',m.borderline_rescore!==false?'开启':'关闭']].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${escapeHtml(String(v))}</span></div>`).join('');
+    const mktKvs = [['列表翻页',ma.max_pages||4],['JD 上限',ma.max_fetch_jd||100],['LLM 每批',ma.batch_size||5],['JD 截断',ma.jd_max_chars||6000]].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${escapeHtml(String(v))}</span></div>`).join('');
+    friendlyHtml = llmCard+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="search" class="w-3.5 h-3.5"></i> 搜索关键词组</div>${queries}</section>`+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="download" class="w-3.5 h-3.5"></i> 抓取参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${fetchKvs}</div></section>`+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> 匹配参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${matchKvs}</div></section>`+wtable+catsSec+clsSec+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="line-chart" class="w-3.5 h-3.5"></i> 市场调研参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${mktKvs}</div></section>`;
   }
 
   body.innerHTML = friendlyHtml;
