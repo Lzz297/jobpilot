@@ -1115,22 +1115,7 @@ function hlYaml(text){
     return line;
   }).join('\n');
 }
-function openYamlModal(which){
-  MODAL.which=which; MODAL.mode='friendly';
-  $('#modal-overlay').classList.remove('hidden');
-  $('#modal-title').textContent = which==='me'?'个人画像':'搜索与匹配配置';
-  $('#modal-sub').textContent = which==='me'?'profiles/me.yaml':'profiles/search_config.yaml';
-  $('#modal-icon').innerHTML = `<i data-lucide="${which==='me'?'user-round':'sliders-horizontal'}" class="w-4 h-4 text-indigo-600"></i>`;
-  $('#mm-raw').className = 'px-3 py-1.5 bg-white text-slate-500';
-  $('#mm-friendly').className = 'px-3 py-1.5 bg-indigo-600 text-white';
-  $('#modal-body').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">配置详情请查看 <code class="bg-slate-100 px-1 rounded">profiles/${which==='me'?'me':'search_config'}.yaml</code> 文件。<br>在线编辑功能将在 Phase 3 上线。</div>`;
-  $('#modal-edit').onclick = ()=>{ closeModal(); switchView('settings'); };
-  refreshIcons();
-}
-function setModalMode(m){ MODAL.mode=m; /* raw YAML not available until Phase 3 */ }
 function closeModal(){ $('#modal-overlay').classList.add('hidden'); }
-$('#mm-friendly').addEventListener('click', ()=>setModalMode('friendly'));
-$('#mm-raw').addEventListener('click', ()=>setModalMode('raw'));
 
 /* ===================== SETTINGS VIEW ===================== */
 function field(label,id,val,type='text',hint=''){
@@ -1301,24 +1286,6 @@ function setTab(t){
   refreshIcons();
 }
 
-/* ===================== MARKET PRESETS (static for Phase 1) ===================== */
-function renderMarketPresets(){
-  $('#mkt-cat-chips').innerHTML = `<span class="text-[11px] text-slate-400">手动输入岗位类别（大小写敏感），预设功能将在 Phase 3 上线</span>`;
-  $('#mkt-class-chips').innerHTML = `<span class="text-[11px] text-slate-400">手动输入行业分类（大小写敏感）</span>`;
-  $('#mkt-batch-cats').innerHTML = `<span class="text-[11px] text-slate-400">手动添加任务</span>`;
-  refreshIcons();
-}
-function mktTab(tab){
-  $('#mkt-single').classList.toggle('hidden',tab!=='single');
-  $('#mkt-batch').classList.toggle('hidden',tab!=='batch');
-  $('#mkt-tab-single').className='px-4 py-1.5 '+(tab==='single'?'bg-indigo-600 text-white':'bg-white text-slate-500');
-  $('#mkt-tab-batch').className='px-4 py-1.5 '+(tab==='batch'?'bg-indigo-600 text-white':'bg-white text-slate-500');
-}
-function addBatchRow(){
-  const row=document.createElement('div'); row.className='batch-row flex gap-2';
-  row.innerHTML=`<input placeholder="岗位类别（大小写敏感）" class="bcat flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><input placeholder="行业分类（可选）" class="bclass flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><button onclick="this.closest('.batch-row').remove()" class="text-slate-400 hover:text-red-500 px-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`;
-  $('#batch-rows').appendChild(row); refreshIcons();
-}
 
 /* ===================== INIT ===================== */
 (async function init(){
