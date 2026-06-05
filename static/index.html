@@ -649,8 +649,10 @@ function switchView(v){
   document.querySelectorAll('.view').forEach(el=>el.classList.add('hidden'));
   const target = $('#view-'+v); if(target) target.classList.remove('hidden');
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  if(v==='matches') renderMatches();
   if(v==='runs') renderRuns();
-  if(v==='files') renderFiles();
+  if(v==='files'){ renderFiles(); syncRangeUI(); }
+  if(v==='market') renderMarketPresets();
   if(v==='resume') loadRunsForSelect();
   if(v==='settings') renderSettings();
   if(window.innerWidth<768){ $('#sidebar').classList.add('hidden'); $('#sidebar').classList.remove('flex'); }
@@ -696,7 +698,7 @@ async function renderRuns(){
     if(r.has_resumes) badges.push('<span class="text-emerald-500">resumes</span>');
     if(!badges.length) badges.push('<span class="text-slate-300">empty</span>');
 
-    return `<div class="bg-white border ${r.is_current?'border-indigo-300':'border-slate-200'} rounded-xl p-4 flex flex-wrap items-center gap-3"><div class="flex-1 min-w-0"><div class="flex items-center gap-2 flex-wrap"><code class="text-sm font-semibold text-slate-800">${r.id}</code>${stageBadge(r.stage)}${r.is_current?'<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-600 text-white">当前活跃</span>':''}</div><div class="text-xs text-slate-400 mt-1 flex items-center gap-3 flex-wrap"><span class="flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i>${r.time}</span><span>抓取 ${r.job_count}</span><span>匹配 ${r.match_count}</span><span class="flex gap-1">${badges.join('')}</span></div></div><div class="flex gap-2"><button onclick="JOB_SRC='${r.id}';switchView('files');renderFiles()" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 文件</button></div></div>`;
+    return `<div class="bg-white border ${r.is_current?'border-indigo-300':'border-slate-200'} rounded-xl p-4 flex flex-wrap items-center gap-3"><div class="flex-1 min-w-0"><div class="flex items-center gap-2 flex-wrap"><code class="text-sm font-semibold text-slate-800">${r.id}</code>${stageBadge(r.stage)}${r.is_current?'<span class="text-[11px] px-2 py-0.5 rounded-full bg-indigo-600 text-white">当前活跃</span>':''}</div><div class="text-xs text-slate-400 mt-1 flex items-center gap-3 flex-wrap"><span class="flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i>${r.time}</span><span>抓取 ${r.job_count}</span><span>匹配 ${r.match_count}</span><span class="flex gap-1">${badges.join('')}</span></div></div><div class="flex gap-2">${r.has_matched?`<button onclick="MF.run='${r.id}';switchView('matches')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 匹配结果</button>`:''}<button onclick="JOB_SRC='${r.id}';switchView('files');fileTab('jobs');syncRangeUI()" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 文件</button></div></div>`;
   }).join('') : `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">还没有找工作的 Run，去工作台开始你的第一次搜索。</div>`;
   $('#nav-match-count').textContent = ''; // updated by matches view (Phase 2)
   refreshIcons();
