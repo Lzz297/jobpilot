@@ -59,7 +59,16 @@ D:\job-agent/
 │   └── resume_guide.yaml     #     简历撰写指南
 │
 ├── static/
-│   └── index.html            #     Web UI 前端（单页应用，~1520 行）
+│   ├── index.html            #     Web UI 前端（单页应用，~1478 行）
+│   └── index_old.html        #     旧版 UI 备份（Phase 1 改造前）
+│
+├── new-ui/                   # [Demo] PM 交付的 UI 原型（独立交互演示）
+│   └── index.html            #     Demo 原型（~928 行）
+│
+├── tests/                    # [测试] Playwright 自动化测试套件
+│   ├── conftest.py           #     Fixture 层（配置管理、DeepSeek 切换）
+│   ├── full_regression_v2.py #     全量回归测试（40 用例）
+│   └── screenshots/diffs/    #     灰度 diff 图输出目录
 │
 ├── output/                   # [输出目录]
 │   ├── run_{timestamp}/      #     每次"找工作"的输出
@@ -77,6 +86,7 @@ D:\job-agent/
 ├── .env                      # API Key
 ├── CONFIG_GUIDE.md           # 配置文件详细说明（独立手册）
 ├── RESUME_PROMPTS_FOR_REVIEW.md  # 简历 prompt 审查汇总
+├── .claude/                  # Claude Code 工作文件
 └── .venv/                    # Python 虚拟环境
 ```
 
@@ -477,6 +487,115 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 ##### `GET /download/<path>`
 文件下载。路径相对于 `output/` 目录。如 `/download/run_xxx/resumes/resume_web3_20260417_en.pdf`。
 
+##### `GET /api/runs/<run_id>/matches`
+返回指定 run 的结构化匹配评分数据。
+
+**Response**:
+```json
+[
+  {
+    "title": "Web3 Payment Backend Engineer",
+    "company": "PayChain Solutions",
+    "url": "https://hk.jobsdb.com/job/...",
+    "total_score": 84,
+    "scores": {"skill": 88, "experience": 80, "level": 75, "industry": 90, "bonus": 85},
+    "llm_direction": "payment",
+    "weight_profile": "payment",
+    "confidence": "verified",
+    "score_variance": 3.5,
+    "skill_match": ["Java ✅", "Python ✅", "Kubernetes ❌"],
+    "missing_skills": ["Kubernetes"],
+    "reason": "...",
+    "recommendation": "强烈推荐"
+  }
+]
+```
+
+##### `POST /api/resume`
+直接调用简历生成。参数由前端表单提供，SSE 流返回进度。
+
+**Request**:
+```json
+{
+  "sid": "a1b2c3d4",
+  "mode": "direction",
+  "languages": ["en", "hk"],
+  "job_index": 1,
+  "jd_text": "...",
+  "role_direction": "Solutions Engineer"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `sid` | 是 | 会话 ID |
+| `mode` | 是 | `"direction"` / `"job"` / `"jd"` / `"role"` / `"general"` |
+| `languages` | 否 | 语言子集，如 `["en"]`，默认 `["en","hk","cn"]` |
+| `job_index` | 否 | mode=`"job"` 时必填，匹配排名中的岗位编号（从 1 开始） |
+| `jd_text` | 否 | mode=`"jd"` 时必填，粘贴的完整 JD 文本 |
+| `role_direction` | 否 | mode=`"role"` 时必填，如 `"Solutions Engineer"` |
+
+**Response** (立即): `{"status": "started"}`
+
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / done / error。
+
+##### `POST /api/market`
+直接调用单个市场调研。SSE 流返回进度。
+
+**Request**:
+```json
+{
+  "sid": "a1b2c3d4",
+  "job_category": "Web3",
+  "location": "Hong Kong",
+  "include_gap_analysis": true,
+  "classification": "information-communication-technology",
+  "sort_by": "date"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `sid` | 是 | 会话 ID |
+| `job_category` | 是 | 岗位类别关键词，大小写敏感 |
+| `location` | 否 | 默认 `"Hong Kong"` |
+| `include_gap_analysis` | 否 | 默认 `true` |
+| `classification` | 否 | JobsDB 行业分类标签，大小写敏感 |
+| `sort_by` | 否 | `"date"` 或 `"relevance"` |
+
+**Response** (立即): `{"status": "started"}`
+
+##### `POST /api/market/batch`
+批量市场调研，依次执行每个任务。
+
+**Request**:
+```json
+{
+  "sid": "a1b2c3d4",
+  "tasks": [
+    {"category": "AI Agent", "classification": "information-communication-technology"},
+    {"category": "Web3"}
+  ],
+  "location": "Hong Kong",
+  "include_gap_analysis": true,
+  "sort_by": "date"
+}
+```
+
+##### `GET /api/config/yaml/<name>`
+读取 YAML 配置文件并返回 JSON。
+
+**URL 参数**: `name` — `"me"` 或 `"search_config"`
+
+**Response**: `{"name": "me", "content": {...}}`
+
+##### `PUT /api/config/yaml/<name>`
+回写 YAML 配置文件。前端提交 JSON，后端转为 YAML 存储。
+
+**Request**: `{"content": {...}}` — 完整的配置对象
+
+**Response**: `{"status": "ok", "name": "me"}`
+
 ---
 
 ### 3.5 Web UI — 功能能力
@@ -492,6 +611,9 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 - **市场调研**：用户可输入岗位类别参数直接触发市场调研
 - **文件管理**：浏览所有历史 Run 和市场调研的输出文件，支持文件下载
 - **运行历史**：查看历史 Run 列表（含时间、当前阶段、岗位数量），区分活跃 Run 和已完成 Run
+- **智能路由层**：`routeMessage()` 函数拦截用户输入，匹配已知指令（"帮我找工作""分析X市场""看看匹配结果"等）直接执行本地操作，无需经过 LLM 决策，其余自由对话才发给 LLM Agent。建议 chips 也通过路由层触发
+- **全局忙锁**：`setBusy()` / `guardBusy()` 控制并发，同一时间只允许一个 Agent 任务执行。busy 状态下 `.agent-trigger` 元素半透明（opacity:0.45）且不可点击，状态指示灯变为琥珀色旋转动画。并发请求返回 HTTP 429
+- **键盘快捷键**：Escape 关团 YAML 浮层和语言弹窗；Enter 发送消息（Shift+Enter 换行）
 
 > 以上为功能能力描述。具体的 UI 布局、视觉风格、交互方式由产品设计决定。
 
@@ -1014,7 +1136,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 ### 4.2 profiles/search_config.yaml — 搜索策略 + LLM + 匹配 + 市场
 
-详见文件内注释（255 行）。完整配置项汇总：
+详见文件内注释（254 行）。完整配置项汇总：
 
 | 配置段 | 配置项 | 默认值 | 说明 |
 |--------|--------|--------|------|
