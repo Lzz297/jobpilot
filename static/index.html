@@ -76,7 +76,7 @@
       <div class="grid grid-cols-2 gap-2">
         <button onclick="openYamlModal('me')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
           <i data-lucide="eye" class="w-3.5 h-3.5"></i> me.yaml</button>
-        <button onclick="openYamlModal('config')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
+        <button onclick="openYamlModal('search_config')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
           <i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看配置</button>
       </div>
       <div>
@@ -566,7 +566,7 @@ function routeMessage(text){
   // 5. View profile
   if(/档案|画像|me\.yaml/i.test(text)){ simpleReply('已打开个人画像浮层。', [['查看 me.yaml',"openYamlModal('me')",'eye']]); return; }
   // 6. View config
-  if(/配置|config/i.test(text)){ simpleReply('已打开配置浮层。', [['查看配置',"openYamlModal('config')",'eye']]); return; }
+  if(/配置|config/i.test(text)){ simpleReply('已打开配置浮层。', [['查看配置',"openYamlModal('search_config')",'eye']]); return; }
   // Fallback: send to LLM Agent
   sendToLLM(text);
 }
@@ -1238,7 +1238,7 @@ async function renderSettings(){
     marketCls.forEach(c=>clsHtml+=`<div class="cls-row flex gap-2 items-center"><input value="${escapeHtml(c)}" placeholder="如 information-communication-technology" class="cls-in flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-mono"><button onclick="this.closest('.cls-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`);
     clsHtml += `</div><button onclick="addClsRow()" class="text-xs text-indigo-600 flex items-center gap-1 mt-2"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 添加行业分类</button>`;
 
-    $('#set-config').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入 profiles/search_config.yaml</span><button onclick="openYamlModal('config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
+    $('#set-config').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入 profiles/search_config.yaml</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
       ${card('搜索关键词组 search_queries',`<p class="text-[11px] text-slate-400 mb-2">direction 由 LLM 在匹配阶段自动判定，无需手动配置。</p>${qHtml}`)}
       ${card('抓取参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('每组关键词翻页','c-pages',cfg.max_pages_per_query||3,'number')}${field('最终抓取 JD 上限','c-total',cfg.max_total_results||200,'number')}${field('全局排序 sort_mode','c-sort',cfg.sort_mode||'date','text','date / relevance')}</div>`)}
       ${card('排除公司',areaField('每行一个公司名（大小写不敏感）','c-exclude',(cfg.filters||{}).exclude_companies?cfg.filters.exclude_companies.join('\n'):'',3,'在基础清洗阶段直接排除'))}
