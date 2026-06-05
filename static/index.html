@@ -579,21 +579,12 @@ function simpleReply(text,btns){
 function sendToLLM(text){
   if(!STATE.sid){ toast('正在连接服务器…','warn'); return; }
   const t=chatTurn(); const box=t.log;
-  const es=new EventSource('/stream/'+STATE.sid);
-  const files=[]; let resolved=false;
-  function cleanup(){ if(!resolved){ resolved=true; es.close(); setBusy(false); } }
-  es.addEventListener('progress', e=>{ const d=JSON.parse(e.data); logLine(box,{t:'p',x:d.text}); });
-  es.addEventListener('status', e=>{ const d=JSON.parse(e.data); logLine(box,{t:'status',x:d.text}); });
-  es.addEventListener('tool_call', e=>{ const d=JSON.parse(e.data); logLine(box,{t:'tool',x:d.tool,a:d.args||''}); });
-  es.addEventListener('done', e=>{
-    const d=JSON.parse(e.data); cleanup();
-    if(d.files) d.files.forEach(f=>files.push(f));
-    t.result.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(d.reply||'')}</div>${fileChips(files)}</div>`;
+  startSSE(box, (reply, files) => {
+    t.result.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="text-sm text-slate-700 whitespace-pre-wrap">${escapeHtml(reply||'')}</div>${fileChips(files)}</div>`;
     refreshIcons(); scrollChat();
+  }, null, 0, () => {
+    apiPost('/api/chat', {sid:STATE.sid, message:text});
   });
-  es.addEventListener('error', e=>{ if(!resolved){ const d=e.data?JSON.parse(e.data):null; if(d&&d.text){ logLine(box,{t:'err',x:d.text}); return; } cleanup(); logLine(box,{t:'err',x:'连接中断'}); } });
-  es.addEventListener('ping', ()=>{});
-  apiPost('/api/chat', {sid:STATE.sid, message:text}).then(data => { if(!data) cleanup(); }).catch(err => { cleanup(); logLine(box, {t:'err', x:'网络错误: '+err.message}); });
 }
 
 function runPipelineFromChat(langs){
