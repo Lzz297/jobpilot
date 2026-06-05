@@ -610,7 +610,7 @@ function runPipelineFromChat(langs){
   es.addEventListener('done', e=>{
     const d=JSON.parse(e.data); cleanup();
     if(d.files) d.files.forEach(f=>files.push(f));
-    t.result.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="font-semibold text-slate-800 text-sm mb-1">✅ 找工作流程完成</div><p class="text-sm text-slate-600">结果已写入当前 Run。</p>${fileChips(files)}<div class="flex gap-2 mt-3"><button onclick="switchView('matches')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button><button onclick="switchView('files')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button></div></div>`;
+    const resumeFiles=files.filter(f=>Array.isArray(f)?(f[0]||'').includes('resume_'):String(f).includes('resume_')).length||(files.length?Math.max(0,files.length-4):0); t.result.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="font-semibold text-slate-800 text-sm mb-1">✅ 找工作流程完成</div><p class="text-sm text-slate-600">结果已写入当前 Run。</p><div class="grid grid-cols-3 gap-2 my-3 text-center"><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-slate-800">—</div><div class="text-[11px] text-slate-400">抓取岗位</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-emerald-600">—</div><div class="text-[11px] text-slate-400">达标匹配</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-indigo-600">${resumeFiles||'—'}</div><div class="text-[11px] text-slate-400">简历文件</div></div></div>${fileChips(files)}<div class="flex gap-2 mt-3"><button onclick="switchView('matches')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button><button onclick="switchView('files')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button></div></div>`;
     refreshIcons(); scrollChat();
   });
   es.addEventListener('error', e=>{ if(!resolved){ const d=e.data?JSON.parse(e.data):null; if(d&&d.text){ logLine(box,{t:'err',x:d.text}); return; } cleanup(); logLine(box,{t:'err',x:'连接中断'}); } });
@@ -675,7 +675,7 @@ function runPipeline(langs){
   es.addEventListener('done', e=>{
     const d=JSON.parse(e.data); cleanup();
     if(d.files) d.files.forEach(f=>files.push(f));
-    t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="font-semibold text-slate-800 text-sm mb-1">✅ 找工作流程完成</div><p class="text-sm text-slate-600">结果已写入当前 Run。</p>${fileChips(files)}<div class="flex gap-2 mt-3"><button onclick="switchView('matches')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button><button onclick="switchView('files')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button></div></div>`;
+    t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="font-semibold text-slate-800 text-sm mb-1">✅ 找工作流程完成</div><p class="text-sm text-slate-600">结果已写入当前 Run。</p><div class="grid grid-cols-3 gap-2 my-3 text-center"><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-slate-800">—</div><div class="text-[11px] text-slate-400">抓取岗位</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-emerald-600">—</div><div class="text-[11px] text-slate-400">达标匹配</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-indigo-600">${files.filter(f=>Array.isArray(f)?(f[0]||'').includes('resume_'):String(f).includes('resume_')).length||'—'}</div><div class="text-[11px] text-slate-400">简历文件</div></div></div>${fileChips(files)}<div class="flex gap-2 mt-3"><button onclick="switchView('matches')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button><button onclick="switchView('files')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button></div></div>`;
     refreshIcons(); scrollChat();
   });
   es.addEventListener('error', e=>{ if(!resolved){ const d=e.data?JSON.parse(e.data):null; if(d&&d.text){ logLine(box,{t:'err',x:d.text}); return; } cleanup(); logLine(box,{t:'err',x:'连接中断'}); } });
@@ -850,7 +850,9 @@ async function renderJobFiles(){
 
   // Group files by category
   const groups = {search:[], filter:[], match:[], resume:[]};
-  const resumesDir = [];
+  const resumeDirs = {}; // direction -> {resume:[], cover:[], review:[]}
+  const DIR_META_ = {payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'}, solutions:{cls:'bg-blue-100 text-blue-700'}, technical:{cls:'bg-indigo-100 text-indigo-700'}};
+  const langMap = {en:'EN', hk:'繁中', cn:'简中'};
 
   files.forEach(f => {
     const name = f.name;
@@ -866,25 +868,24 @@ async function renderJobFiles(){
       }
     }
 
-    // Resume files (inside resumes/ subdir)
+    // Resume files (inside resumes/ subdir) — group by direction
     if(!placed && path.includes('resumes/')){
       const parts = path.split('/');
       const fileName = parts[parts.length-1];
       const ext = fileName.split('.').pop();
-      const langMap = {en:'EN', hk:'繁中', cn:'简中'};
-      let label = '';
-      if(fileName.startsWith('resume_') && ext==='pdf'){
+      // Parse direction from filename: resume_PAYMENT_20260604_en.pdf
+      const dirMatch = fileName.match(/^(resume_|cover_letter_|resume_review_)(.+?)_\d{8}/);
+      const direction = (dirMatch ? dirMatch[2] : 'default');
+      if(!resumeDirs[direction]) resumeDirs[direction] = {resume:[], cover:[], review:[]};
+      if(fileName.startsWith('resume_review_')){
+        resumeDirs[direction].review.push(fileChipMini(path, '审查 JSON'));
+      } else if(fileName.startsWith('cover_letter_')){
         const lang = fileName.split('_').pop().replace('.pdf','');
-        label = '简历 '+ (langMap[lang]||lang);
-      } else if(fileName.startsWith('cover_letter_') && ext==='pdf'){
-        const lang = fileName.split('_').pop().replace('.pdf','');
-        label = 'Cover Letter '+ (langMap[lang]||lang);
-      } else if(fileName.startsWith('resume_review_')){
-        label = '审查报告 JSON';
+        resumeDirs[direction].cover.push(fileChipMini(path, langMap[lang]||lang));
       } else {
-        label = fileName;
+        const lang = fileName.split('_').pop().replace('.pdf','');
+        resumeDirs[direction].resume.push(fileChipMini(path, langMap[lang]||lang));
       }
-      resumesDir.push(fileChipMini(path, label));
       placed = true;
     }
     if(!placed){
@@ -892,10 +893,18 @@ async function renderJobFiles(){
     }
   });
 
-  // Render resume section
-  if(resumesDir.length){
-    groups['resume'].push(`<div class="text-[11px] font-medium text-slate-400 px-1 pt-1">resumes/ · 简历文件</div>`);
-    groups['resume'].push(`<div class="flex flex-wrap gap-1.5">${resumesDir.join('')}</div>`);
+  // Render resume section with direction grouping
+  Object.entries(resumeDirs).forEach(([dir, rf]) => {
+    const dm = DIR_META_[dir] || {cls:'bg-slate-100 text-slate-600'};
+    const total = rf.resume.length + rf.cover.length + rf.review.length;
+    let inner = '';
+    if(rf.resume.length) inner += `<div class="flex items-center gap-2 text-xs flex-wrap"><span class="text-slate-400 w-20 shrink-0">简历</span>${rf.resume.join('')}</div>`;
+    if(rf.cover.length) inner += `<div class="flex items-center gap-2 text-xs flex-wrap"><span class="text-slate-400 w-20 shrink-0">Cover Letter</span>${rf.cover.join('')}</div>`;
+    if(rf.review.length) inner += `<div class="flex items-center gap-2 text-xs flex-wrap"><span class="text-slate-400 w-20 shrink-0">审查报告</span>${rf.review.join('')}</div>`;
+    groups['resume'].push(`<div class="border border-slate-100 rounded-lg p-3 bg-slate-50"><div class="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded ${dm.cls} text-[10px]">${dir}</span> 方向（${total} 文件）</div>${inner}</div>`);
+  });
+  if(Object.keys(resumeDirs).length){
+    groups['resume'].unshift(`<div class="text-[11px] font-medium text-slate-400 px-1 pt-1">resumes/ · 按方向分组</div>`);
   }
 
   let html='';
@@ -1020,11 +1029,12 @@ async function renderMatches(){
     const confHtml = j.confidence==='verified'?`<span class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">复评一致 ±${j.score_variance||0}</span>`:j.confidence==='uncertain'?`<span class="text-[11px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">评分波动 ±${j.score_variance||0} · 需人工判断</span>`:'';
     const recText = j.recommendation || (total>=80?'强烈推荐':total>=60?'可考虑':'不推荐');
     const origIdx = all.indexOf(j)+1;
-    return `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="flex items-start gap-3"><div class="shrink-0 text-center"><div class="text-2xl font-bold text-slate-800">${total}</div><div class="text-[10px] text-slate-400">#${origIdx}</div></div><div class="flex-1 min-w-0"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-semibold text-slate-800 text-sm truncate">${escapeHtml(j.title||'未知')}</div><div class="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">${j.company?`<span class="flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>${escapeHtml(j.company)}</span>`:''}${j.url?`<a href="${j.url}" target="_blank" class="text-indigo-500 flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i>链接</a>`:''}</div></div><span class="shrink-0 text-xs border ${cls} rounded-full px-2 py-0.5">${ic} ${recText}</span></div><div class="flex flex-wrap gap-1.5 mt-2"><span class="text-[11px] px-1.5 py-0.5 rounded ${dirCls}">方向 ${dir}</span><span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">权重 ${j.weight_profile||'default'}</span>${confHtml}</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-3">${bars}</div>${skills?`<div class="mt-2 flex flex-wrap gap-1">${skills}</div>`:''}${(j.missing_skills||[]).length?`<div class="text-[11px] text-red-500 mt-1">缺失技能：${j.missing_skills.join('、')}</div>`:''}<p class="text-xs text-slate-500 mt-2 leading-relaxed">${escapeHtml(j.reason||'')}</p></div></div></div>`;
+    return `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="flex items-start gap-3"><div class="shrink-0 text-center"><div class="text-2xl font-bold text-slate-800">${total}</div><div class="text-[10px] text-slate-400">#${origIdx}</div></div><div class="flex-1 min-w-0"><div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-semibold text-slate-800 text-sm truncate">${escapeHtml(j.title||'未知')}</div><div class="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">${j.company?`<span class="flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>${escapeHtml(j.company)}</span>`:''}${j.url?`<a href="${j.url}" target="_blank" class="text-indigo-500 flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i>链接</a>`:''}</div></div><span class="shrink-0 text-xs border ${cls} rounded-full px-2 py-0.5">${ic} ${recText}</span></div><div class="flex flex-wrap gap-1.5 mt-2"><span class="text-[11px] px-1.5 py-0.5 rounded ${dirCls}">方向 ${dir}</span><span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">权重 ${j.weight_profile||'default'}</span>${confHtml}<!-- TODO: 等待后端提供 english_risk / interview_risk 字段 --><span class="text-[11px] px-1.5 py-0.5 rounded ${riskCls(j.english_risk||'—')}">英语风险 ${j.english_risk||'—'}</span><span class="text-[11px] px-1.5 py-0.5 rounded ${riskCls(j.interview_risk||'—')}">面试风险 ${j.interview_risk||'—'}</span></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-3">${bars}</div>${skills?`<div class="mt-2 flex flex-wrap gap-1">${skills}</div>`:''}${(j.missing_skills||[]).length?`<div class="text-[11px] text-red-500 mt-1">缺失技能：${j.missing_skills.join('、')}</div>`:''}<p class="text-xs text-slate-500 mt-2 leading-relaxed">${escapeHtml(j.reason||'')}</p><div class="flex gap-2 mt-3"><button onclick="genForJob(${origIdx})" class="agent-trigger text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="file-text" class="w-3.5 h-3.5"></i> 为该岗位生成简历</button>${j.url?`<a href="${j.url}" target="_blank" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="external-link" class="w-3.5 h-3.5"></i> 原岗位</a>`:''}</div></div></div></div>`;
   }).join('') || `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">没有符合当前筛选条件的岗位</div>`;
   refreshIcons();
 }
 function resetFilters(){ MF.dir='all';MF.rec='all';MF.conf='all';MF.min=0;MF.sort='total_desc';MF.q=''; $('#f-rec').value='all';$('#f-conf').value='all';$('#f-sort').value='total_desc';$('#f-min').value=0;$('#f-min-val').textContent='0';$('#f-q').value=''; renderMatches(); }
+function genForJob(idx){ if(guardBusy()) return; RS.run=MF.run; switchView('resume'); $('#rs-run').value=RS.run; renderResumeModes(); setTimeout(()=>{ const sel=$('#rs-job'); if(sel) sel.value=idx; },200); }
 
 /* ===================== RESUME VIEW ===================== */
 const RS = { run:null, langs:new Set(['en','hk','cn']) };
