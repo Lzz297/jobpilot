@@ -1,6 +1,6 @@
 llm:
   provider: deepseek
-  model: deepseek-chat
+  model: deepseek-v4-pro
 
 sort_mode: "date"
 

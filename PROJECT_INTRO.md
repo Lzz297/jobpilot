@@ -204,7 +204,7 @@ search_jobs()  →  match_jobs()  →  generate_resume(by_direction=True)
 
 ```python
 _LLM_PRESETS = {
-    "deepseek": {"base_url": "https://api.deepseek.com", "default_model": "deepseek-chat"},
+    "deepseek": {"base_url": "https://api.deepseek.com", "default_model": "deepseek-v4-pro"},
     "qwen":     {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "default_model": "qwen3.6-plus"},
     "glm":      {"base_url": "https://open.bigmodel.cn/api/paas/v4", "default_model": "glm-5.1"},
 }
@@ -474,7 +474,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 {
   "current_provider": "glm",
   "current_model": "glm-5.1",
-  "presets": {"deepseek": "deepseek-chat", "qwen": "qwen3.6-plus", "glm": "glm-5.1"}
+  "presets": {"deepseek": "deepseek-v4-pro", "qwen": "qwen3.6-plus", "glm": "glm-5.1"}
 }
 ```
 

@@ -142,7 +142,7 @@ def _score_batch(batch, profile_summary, weights, batch_label=""):
         msg = llm_call(
             [{"role": "system", "content": system_prompt},
              {"role": "user", "content": jobs_text}],
-            temperature=0,
+            temperature=0, thinking={"type": "disabled"},
         )
         result_text = msg.content
         scored = parse_json_response(result_text)

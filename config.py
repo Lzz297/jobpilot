@@ -16,7 +16,7 @@ OUTPUT_DIR = "output"
 
 # ── OpenAI client 占位（在 load_yaml 定义后初始化） ──
 client = None
-MODEL_NAME = "deepseek-chat"
+MODEL_NAME = "deepseek-v4-pro"
 
 # ── 本轮生成文件追踪 ──
 _session_files = []
@@ -67,7 +67,7 @@ _LLM_PRESETS = {
     "deepseek": {
         "base_url": "https://api.deepseek.com",
         "api_key_env": "DEEPSEEK_API_KEY",
-        "default_model": "deepseek-chat",
+        "default_model": "deepseek-v4-pro",
     },
     "qwen": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -108,11 +108,14 @@ client, MODEL_NAME = _init_llm_client()
 #  统一 LLM 调用入口（所有模块通过此函数调用，不直接使用 client）
 # ============================================================
 
-def llm_call(messages, *, temperature=None, tools=None, max_retries=2):
+def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=None):
     """调用 LLM，自动处理限流重试、超时、服务端错误。
 
     返回 message 对象（含 .content 和 .tool_calls 属性）。
     调用方可以直接 msg.content 取文本、msg.tool_calls 取工具调用。
+
+    V4 模型 thinking 默认开启。需要确定性输出时传入 thinking={"type": "disabled"}，
+    此时 temperature 参数正常运行。thinking 开启时不传 temperature（会被忽略）。
 
     可重试的错误（429/超时/连接/5xx）：指数退避，最多 max_retries 次。
     不可重试的错误（401/403/400）：直接抛出，不浪费等待时间。
@@ -126,8 +129,12 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2):
             kwargs = {"model": MODEL_NAME, "messages": messages}
             if tools is not None:
                 kwargs["tools"] = tools
-            if temperature is not None:
-                kwargs["temperature"] = temperature
+            if thinking is not None:
+                kwargs["thinking"] = thinking
+            # V4 thinking mode ignores temperature; only pass when thinking is disabled
+            if thinking is None or thinking.get("type") == "disabled":
+                if temperature is not None:
+                    kwargs["temperature"] = temperature
 
             response = client.chat.completions.create(**kwargs)
             return response.choices[0].message

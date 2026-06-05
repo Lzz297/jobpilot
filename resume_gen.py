@@ -236,7 +236,7 @@ def _aggregate_direction_requirements(matched_jobs, profile_text, search_cfg):
             msg = llm_call(
                 [{"role": "system", "content": system_prompt},
                  {"role": "user", "content": f"方向：{direction}\n\n以下是该方向 {len(jobs)} 个达标岗位的 JD：\n{jds_text}"}],
-                temperature=0,
+                temperature=0, thinking={"type": "disabled"},
             )
             parsed = parse_json_response(msg.content)
             if parsed and isinstance(parsed, dict):

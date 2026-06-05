@@ -3,7 +3,7 @@
 # ==========================================
 llm:
   provider: deepseek          # deepseek | qwen | glm
-  model: deepseek-chat      # 模型名称
+  model: deepseek-v4-pro      # 模型名称
   # 切换千问示例：
   #   provider: qwen
   #   model: qwen3.6-plus

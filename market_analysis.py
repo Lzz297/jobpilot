@@ -233,7 +233,7 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
                     load_prompts().get("market_analysis", {}).get("analysis_system_prompt", _ANALYSIS_SYSTEM_PROMPT),
                     job_category=job_category)},
                  {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
-                temperature=0,
+                temperature=0, thinking={"type": "disabled"},
             )
             result = parse_json_response(msg.content)
             if result and isinstance(result, dict):
