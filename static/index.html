@@ -598,7 +598,7 @@ function sendToLLM(text){
 }
 
 function runPipelineFromChat(langs){
-  if(guardBusy()) return;
+  if(guardBusy()) return; setBusy(true);
   chatUser('一键找工作（产出语言：'+langs.map(l=>LANG_SHORT[l]).join('/')+'）');
   const t=chatTurn(); const box=t.log;
   const es=new EventSource('/stream/'+STATE.sid);
@@ -659,7 +659,7 @@ function startPipeline(){
   openLangModal(PIPE_LANGS, langs => { PIPE_LANGS=langs; runPipeline(langs); });
 }
 function runPipeline(langs){
-  if(guardBusy()) return; switchView('workspace');
+  if(guardBusy()) return; setBusy(true); switchView('workspace');
   chatUser('一键找工作（产出语言：'+langs.map(l=>LANG_SHORT[l]).join('/')+'）');
   const t = chatTurn(); const box = t.log;
 
@@ -1075,13 +1075,13 @@ async function renderResumeModes(){
 }
 function renderResume(){ loadRunsForSelect(); renderLangChips(); }
 function resumeTrigger(id){
-  if(guardBusy()) return; if(!RS.langs.size){ toast('请至少选择一种产出语言','warn'); return; }
+  if(guardBusy()) return; setBusy(true); if(!RS.langs.size){ toast('请至少选择一种产出语言','warn'); setBusy(false); return; }
   let body = {sid:STATE.sid, mode:id, languages:langsOrdered()};
   if(id==='direction'){ /* ok */ }
   else if(id==='general'){ /* ok */ }
   else if(id==='job'){ body.job_index = parseInt($('#rs-job').value)||1; }
-  else if(id==='jd'){ body.jd_text = $('#rs-jd').value.trim(); if(!body.jd_text) return toast('请粘贴 JD 文本','warn'); }
-  else if(id==='role'){ body.role_direction = $('#rs-role').value.trim(); if(!body.role_direction) return toast('请输入岗位方向','warn'); }
+  else if(id==='jd'){ body.jd_text = $('#rs-jd').value.trim(); if(!body.jd_text){ toast('请粘贴 JD 文本','warn'); setBusy(false); return; } }
+  else if(id==='role'){ body.role_direction = $('#rs-role').value.trim(); if(!body.role_direction){ toast('请输入岗位方向','warn'); setBusy(false); return; } }
 
   const panel = $('#resume-panel');
   panel.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">生成中…</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="rs-log"></div><div id="rs-result"></div></div>`;
@@ -1132,7 +1132,7 @@ function addBatchRow(q){
   $('#batch-rows').appendChild(row); refreshIcons();
 }
 function sseFirstThenApi(box, panelId, apiPath, body, doneMsg, fileTabName){
-  // Connect SSE before API call
+  if(guardBusy()) return; setBusy(true);
   const es = new EventSource('/stream/'+STATE.sid);
   const files = []; let resolved = false;
   function cleanup(){ if(!resolved){ resolved=true; es.close(); setBusy(false); } }
