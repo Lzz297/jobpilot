@@ -274,7 +274,8 @@ def stream(sid):
             try:
                 event = q.get(timeout=2)
                 idle_rounds = 0  # got an event, reset idle counter
-                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                ev_type = event.get("type", "message")
+                yield f"event: {ev_type}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
                 if event.get("type") in ("done", "error"):
                     break
             except queue.Empty:
