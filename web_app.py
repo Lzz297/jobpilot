@@ -269,17 +269,21 @@ def stream(sid):
 
     def generate():
         last_ping = time.time()
+        idle_rounds = 0
         while True:
             try:
                 event = q.get(timeout=2)
+                idle_rounds = 0  # got an event, reset idle counter
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                 if event.get("type") in ("done", "error"):
                     break
             except queue.Empty:
-                # 如果 agent 不忙且队列空，结束流（等下次 chat 再开新流）
+                # Give pipeline a few seconds to start before closing
                 if not session["busy"]:
-                    break
-                # 每 30 秒发一次 ping 保持连接
+                    idle_rounds += 1
+                    if idle_rounds > 4:  # ~8 seconds grace period
+                        break
+                # Send ping every 30s to keep connection alive
                 if time.time() - last_ping > 30:
                     yield f"data: {json.dumps({'type': 'ping'})}\n\n"
                     last_ping = time.time()
