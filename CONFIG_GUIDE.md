@@ -1,19 +1,24 @@
 # 配置使用手册
 
-本项目的所有可调节配置集中在 `profiles/` 目录和项目根目录的 `.env` 文件中。修改配置文件即可改变 Agent 的搜索方向、筛选标准、评分逻辑、简历风格和 LLM 行为，**无需改动任何代码**。
+本项目的所有可调节配置集中在 `profiles/` 目录和项目根目录的 `.env` 文件中。修改方式有两种：
+
+- **通过 Web UI**：`me.yaml` 和 `search_config.yaml` 可在 Web 界面"设置"面板中直接编辑，LLM 模型可在侧边栏下拉菜单中一键切换。改动即时生效，同时自动回写文件。
+- **直接编辑文件**：`.env`、`prompts.yaml`、`resume_guide.yaml`、`resume_template.yaml` 仅支持文件编辑方式。
+
+无论哪种方式，均**无需改动任何代码**。
 
 ---
 
 ## 目录
 
-| 配置文件 | 控制什么 | 改动频率 |
-|---------|---------|---------|
-| [`.env`](#0-env--环境变量) | API 密钥 | 极低（换供应商时改） |
-| [`profiles/me.yaml`](#1-meyaml--个人档案) | 你是谁、会什么、想找什么 | 低（换方向时改） |
-| [`profiles/search_config.yaml`](#2-search_configyaml--搜索与匹配策略) | 搜什么词、怎么过滤、怎么评分 | 高（每次调方向都改） |
-| [`profiles/resume_guide.yaml`](#3-resume_guideyaml--简历撰写规范) | 简历内容怎么写 | 低（基本不用动） |
-| [`profiles/resume_template.yaml`](#4-resume_templateyaml--简历模板结构) | 简历段落顺序和格式 | 低（微调排版时改） |
-| [`profiles/prompts.yaml`](#5-promptsyaml--llm-提示词) | 教 LLM 怎么筛选、评分、分析、写简历 | 中（优化判断逻辑时改） |
+| 配置文件 | 控制什么 | 修改方式 | 改动频率 |
+|---------|---------|---------|---------|
+| [`.env`](#0-env--环境变量) | API 密钥 | 仅文件 | 极低（换供应商时改） |
+| [`profiles/me.yaml`](#1-meyaml--个人档案) | 你是谁、会什么、想找什么 | 文件 / Web UI 设置面板 | 低（换方向时改） |
+| [`profiles/search_config.yaml`](#2-search_configyaml--搜索与匹配策略) | 搜什么词、怎么过滤、怎么评分 | 文件 / Web UI 设置面板 | 高（每次调方向都改） |
+| [`profiles/resume_guide.yaml`](#3-resume_guideyaml--简历撰写规范) | 简历内容怎么写 | 仅文件 | 低（基本不用动） |
+| [`profiles/resume_template.yaml`](#4-resume_templateyaml--简历模板结构) | 简历段落顺序和格式 | 仅文件 | 低（微调排版时改） |
+| [`profiles/prompts.yaml`](#5-promptsyaml--llm-提示词) | 教 LLM 怎么筛选、评分、分析、写简历 | 仅文件 | 中（优化判断逻辑时改） |
 
 ---
 
@@ -22,11 +27,14 @@
 **作用：** 存放 API 密钥，不同的 LLM 供应商需要不同的密钥。
 
 ```env
-# DeepSeek（默认）
+# DeepSeek
 DEEPSEEK_API_KEY=sk-your-key-here
 
-# 阿里云（Qwen / GLM）
+# 阿里云（Qwen）
 DASHSCOPE_API_KEY=sk-your-key-here
+
+# 智谱 AI（GLM）
+GLM_API_KEY=sk-your-key-here
 ```
 
 | 你想达到的效果 | 怎么改 |
@@ -41,6 +49,8 @@ DASHSCOPE_API_KEY=sk-your-key-here
 ## 1. `me.yaml` — 个人档案
 
 **作用：** 这是 Agent 认识你的唯一来源。搜索过滤、匹配评分、简历生成全部依赖它。
+
+> **💡 修改方式：** 除了直接编辑文件外，也可在 Web UI 侧边栏点击「设置」进入编辑面板，或在侧边栏点击「me.yaml」按钮预览 YAML 原文。
 
 ### 结构一览
 
@@ -93,18 +103,21 @@ education / projects / certifications / summary
 
 **作用：** 控制整条流水线——搜什么、过滤什么、怎么评分。**换方向时主要改这个文件。**
 
+> **💡 修改方式：** 除了直接编辑文件外，也可在 Web UI 侧边栏进行快速操作——「设置」面板可编辑完整 YAML 内容，LLM 下拉菜单可一键切换模型，排序按钮可切换按时间/按相关度。
+
 ### 2.1 `llm` — LLM 供应商
 
 ```yaml
 llm:
-  provider: glm              # 可选: deepseek | qwen | glm
-  model: glm-5.1            # 对应供应商的模型名
+  provider: deepseek          # 可选: deepseek | qwen | glm
+  model: deepseek-v4-pro      # 对应供应商的模型名
 ```
 
 | 你想达到的效果 | 怎么改 |
 |--------------|-------|
 | 换模型供应商 | 改 `provider`，确保 `.env` 中有对应 Key |
 | 用更便宜/更强的模型 | 改 `model` 为供应商支持的模型名 |
+| **不编辑文件，一键切换** | Web UI 侧边栏 LLM 下拉菜单直接选择，切换**即时生效**并自动回写配置 |
 
 ### 2.2 `search_queries` — 搜索关键词
 
@@ -257,7 +270,7 @@ search_queries:
     sort_by: "relevance"   # 覆盖全局 sort_mode，按相关度搜索
 ```
 
-**Web UI：** 侧边栏 "Find & Match Jobs" 按钮下方有排序切换：📅 Sort by Date / 🔍 Sort by Relevance。
+**Web UI：** 侧边栏 "Find & Match Jobs" 区域有排序切换按钮（按发布时间 / 按相关度），点击即切换。**注意：此操作仅影响当次请求的 `sort_by` 参数，不会写入配置文件。** 要永久生效仍需修改 `sort_mode` 配置项。
 
 ---
 
@@ -276,6 +289,7 @@ content_rules:        # 每个段落的内容写法
   skills:             # 技能：分组方式、每组上限
   education:          # 教育
   certifications:     # 证书
+weakness_handling:    # 弱点处理策略（如何避免暴露年限不足、英语短板等）
 hk_specific:          # 香港市场特殊要求
 cover_letter:         # Cover Letter 规则
 ```
@@ -329,6 +343,7 @@ customization:
 | `agent.system_prompt` | Agent 的身份和行为规则 | 对话交互 |
 | `job_match.scoring_system_prompt` | 教 LLM 怎么从 5 个维度打分 | 匹配评分阶段 |
 | `market_analysis.analysis_system_prompt` | 教 LLM 怎么从 JD 中提取市场数据 | 市场分析 |
+| `market_analysis.report_prompt` | 教 LLM 怎么撰写市场分析报告 | 市场分析 → 报告撰写 |
 | `market_analysis.gap_analysis_prompt` | 教 LLM 怎么做候选人差距分析 | 市场分析 → 差距分析 |
 | `resume.base_rules` | 简历撰写的通用基础规则 | 所有简历生成模式 |
 | `resume.prompt_for_job` | 基于匹配岗位生成简历的指令 | 简历模式 2 |
@@ -353,6 +368,10 @@ customization:
 | `<weights_text>` | job_match | 5 维度权重说明（自动从 search_config 生成） |
 | `<score_formula>` | job_match | 总分计算公式（自动生成） |
 | `<job_category>` | market_analysis | 用户指定的岗位类别（如 "Web3"） |
+| `<location>` | market_analysis.report | 搜索地点（如 "Hong Kong"） |
+| `<sample_size>` | market_analysis.report | 分析的 JD 样本数量 |
+| `<analysis_json>` | market_analysis.report | 市场分析结构化数据（JSON） |
+| `<gap_analysis_json>` | market_analysis.report | 差距分析结构化数据（JSON） |
 | `<technical_skills>` | market_analysis.gap | 市场技术技能需求列表（JSON） |
 | `<profile>` | market_analysis.gap | 候选人技能画像（JSON） |
 | `<guide>` | resume.base_rules | 简历撰写指南（来自 resume_guide.yaml） |
@@ -447,7 +466,7 @@ customization:
 
 1. **全局切换** → `search_config.yaml` 修改 `sort_mode` 为 `"relevance"`（按相关度）或 `"date"`（按发布时间）
 2. **单个搜索词** → 在对应的 `search_queries` 条目中加 `sort_by: "relevance"` 覆盖全局设置
-3. **临时切换** → Web UI 侧边栏 "Find & Match Jobs" 下方 radio button 直接选择
+3. **临时切换** → Web UI 侧边栏排序切换按钮直接选择
 
 ---
 

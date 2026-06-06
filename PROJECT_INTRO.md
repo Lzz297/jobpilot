@@ -85,7 +85,6 @@ D:\job-agent/
 │
 ├── .env                      # API Key
 ├── CONFIG_GUIDE.md           # 配置文件详细说明（独立手册）
-├── RESUME_PROMPTS_FOR_REVIEW.md  # 简历 prompt 审查汇总
 ├── .claude/                  # Claude Code 工作文件
 └── .venv/                    # Python 虚拟环境
 ```
