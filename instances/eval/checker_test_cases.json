@@ -1,0 +1,152 @@
+[
+  {
+    "id": "chk_001",
+    "source_ids": [
+      "resp_exp_3yr"
+    ],
+    "resume_bullet": "具备 1.5 年后端开发经验",
+    "expected_flags": [
+      "number_conflict"
+    ]
+  },
+  {
+    "id": "chk_002",
+    "source_ids": [
+      "resp_exp_1_5yr"
+    ],
+    "resume_bullet": "具备一年半后端开发经验",
+    "expected_flags": []
+  },
+  {
+    "id": "chk_003",
+    "source_ids": [
+      "resp_user_growth"
+    ],
+    "resume_bullet": "协助产品团队完成约300%用户增长",
+    "expected_flags": []
+  },
+  {
+    "id": "chk_004",
+    "source_ids": [
+      "resp_growth_230"
+    ],
+    "resume_bullet": "实现约300%用户增长",
+    "expected_flags": [
+      "approx_out_of_range"
+    ]
+  },
+  {
+    "id": "chk_005",
+    "source_ids": [
+      "resp_order_dev",
+      "resp_unit_test"
+    ],
+    "resume_bullet": "参与订单系统开发，编写单元测试，服务5000用户",
+    "expected_flags": [
+      "number_not_found"
+    ]
+  },
+  {
+    "id": "chk_006",
+    "source_ids": [
+      "resp_api_dev"
+    ],
+    "resume_bullet": "负责 API 开发，[请在此描述您的相关经验]",
+    "expected_flags": [
+      "placeholder_present"
+    ]
+  },
+  {
+    "id": "chk_007",
+    "source_ids": [
+      "resp_order_dev"
+    ],
+    "resume_bullet": "主导订单系统开发与维护",
+    "expected_flags": [
+      "strength_upgrade"
+    ]
+  },
+  {
+    "id": "chk_008",
+    "source_ids": [
+      "resp_api_dev"
+    ],
+    "resume_bullet": "负责 API 设计开发",
+    "expected_flags": []
+  },
+  {
+    "id": "chk_009",
+    "source_ids": [
+      "resp_code_review"
+    ],
+    "resume_bullet": "Led code review sessions across the engineering team",
+    "expected_flags": [
+      "strength_upgrade"
+    ]
+  },
+  {
+    "id": "chk_010",
+    "source_ids": [
+      "resp_api_dev",
+      "resp_team_lead"
+    ],
+    "resume_bullet": "负责支付模块 API 开发，参与小组交付工作",
+    "expected_flags": []
+  },
+  {
+    "id": "chk_011",
+    "source_ids": [
+      "resp_order_dev",
+      "resp_nonexistent"
+    ],
+    "resume_bullet": "参与订单系统开发与维护",
+    "expected_flags": [
+      "dangling_reference"
+    ]
+  },
+  {
+    "id": "chk_012",
+    "source_ids": [],
+    "resume_bullet": "参与订单系统开发",
+    "expected_flags": [
+      "empty_source"
+    ]
+  },
+  {
+    "id": "chk_013",
+    "source_ids": [
+      "resp_db_opt"
+    ],
+    "resume_bullet": "参与 MySQL 数据库优化，将查询时间从 2 秒降至 0.3 秒",
+    "expected_flags": []
+  },
+  {
+    "id": "chk_014",
+    "source_ids": [
+      "resp_order_dev"
+    ],
+    "resume_bullet": "主导订单系统重构，系统吞吐量提升5000 TPS",
+    "expected_flags": [
+      "strength_upgrade",
+      "number_not_found"
+    ]
+  },
+  {
+    "id": "chk_015",
+    "source_ids": [
+      "resp_exp_4_8yr"
+    ],
+    "resume_bullet": "约5年 Java 开发经验",
+    "expected_flags": []
+  },
+  {
+    "id": "chk_016",
+    "source_ids": [
+      "resp_exp_4_5yr"
+    ],
+    "resume_bullet": "约5年 Java 开发经验",
+    "expected_flags": [
+      "approx_out_of_range"
+    ]
+  }
+]

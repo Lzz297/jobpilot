@@ -130,7 +130,7 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
             if tools is not None:
                 kwargs["tools"] = tools
             if thinking is not None:
-                kwargs["thinking"] = thinking
+                kwargs["extra_body"] = {"thinking": thinking}
             # V4 thinking mode ignores temperature; only pass when thinking is disabled
             if thinking is None or thinking.get("type") == "disabled":
                 if temperature is not None:

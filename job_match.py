@@ -483,3 +483,126 @@ def list_matched_jobs():
 
     output += "💡 输入「为第X个岗位生成简历」即可生成定制简历（含 HTML + PDF）"
     return output
+
+
+# ============================================================
+#  单条 JD 评分（供评估脚本使用）
+# ============================================================
+
+def _build_profile_summary(user_profile: dict) -> str:
+    """从用户画像构造 profile_summary（与 match_jobs 中的逻辑一致）。"""
+    return json.dumps({
+        "job_intent": user_profile.get("job_intent", {}),
+        "skills": user_profile.get("skills", {}),
+        "work_experience": [
+            {"title": exp.get("title"), "company": exp.get("company_en", exp.get("company", "")),
+             "period": exp.get("period", ""), "tech_stack": exp.get("tech_stack", []),
+             "highlights": exp.get("highlights", [])}
+            for exp in user_profile.get("work_experience", [])
+        ],
+        "education": user_profile.get("education", []),
+        "certifications": user_profile.get("certifications", []),
+        "summary": user_profile.get("summary", "")
+    }, ensure_ascii=False, indent=2)
+
+
+# TODO: llm_call 需要返回 usage 信息以支持 token 统计
+def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
+                    weights: dict = None, jd_title: str = "") -> dict:
+    """对单条 JD 进行五维匹配评分。
+
+    Args:
+        jd_text: 完整的 JD 文本
+        user_profile: 用户画像字典（从 me.yaml 加载）
+        config: 搜索配置字典（不传则从 search_config.yaml 加载）
+        weights: 权重字典（不传则使用 default 权重）
+        jd_title: JD 标题（用于方向回退）
+
+    Returns:
+        dict: {
+            "direction": str,
+            "scores": {"skill", "experience", "level", "industry", "bonus"},
+            "total_score": int,
+            "reasoning": str,
+            "input_tokens": int,
+            "output_tokens": int
+        }
+    """
+    if config is None:
+        config, _ = load_search_config_dict()
+        config = config or {}
+
+    matching_cfg = config.get("matching", {})
+    weight_profiles = matching_cfg.get("weight_profiles", {"default": _DEFAULT_WEIGHTS})
+    weight_rules = matching_cfg.get("weight_rules", {})
+
+    if weights is None:
+        weights = get_weights("default", weight_profiles)
+
+    # ── 构造 profile_summary ──
+    profile_summary = _build_profile_summary(user_profile)
+
+    # ── 加载并渲染评分 prompt（与 _score_batch 完全一致）──
+    prompts = load_prompts()
+    template = prompts.get("job_match", {}).get("scoring_system_prompt", _SCORING_SYSTEM_PROMPT)
+    system_prompt = render_prompt(template,
+        profile_summary=profile_summary,
+        weights_text=_build_weights_text(weights),
+        score_formula=_build_score_formula(weights),
+    )
+
+    # ── 构造单条 JD 的 user message（截断规则与 _score_batch 一致）──
+    desc = jd_text
+    if len(desc) > 3000:
+        desc = desc[:3000] + "\n...(截断)"
+
+    user_message = f"--- 岗位 1 ---\n"
+    if jd_title:
+        user_message += f"标题: {jd_title}\n"
+    user_message += f"职位描述:\n{desc}\n"
+
+    # ── 调用 LLM ──
+    msg = llm_call(
+        [{"role": "system", "content": system_prompt},
+         {"role": "user", "content": user_message}],
+        temperature=0, thinking={"type": "disabled"},
+    )
+
+    result_text = msg.content
+    parsed = parse_json_response(result_text)
+
+    if isinstance(parsed, list):
+        if len(parsed) > 0:
+            parsed = parsed[0]
+        else:
+            parsed = {}
+
+    if not isinstance(parsed, dict) or not parsed:
+        return {
+            "direction": classify_job(jd_title, weight_rules),
+            "scores": {},
+            "total_score": 0,
+            "reasoning": f"LLM 返回格式异常: {result_text[:200]}",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "error": "parse_failed",
+        }
+
+    # ── 方向判断 ──
+    llm_dir = parsed.get("direction", "")
+    valid_directions = {"payment", "solutions", "web3", "technical", "default"}
+    direction = llm_dir if llm_dir in valid_directions else classify_job(jd_title, weight_rules)
+
+    # ── 计算总分 ──
+    scores = parsed.get("scores", {})
+    direction_weights = get_weights(direction, weight_profiles)
+    total_score = _calc_total_score(scores, direction_weights) if scores else 0
+
+    return {
+        "direction": direction,
+        "scores": scores,
+        "total_score": total_score,
+        "reasoning": parsed.get("reason", ""),
+        "input_tokens": 0,
+        "output_tokens": 0,
+    }

@@ -1,0 +1,48 @@
+# 模拟用户档案 — 仅用于核查脚本测试
+# 所有内容纯属虚构
+# 结构对齐 me.yaml，但仅保留核查所需字段
+
+experiences:
+  # ── 基础条目（15条）──
+  - id: resp_order_dev
+    text: "参与订单系统开发与维护"
+  - id: resp_unit_test
+    text: "负责编写单元测试"
+  - id: resp_risk
+    text: "主导风控系统建设"
+  - id: resp_api_dev
+    text: "负责 RESTful API 的设计与开发"
+  - id: resp_db_opt
+    text: "参与 MySQL 数据库优化，将查询响应时间从 2 秒降至 0.3 秒"
+  - id: resp_team_lead
+    text: "带领 3 人小组完成支付模块开发"
+  - id: resp_user_growth
+    text: "协助产品团队完成用户增长 298%"
+  - id: resp_contract
+    text: "负责智能合约的编写与部署"
+  - id: resp_backend_maintain
+    text: "维护公司后端系统，处理日常工单"
+  - id: resp_code_review
+    text: "参与代码评审"
+  - id: resp_microservice
+    text: "将单体应用拆分为微服务架构，部署至 Kubernetes 集群"
+  - id: resp_payment_gateway
+    text: "对接 Stripe 和 PayPal 支付网关，处理支付回调与异常"
+  - id: resp_data_pipeline
+    text: "搭建数据流水线，日均处理 500 万条日志"
+  - id: resp_security_audit
+    text: "主导年度安全审计，修复 12 个高危漏洞"
+  - id: resp_oncall
+    text: "参与线上 on-call 轮值，处理生产环境告警"
+
+  # ── 测试用例专用条目（5条）──
+  - id: resp_exp_3yr
+    text: "3 年后端开发经验"
+  - id: resp_exp_1_5yr
+    text: "具备 1.5 年后端开发经验"
+  - id: resp_growth_230
+    text: "用户增长 230%"
+  - id: resp_exp_4_8yr
+    text: "4.8 年 Java 开发经验"
+  - id: resp_exp_4_5yr
+    text: "4.5 年 Java 开发经验"
