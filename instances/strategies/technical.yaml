@@ -1,0 +1,20 @@
+# instances/strategies/technical.yaml
+# 通用技术开发方向的匹配评分策略
+
+weight_profile:
+  skill: 35
+  experience: 20
+  level: 15
+  industry: 15
+  bonus: 15
+
+weight_rules_keywords:
+  - "developer"
+  - "engineer"
+  - "programmer"
+  - "backend"
+  - "frontend"
+  - "fullstack"
+  - "full-stack"
+  - "software"
+  - "devops"

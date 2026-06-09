@@ -1,0 +1,21 @@
+# instances/strategies/solutions.yaml
+# 方案/集成方向的匹配评分策略
+
+weight_profile:
+  skill: 25
+  experience: 20
+  level: 15
+  industry: 20
+  bonus: 20
+
+weight_rules_keywords:
+  - "solutions engineer"
+  - "solutions architect"
+  - "solutions consultant"
+  - "technical consultant"
+  - "sales engineer"
+  - "pre-sales"
+  - "customer engineer"
+  - "customer success"
+  - "implementation engineer"
+  - "integration consultant"

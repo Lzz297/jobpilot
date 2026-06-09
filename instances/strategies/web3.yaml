@@ -1,0 +1,19 @@
+weight_profile:
+  bonus: 20
+  experience: 15
+  industry: 30
+  level: 10
+  skill: 25
+weight_rules_keywords:
+- web3
+- blockchain
+- crypto
+- defi
+- nft
+- token
+- wallet
+- digital asset
+- custody
+- exchange
+- on-chain
+- smart contract

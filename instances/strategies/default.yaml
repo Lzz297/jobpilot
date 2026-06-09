@@ -1,0 +1,11 @@
+# instances/strategies/default.yaml
+# 默认/通用方向的匹配评分策略
+
+weight_profile:
+  skill: 30
+  experience: 25
+  level: 15
+  industry: 15
+  bonus: 15
+
+weight_rules_keywords: []

@@ -111,8 +111,12 @@ _SCORING_SYSTEM_PROMPT = """你是一个专业求职顾问。根据候选人档�
 - skill_match 用 ✅❌⚠️ 标注每个关键技能"""
 
 
-def _score_batch(batch, profile_summary, weights, batch_label=""):
-    """对一批岗位调用 LLM 评分，返回 scored 列表（可能为空）。"""
+def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str = None):
+    """对一批岗位调用 LLM 评分，返回 scored 列表（可能为空）。
+
+    Args:
+        strategy: 策略方向名（如 "web3"），用于加载对应的 few-shot 示例
+    """
 
     prompts = load_prompts()
     template = prompts.get("job_match", {}).get("scoring_system_prompt", _SCORING_SYSTEM_PROMPT)
@@ -121,6 +125,12 @@ def _score_batch(batch, profile_summary, weights, batch_label=""):
         weights_text=_build_weights_text(weights),
         score_formula=_build_score_formula(weights),
     )
+
+    # 注入 few-shot 示例
+    if strategy:
+        examples_text = _load_examples(strategy)
+        if examples_text:
+            system_prompt += "\n\n" + examples_text
 
     jobs_text = ""
     for j, job in enumerate(batch, 1):
@@ -160,12 +170,18 @@ def _score_batch(batch, profile_summary, weights, batch_label=""):
 #  岗位匹配分析（动态权重 + 及格线复评）
 # ============================================================
 
-def match_jobs():
-    """读取用户档案和最新岗位数据，用 LLM 做多维度匹配评分"""
+def match_jobs(config: dict = None, profile: dict = None):
+    """读取用户档案和最新岗位数据，用 LLM 做多维度匹配评分。
+
+    Args:
+        config: 配置字典（不传则从 search_config.yaml 加载）
+        profile: 用户画像字典（不传则从 me.yaml 加载）
+    """
     # 加载用户档案
-    profile, err = load_profile()
-    if err:
-        return err
+    if profile is None:
+        profile, err = load_profile()
+        if err:
+            return err
 
     # 找到当前 run 目录中的岗位文件
     run_dir = get_current_run_dir() or get_latest_run_dir()
@@ -182,7 +198,8 @@ def match_jobs():
         return "岗位数据为空"
 
     # 加载匹配配置
-    config, _ = load_search_config_dict()
+    if config is None:
+        config, _ = load_search_config_dict()
     config = config or {}
     matching_cfg = config.get("matching", {})
     min_score = matching_cfg.get("min_match_score", 50)
@@ -489,6 +506,49 @@ def list_matched_jobs():
 #  单条 JD 评分（供评估脚本使用）
 # ============================================================
 
+def _load_examples(strategy: str) -> str:
+    """根据当前策略方向，加载对应的 few-shot 示例。"""
+    import yaml as _yaml
+    from pathlib import Path as _Path
+
+    examples_dir = _Path(__file__).parent / "prompts" / "examples" / "job_match"
+    example_texts = []
+
+    # 始终加载 common.yaml
+    common_file = examples_dir / "common.yaml"
+    if common_file.exists():
+        with open(common_file, "r", encoding="utf-8") as f:
+            data = _yaml.safe_load(f)
+        for ex in data.get("examples", []):
+            inp = ex.get("input", "").strip()
+            out = ex.get("ideal_output", {})
+            example_texts.append(
+                f"示例：\n"
+                f"  JD: {inp}\n"
+                f"  正确方向: {out.get('direction', '')}\n"
+                f"  理由: {out.get('reason', '')}"
+            )
+
+    # 加载 strategy 对应的方向文件
+    direction_file = examples_dir / f"{strategy}.yaml"
+    if direction_file.exists():
+        with open(direction_file, "r", encoding="utf-8") as f:
+            data = _yaml.safe_load(f)
+        for ex in data.get("examples", []):
+            inp = ex.get("input", "").strip()
+            out = ex.get("ideal_output", {})
+            example_texts.append(
+                f"示例：\n"
+                f"  JD: {inp}\n"
+                f"  正确方向: {out.get('direction', '')}\n"
+                f"  理由: {out.get('reason', '')}"
+            )
+
+    if example_texts:
+        return "===== 参考示例 =====\n\n" + "\n\n".join(example_texts)
+    return ""
+
+
 def _build_profile_summary(user_profile: dict) -> str:
     """从用户画像构造 profile_summary（与 match_jobs 中的逻辑一致）。"""
     return json.dumps({
@@ -551,6 +611,12 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         score_formula=_build_score_formula(weights),
     )
 
+    # 注入 few-shot 示例（默认方向为 default，确保通用示例加载）
+    default_strategy = "default"
+    examples_text = _load_examples(default_strategy)
+    if examples_text:
+        system_prompt += "\n\n" + examples_text
+
     # ── 构造单条 JD 的 user message（截断规则与 _score_batch 一致）──
     desc = jd_text
     if len(desc) > 3000:
@@ -561,40 +627,71 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         user_message += f"标题: {jd_title}\n"
     user_message += f"职位描述:\n{desc}\n"
 
-    # ── 调用 LLM ──
-    msg = llm_call(
-        [{"role": "system", "content": system_prompt},
-         {"role": "user", "content": user_message}],
-        temperature=0, thinking={"type": "disabled"},
-    )
-
-    result_text = msg.content
-    parsed = parse_json_response(result_text)
-
-    if isinstance(parsed, list):
-        if len(parsed) > 0:
-            parsed = parsed[0]
-        else:
-            parsed = {}
-
-    if not isinstance(parsed, dict) or not parsed:
-        return {
-            "direction": classify_job(jd_title, weight_rules),
-            "scores": {},
-            "total_score": 0,
-            "reasoning": f"LLM 返回格式异常: {result_text[:200]}",
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "error": "parse_failed",
+    # ── 调用 LLM（Instructor 模式优先，失败回退旧方式）──
+    from engine.contracts import MatchResult
+    try:
+        parsed_result = llm_call(
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": user_message}],
+            temperature=0, thinking={"type": "disabled"},
+            response_model=MatchResult,
+        )
+        # Instructor 返回 MatchResult 对象，字段已校验
+        llm_dir = parsed_result.direction
+        valid_directions = {"payment", "solutions", "web3", "technical", "default"}
+        direction = llm_dir if llm_dir in valid_directions else classify_job(jd_title, weight_rules)
+        scores = {
+            "skill": parsed_result.scores.skill,
+            "experience": parsed_result.scores.experience,
+            "level": parsed_result.scores.level,
+            "industry": parsed_result.scores.industry,
+            "bonus": parsed_result.scores.bonus,
         }
+        reasoning = parsed_result.reasoning
+        # 提取 token 用量
+        if hasattr(parsed_result, '_usage'):
+            usage = parsed_result._usage
+            tokens_in = usage.get("input_tokens", 0)
+            tokens_out = usage.get("output_tokens", 0)
+        else:
+            tokens_in = 0
+            tokens_out = 0
+    except Exception:
+        # 回退：旧方式（_score_batch 同款逻辑）
+        msg = llm_call(
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": user_message}],
+            temperature=0, thinking={"type": "disabled"},
+        )
+        result_text = msg.content
+        parsed = parse_json_response(result_text)
 
-    # ── 方向判断 ──
-    llm_dir = parsed.get("direction", "")
-    valid_directions = {"payment", "solutions", "web3", "technical", "default"}
-    direction = llm_dir if llm_dir in valid_directions else classify_job(jd_title, weight_rules)
+        if isinstance(parsed, list):
+            if len(parsed) > 0:
+                parsed = parsed[0]
+            else:
+                parsed = {}
+
+        if not isinstance(parsed, dict) or not parsed:
+            return {
+                "direction": classify_job(jd_title, weight_rules),
+                "scores": {},
+                "total_score": 0,
+                "reasoning": f"LLM 返回格式异常: {result_text[:200]}",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "error": "parse_failed",
+            }
+
+        llm_dir = parsed.get("direction", "")
+        valid_directions = {"payment", "solutions", "web3", "technical", "default"}
+        direction = llm_dir if llm_dir in valid_directions else classify_job(jd_title, weight_rules)
+        scores = parsed.get("scores", {})
+        reasoning = parsed.get("reason", "")
+        tokens_in = 0
+        tokens_out = 0
 
     # ── 计算总分 ──
-    scores = parsed.get("scores", {})
     direction_weights = get_weights(direction, weight_profiles)
     total_score = _calc_total_score(scores, direction_weights) if scores else 0
 
@@ -602,7 +699,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         "direction": direction,
         "scores": scores,
         "total_score": total_score,
-        "reasoning": parsed.get("reason", ""),
-        "input_tokens": 0,
-        "output_tokens": 0,
+        "reasoning": reasoning,
+        "input_tokens": tokens_in,
+        "output_tokens": tokens_out,
     }

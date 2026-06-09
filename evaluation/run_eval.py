@@ -54,6 +54,53 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     return (input_tokens / 1_000_000) * price["input"] + (output_tokens / 1_000_000) * price["output"]
 
 
+def is_placeholder_profile(profile: dict) -> bool:
+    """
+    判断用户画像是否实质有内容。
+    不是检查某个具体字段是否存在，而是计算画像中有意义的信息量。
+    返回 True 表示是空模板，False 表示有实质内容。
+    """
+    if not profile:
+        return True
+    score = 0
+
+    # 1. 工作经历：有实质描述
+    work = profile.get("work_experience", [])
+    if work and len(work) > 0:
+        first = work[0]
+        if first.get("description") or first.get("highlights") or first.get("core_modules"):
+            score += 3
+        elif first.get("company") and first.get("title"):
+            score += 1
+
+    # 2. 技能：有多个类别或具体条目
+    skills = profile.get("skills", {})
+    skill_count = 0
+    for category, items in skills.items():
+        if isinstance(items, list) and len(items) > 0:
+            skill_count += len(items)
+    if skill_count >= 5:
+        score += 3
+    elif skill_count >= 2:
+        score += 2
+    elif skill_count >= 1:
+        score += 1
+
+    # 3. 项目经历：有实质描述
+    projects = profile.get("projects", [])
+    if projects and len(projects) > 0:
+        if any(p.get("description") or p.get("resume_bullets") for p in projects):
+            score += 2
+
+    # 4. 自我评价：有足够长度的描述
+    summary = profile.get("summary", "")
+    if summary and len(summary.strip()) > 50:
+        score += 1
+
+    # 判定：总分 >= 3 认为画像有实质内容
+    return score < 3
+
+
 def main():
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
@@ -77,15 +124,12 @@ def main():
     profile, err = load_profile()
     if err:
         print(f"WARNING: 无法加载 me.yaml: {err}")
-        print("  请确保 profiles/me.yaml 为有效的个人档案（非占位模板）")
-        # 如果加载失败，继续尝试（允许用空 profile 测试脚本流程）
         profile = {}
     else:
-        # 检查是否为占位模板
-        name = profile.get("name", "")
-        if "请替换" in str(name) or "Replace" in str(name):
-            print("WARNING: profiles/me.yaml 仍为占位模板")
-            print("  评分将使用空画像运行，结果仅供流程验证，不代表真实匹配")
+        if is_placeholder_profile(profile):
+            print("WARNING: profiles/me.yaml 可能为占位模板，评分结果仅供流程验证")
+        else:
+            print("用户画像已加载，包含完整个人信息")
 
     # ── 加载配置 ──
     config, _ = load_search_config_dict()

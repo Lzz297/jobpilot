@@ -56,7 +56,7 @@ def basic_filter(listings, config):
 #  岗位搜索（三层漏斗：扫描 → 基础清洗 → 抓取JD）
 # ============================================================
 
-def search_jobs(sort_by: str = None):
+def search_jobs(sort_by: str = None, config: dict = None):
     """
     三层漏斗搜索：
       第一层 - 扫描 JobsDB 搜索列表页（只拿标题/公司/摘要，不打开详情页）
@@ -65,12 +65,14 @@ def search_jobs(sort_by: str = None):
 
     Args:
         sort_by: 排序方式，"date" = 按发布时间, "relevance" = 按相关度
-                 不传则从 search_config.yaml 的 sort_mode 读取
+                 不传则从 config 或 search_config.yaml 的 sort_mode 读取
+        config: 配置字典（不传则从 search_config.yaml 加载，保持旧行为兼容）
     """
     # ── 读取配置 ──
-    config, err = load_search_config_dict()
-    if err:
-        return err
+    if config is None:
+        config, err = load_search_config_dict()
+        if err:
+            return err
 
     # ── 确定排序方式：参数 > 全局 sort_mode > 默认 "date" ──
     if sort_by is None:

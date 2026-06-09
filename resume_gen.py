@@ -330,7 +330,7 @@ def _generate_for_direction_batch(profile, profile_text, template_text, base_rul
 #  主函数：统一入口
 # ============================================================
 
-def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direction=False, output_langs=None):
+def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direction=False, output_langs=None, config=None, profile=None):
     """
     多模式简历生成。根据传入参数自动选择模式：
       - by_direction: 基于匹配数据按方向批量生成（需先 search + match）
@@ -340,11 +340,14 @@ def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direct
       - 均为空: 生成通用简历
 
     output_langs: 可选，指定输出语言子集，如 ["en", "hk"]。不传则输出全部三种。
+    config: 配置字典（不传则从文件加载，保持旧行为兼容）
+    profile: 用户画像字典（不传则从 me.yaml 加载）
     """
     # ── 加载公共资源 ──
-    profile, err = load_profile()
-    if err:
-        return err
+    if profile is None:
+        profile, err = load_profile()
+        if err:
+            return err
 
     template_config, _ = load_yaml("resume_template.yaml")
     template_config = template_config or {}

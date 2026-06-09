@@ -1,0 +1,23 @@
+# prompts/examples/job_match/payment.yaml
+# payment 方向示例
+
+direction: payment
+
+examples:
+  - input: |
+      某金融科技公司招聘后端工程师，负责加密货币支付系统的开发。
+      岗位职责：设计并实现支付清结算链路，包括交易流水记录、对账系统、商户结算模块、支付路由。
+      技能要求：Java、Spring Boot、MySQL、RabbitMQ，熟悉 SWIFT/FPS 协议为加分。
+    ideal_output:
+      direction: "payment"
+      reason: "主导产出是支付清结算链路（交易流水+对账+商户结算+支付路由）——过 payment 闸门：多项核心锚点（settlement/reconciliation/商户结算/支付路由）全部命中。加密货币是支付工具而非产出的实现层——产出落在清结算链路，归 payment。"
+      rule_demo: "加密货币支付后端，主导清结算链路→payment"
+
+  - input: |
+      某互联网支付公司招聘后端工程师，负责对接 Stripe 和 PayPal 支付网关。
+      岗位职责：处理支付回调与异常、实现交易流水记录、对接银行代付接口。
+      技能要求：Node.js、RESTful API、熟悉支付网关对接流程。
+    ideal_output:
+      direction: "payment"
+      reason: "主导产出是支付网关对接+交易流水+银行代付——payment gateway 是该岗位的锚点系统职责，而非用例提及。过闸门：支付网关、交易流水、代付均为闸门锚点。"
+      rule_demo: "支付网关对接+交易流水→过闸门→payment"

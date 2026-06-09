@@ -1,0 +1,23 @@
+# prompts/examples/job_match/technical.yaml
+# technical 方向示例
+
+direction: technical
+
+examples:
+  - input: |
+      某通用软件公司招聘 AI Agent 平台工程师。
+      岗位职责：构建内部 AI agent 基础设施，为运营、客服、数据分析等多条业务线提供自动化能力。
+      技能要求：Python、LangChain、向量数据库、Kubernetes。
+    ideal_output:
+      direction: "technical"
+      reason: "主导产出是通用 AI agent 平台——被多条业务线并列使用，是典型的 B 类通用件。删掉这个特定公司，agent 平台照样成立。公司是通用软件公司（非领域巨头），无需穿透考虑。"
+      rule_demo: "通用公司的AI Agent平台（B类）→technical"
+
+  - input: |
+      某电商公司招聘后端开发工程师。
+      岗位职责：开发订单系统 API、维护商品数据库、优化查询性能。
+      技能要求：Java、Spring Boot、MySQL、Redis。前端 React 经验和 CI-CD 经验为加分。
+    ideal_output:
+      direction: "technical"
+      reason: "主导产出是通用后端开发（订单 API+数据库+查询优化），不涉及任何 web3/payment/solutions 领域的业务逻辑。前端和 CI-CD 为加分项是同方向技能扩散，不改变方向，不拆标签。"
+      rule_demo: "招后端，前端/CI-CD为加分，无web3/payment业务→technical（同方向技能扩散不拆分）"

@@ -1,0 +1,57 @@
+# prompts/examples/job_match/common.yaml
+# 公共示例 — 展示方向判断的核心规则（跨方向通用）
+
+examples:
+  - input: |
+      某互联网金融公司招聘后端开发工程师。
+      岗位职责：设计并实现支付风控系统的实时交易监控模块，对接反欺诈规则引擎。
+      技能要求：Java、Spring Boot、Redis、AI/ML 模型部署经验为加分。
+    ideal_output:
+      direction: "payment"
+      reason: "主导产出是支付风控系统（实时交易监控+反欺诈），属于支付清结算链路的核心组件。AI/ML 只是手段（'为加分'），不改变方向——这是典型的'技能≠方向'：主导产出在支付域，AI 是工具。"
+      rule_demo: "技能≠方向：用了 AI 不自动归 technical，要回查主导产出落在哪个领域"
+
+  - input: |
+      某头部加密货币交易所招聘 IT 运维工程师。
+      岗位职责：维护办公室网络设备、管理员工电脑和会议系统、处理日常 Helpdesk 工单。
+      技能要求：网络配置、Windows/Mac 系统管理、打印机维护。
+    ideal_output:
+      direction: "technical"
+      reason: "主导产出是内部办公 IT 支撑（修电脑、维护网络、处理工单），完全不触及任何区块链/交易业务逻辑。公司的加密业务与这个岗位的产出无关——这是典型的'公司≠方向'：在币安上班不代表做 web3。"
+      rule_demo: "公司≠方向：Web3 交易所的行政 IT 运维产出是内部办公支撑，不归 web3"
+
+  - input: |
+      一家做 dApp 的 crypto 公司招聘后端工程师。
+      岗位职责：设计并实现钱包服务、编写智能合约交互逻辑、维护链上交易索引。
+      JD 中提了一句"支持数字资产 payment gateway 等场景"。
+    ideal_output:
+      direction: "web3"
+      reason: "主导产出是钱包服务、智能合约交互、链上交易索引——这些都是区块链系统的核心组件。JD 提到的 payment gateway 只是众多应用场景之一，不是主导产出——这是典型的'关键词≠方向'：JD 出现 payment 不代表做支付，必须回查主导产出。"
+      rule_demo: "关键词≠方向：JD 出现 payment gateway 但不代表岗位做支付，主导产出是钱包和合约→web3"
+
+  - input: |
+      某头部加密货币交易所招聘后端工程师。
+      岗位职责：负责撮合引擎的核心开发，实现订单簿维护、交易匹配、成交清算逻辑。
+      技能要求：Java、低延迟系统设计、分布式一致性算法、对区块链交易生命周期有基本了解为加分。
+    ideal_output:
+      direction: "web3"
+      reason: "主导产出是加密交易系统的撮合引擎+清算账本——删掉加密交易，这个撮合引擎的产出就不存在了。这是 A 类：产出本身就是加密交易/清算系统的技术实现，不是通用件被加密业务使用。区块链知识写作'加分'不影响方向——主导产出在链上交易域。"
+      rule_demo: "A 类正例：主导产出即加密交易系统的实现→web3，加分项写法不改变结论"
+
+  - input: |
+      某头部加密货币交易所招聘 AI Agent 平台工程师。
+      岗位职责：构建内部 AI agent 基础设施，为 trading、compliance、customer service、risk 等多条业务线（and beyond）提供自动化能力。
+      技能要求：TypeScript/Python、LangGraph/AutoGen、LLM 基础设施、Kubernetes。无任何 Solidity/合约/链上/EVM 要求。
+    ideal_output:
+      direction: "technical"
+      reason: "主导产出是通用 AI agent 平台——两条 B 类强信号全部命中：①业务线被并列罗列且含'and beyond'→通用平台；②技能要求零区块链技术→产出不可能真在该领域。删掉加密交易，这个 agent 平台照样成立。"
+      rule_demo: "B 类反例：通用 AI agent 平台，被多业务线使用且零领域技能→technical，不穿透"
+
+  - input: |
+      某头部加密货币交易所招聘内部 HR 系统维护工程师。
+      岗位职责：维护公司内部的 Workday HR 系统，处理员工数据、薪资模块和考勤系统。
+      技能要求：Workday 配置、SQL、Python 脚本。
+    ideal_output:
+      direction: "default"
+      reason: "主导产出是 HR 系统维护——这是典型的内部支撑职能，放到任何行业的公司都一样，不触及任何区块链业务。巨头推定被推翻：虽然雇主是币安，但岗位与核心加密业务完全无关。"
+      rule_demo: "巨头推定可被推翻：内部办公支撑岗（HR 系统维护），与核心业务无关→default"

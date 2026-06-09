@@ -86,7 +86,7 @@ Model: deepseek-v4-pro
 |------|------|------|
 | 方向准确率 | 已启用 | 跨阶段可对比 |
 | 分数档位准确率 | 待标注 | 等你填完 score_range 后启用；战役二权重进代码后需重新落基线 |
-| Token 消耗 / 成本 | 待战役二 | 当前 llm_call 不返回 usage，显示为 0 |
+| Token 消耗 / 成本 | 已启用 | Instructor 模式自动捕获 usage |
 
 ---
 

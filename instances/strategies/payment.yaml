@@ -1,0 +1,21 @@
+# instances/strategies/payment.yaml
+# 支付方向的匹配评分策略
+
+weight_profile:
+  skill: 25
+  experience: 20
+  level: 10
+  industry: 25
+  bonus: 20
+
+weight_rules_keywords:
+  - "payment"
+  - "settlement"
+  - "clearing"
+  - "reconciliation"
+  - "remittance"
+  - "payout"
+  - "disbursement"
+  - "acquiring"
+  - "merchant services"
+  - "treasury"

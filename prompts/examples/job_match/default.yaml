@@ -1,0 +1,32 @@
+# prompts/examples/job_match/default.yaml
+# default 方向示例
+
+direction: default
+
+examples:
+  - input: |
+      某 Web3 公司招聘管理培训生（Management Trainee）。
+      岗位职责：两年轮岗制，跨部门参与业务、产品、技术、合规四个方向的项目；每轮岗结束提交分析报告和改进建议。
+      要求：本科毕业，对 Web3 和 Fintech 有兴趣，沟通能力强。
+    ideal_output:
+      direction: "default"
+      reason: "主导产出是管培轮岗活动（参与项目、提交报告、提建议）——这是通用管理培训产出。Web3 是公司的业务方向，但管培生本人不产出任何区块链技术产物。这是典型的'领域主题型非工程岗'：领域是包装，产出是通用职能。置信度 borderline。"
+      rule_demo: "Web3公司管培生→default，borderline（领域主题型非工程岗，产出通用）"
+
+  - input: |
+      某支付公司招聘数据中台工程师。
+      岗位职责：搭建通用数据仓库，为全公司各业务线提供数据查询和报表服务。
+      技能要求：Spark、Airflow、SQL、数据建模。
+    ideal_output:
+      direction: "technical"
+      reason: "主导产出是通用数据中台——为全公司各业务线服务，不实现支付业务逻辑本身，不触及具体清结算链路。这是 B 类通用件被支付领域使用，归 technical。"
+      rule_demo: "支付公司数据中台，不碰支付业务→technical"
+
+  - input: |
+      某支付公司招聘产品经理。
+      岗位职责：定义支付产品的功能需求、撰写 PRD、协调开发排期、分析用户数据。
+      要求：3 年以上支付行业产品经验，熟悉支付业务流程。
+    ideal_output:
+      direction: "default"
+      reason: "主导产出是产品管理（PRD、排期、数据分析）——非技术产物。虽然要求支付行业经验（'懂行业'），但产出不是该领域的技术产物（代码/架构/清结算系统）。按非工程岗两分法归 default。不因'懂行业'就上归 payment。"
+      rule_demo: "支付公司产品经理，成果非技术产物→default（非工程岗）"

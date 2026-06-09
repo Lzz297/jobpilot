@@ -1,0 +1,20 @@
+from pydantic import BaseModel, Field
+
+
+class Scores(BaseModel):
+    skill: int = Field(ge=0, le=100, description="技能匹配度 0-100")
+    experience: int = Field(ge=0, le=100, description="经验年限匹配度 0-100")
+    level: int = Field(ge=0, le=100, description="职级匹配度 0-100")
+    industry: int = Field(ge=0, le=100, description="行业对口度 0-100")
+    bonus: int = Field(ge=0, le=100, description="加分项匹配度 0-100")
+
+
+class MatchResult(BaseModel):
+    reasoning: str = Field(
+        alias="reason",
+        description="匹配推理过程。prompt 中 LLM 返回字段名为 reason，Pydantic 通过 alias 自动映射为 reasoning"
+    )
+    direction: str = Field(
+        description="岗位赛道标签：web3 / payment / solutions / technical / default"
+    )
+    scores: Scores = Field(description="五维原始分，每个维度 0-100 整数")

@@ -1,0 +1,16 @@
+# instances/campaigns/web3_hunt.yaml
+# Web3 岗位搜索
+
+user: "li_ming"
+strategy: "web3"
+search_queries:
+  - keywords: "Web3"
+    location: "Hong Kong"
+  - keywords: "Blockchain Developer"
+    location: "Hong Kong"
+  - keywords: "Smart Contract"
+    location: "Hong Kong"
+sort_mode: "date"
+overrides:
+  max_total_results: 200
+  min_match_score: 45

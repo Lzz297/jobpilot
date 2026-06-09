@@ -1,0 +1,40 @@
+# prompts/examples/job_match/web3.yaml
+# web3 方向示例
+
+direction: web3
+
+examples:
+  - input: |
+      某区块链创业公司招聘后端开发工程师。
+      岗位职责：开发区块链应用后端，主要做智能合约交互、链上数据索引、钱包集成。
+      技能要求：Node.js、PostgreSQL、了解以太坊 JSON-RPC 接口。
+    ideal_output:
+      direction: "web3"
+      reason: "主导产出是智能合约交互和链上数据——删掉区块链，这个后端开发岗位就不存在了。这是 web3 方向的典型产出。"
+      rule_demo: "区块链应用后端，主要做智能合约交互→web3"
+
+  - input: |
+      某头部加密货币交易所招聘后端工程师。
+      岗位职责：负责撮合引擎核心开发，实现订单簿、交易匹配、成交清算、链上资产对账。
+      技能要求：Java、低延迟系统设计、分布式一致性、了解区块链交易生命周期。
+    ideal_output:
+      direction: "web3"
+      reason: "主导产出是加密交易系统的撮合引擎+清算账本+链上资产对账——删掉加密交易领域，这个撮合+清算系统的产出就不存在了。这是 A 类：产出本身就是加密交易/清算系统的技术实现。"
+      rule_demo: "巨头AI/后端岗，主导产出即加密交易/清算/链上系统实现（A类）→web3，high"
+
+  - input: |
+      某头部加密货币交易所招聘 AI 平台工程师。
+      JD 未详细描述具体产出，仅笼统提及"参与 AI 平台建设"。技能要求包括 Python、Kubernetes 等通用技能。
+    ideal_output:
+      direction: "web3"
+      reason: "连产出是 A 类领域实现还是 B 类通用件都读不出，无法用 A/B 类判别。此时退用巨头推定：作为加密交易所的技术岗，默认其成果服务核心加密主业→web3。注意此结论置信度为 borderline，靠的是推定而非 JD 实证。"
+      rule_demo: "连A/B都读不出→巨头推定兜底→web3，borderline"
+
+  - input: |
+      某区块链基础设施公司招聘后端工程师。
+      岗位职责：为链上钱包系统和 DApp 后端编写 API 服务，维护链上交易流水数据库。
+      技能要求：Java、Spring Boot、MySQL。区块链/Web3 相关知识仅写作"nice-to-have 加分项"。
+    ideal_output:
+      direction: "web3"
+      reason: "主导产出是链上钱包后端+交易流水——岗位就是在做 web3 系统的技术实现（A 类）。web3 知识写为'加分'只说明不强求候选人自带经验，不改变岗位产出本身在 web3 领域这一事实。加分项的写法不影响方向判定。"
+      rule_demo: "后端岗为链上系统写后端，web3知识仅加分→web3（A类，产出在链上）"

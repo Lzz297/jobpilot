@@ -1,0 +1,23 @@
+# prompts/examples/job_match/solutions.yaml
+# solutions 方向示例
+
+direction: solutions
+
+examples:
+  - input: |
+      某区块链基础设施公司招聘售前方案工程师。
+      岗位职责：为客户设计区块链集成方案、主导客户 POC 验证、编写技术方案文档、协助销售团队完成技术答疑。
+      技能要求：了解区块链基础概念、有客户沟通经验、能独立完成方案演示。
+    ideal_output:
+      direction: "solutions"
+      reason: "主导工作是面向客户——设计集成方案、做 POC、技术答疑、方案演示，全部是客户服务行为。按定位优先规则，即便身处 blockchain 赛道也直接判 solutions。"
+      rule_demo: "区块链公司售前/方案工程师→solutions（定位优先，覆盖技术赛道）"
+
+  - input: |
+      某 SaaS 平台公司招聘客户成功经理。
+      岗位职责：维护已有客户关系、定期回访了解使用情况、推动续约和增购、协调内部资源解决客户问题。
+      技能要求：沟通能力、项目管理、了解 SaaS 产品逻辑。
+    ideal_output:
+      direction: "solutions"
+      reason: "角色核心定位是客户关系维护——定期回访、推动续约、解决客户问题。这是典型的'为客户服务'，按定位优先直接判 solutions，不进 default。"
+      rule_demo: "客户成功经理→solutions（面向客户，维护客户关系）"

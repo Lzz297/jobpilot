@@ -108,11 +108,12 @@ client, MODEL_NAME = _init_llm_client()
 #  统一 LLM 调用入口（所有模块通过此函数调用，不直接使用 client）
 # ============================================================
 
-def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=None):
+def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=None, response_model=None):
     """调用 LLM，自动处理限流重试、超时、服务端错误。
 
     返回 message 对象（含 .content 和 .tool_calls 属性）。
     调用方可以直接 msg.content 取文本、msg.tool_calls 取工具调用。
+    当 response_model 不为 None 时，使用 Instructor 模式，返回 Pydantic 模型实例。
 
     V4 模型 thinking 默认开启。需要确定性输出时传入 thinking={"type": "disabled"}，
     此时 temperature 参数正常运行。thinking 开启时不传 temperature（会被忽略）。
@@ -122,6 +123,32 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
     """
     import time
     from openai import RateLimitError, APITimeoutError, APIConnectionError, APIStatusError
+
+    # ── Instructor 模式：response_model 不为 None 时走 Pydantic 结构化返回 ──
+    if response_model is not None:
+        import instructor as _instructor
+        if tools is not None:
+            print(f"[llm_call] 警告: tools 和 response_model 同时传入，tools 将被忽略，使用 Instructor 模式")
+        client_instruct = _instructor.from_openai(client)
+        kwargs_instruct = {}
+        if thinking is not None:
+            kwargs_instruct["extra_body"] = {"thinking": thinking}
+        result = client_instruct.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=temperature if temperature is not None else 1.0,
+            response_model=response_model,
+            max_retries=max_retries,
+            **kwargs_instruct
+        )
+        # 尝试从 Instructor 的底层 response 获取 usage 信息
+        if hasattr(result, '_raw_response') and hasattr(result._raw_response, 'usage'):
+            usage = result._raw_response.usage
+            result._usage = {
+                "input_tokens": usage.prompt_tokens,
+                "output_tokens": usage.completion_tokens,
+            }
+        return result
 
     last_error = None
     for attempt in range(max_retries + 1):

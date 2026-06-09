@@ -85,3 +85,7 @@
 | jd_013 | AI Analytics Specialist | solutions | technical | 工作对象为内部AI Agent产品，非直接客户服务 |
 | jd_015 | AI Lab Solution Architect | solutions | technical | 服务Cummins内部业务线，非外部客户 |
 | jd_025 | Associate Director, AI Lead | default | solutions | KPMG咨询岗，为外部企业客户交付AI方案 |
+| jd_007 | Corporate Banking Custody Services | payment | technical | 2026-06-09 人工仲裁修正 |
+| jd_009 | Fintech/Payment Analyst Programmer | payment | technical | 2026-06-09 人工仲裁修正 |
+| jd_010 | AVP/VP Financial Technology | payment | technical | 2026-06-09 人工仲裁修正 |
+| jd_014 | Cyberport Blockchain Manager | solutions | default | 2026-06-09 人工仲裁修正 |
