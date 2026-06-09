@@ -88,14 +88,8 @@ def main():
         resume_bullet = case["resume_bullet"]
         expected = set(case.get("expected_flags", []))
 
-        # 解析 source_ids → source_texts
-        source_texts = []
-        for sid in source_ids:
-            if sid in id_to_text:
-                source_texts.append(id_to_text[sid])
-
         try:
-            actual = set(check_bullet(source_ids, source_texts, resume_bullet))
+            actual = set(check_bullet(source_ids, mock_me, resume_bullet))
         except Exception as e:
             actual = {f"ERROR: {e}"}
 

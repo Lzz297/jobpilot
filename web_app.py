@@ -154,6 +154,17 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
         else:
             reply = f"Unknown pipeline action: {action}"
 
+        # 推送核查报告（review 事件在 done 之前）
+        try:
+            import resume_gen as _rg
+            cr = getattr(_rg, 'last_check_report', [])
+            if cr:
+                q.put({"type": "review", "bullets": cr, "flagged_count": len(cr)})
+            else:
+                q.put({"type": "review", "bullets": [], "flagged_count": 0})
+        except Exception:
+            pass
+
         files = get_session_files()
         q.put({
             "type": "done",
@@ -479,6 +490,17 @@ def api_resume():
             else:
                 result = generate_resume(output_langs=languages)
 
+            # 推送核查报告（review 事件在 done 之前）
+            try:
+                import resume_gen as _rg
+                cr = getattr(_rg, 'last_check_report', [])
+                if cr:
+                    q.put({"type": "review", "bullets": cr, "flagged_count": len(cr)})
+                else:
+                    q.put({"type": "review", "bullets": [], "flagged_count": 0})
+            except Exception:
+                pass  # review 推送失败不影响主流程
+
             files = get_session_files()
             q.put({"type": "done", "reply": result, "files": [[fp, desc] for fp, desc in files]})
         except Exception as e:
@@ -490,6 +512,52 @@ def api_resume():
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "started"})
+
+
+@app.route("/api/resume/fix", methods=["POST"])
+def fix_resume_bullet():
+    """定点修正单条 resume bullet，返回修正后的完整 Markdown。"""
+    data = request.json or {}
+    resume_md = data.get("resume_md", "")
+    bullet_index = data.get("bullet_index", 0)
+    feedback = data.get("feedback", "")
+
+    # 如果前端没传 resume_md，从模块变量读取最近一次生成的简历
+    if not resume_md:
+        import resume_gen as _rg
+        resume_md = getattr(_rg, 'last_resume_md', '')
+
+    if not resume_md or not feedback:
+        return jsonify({"error": "Missing resume_md or feedback"}), 400
+
+    try:
+        from resume_gen import fix_single_bullet
+        from config import load_profile as _lp
+        profile, _ = _lp()
+        fixed_md = fix_single_bullet(
+            original_md=resume_md,
+            bullet_index=int(bullet_index),
+            user_feedback=feedback,
+            profile=profile,
+        )
+        # 更新模块级变量，供后续操作使用
+        import resume_gen as _rg
+        _rg.last_resume_md = fixed_md
+        # 重新核查修补后的 bullet
+        from resume_gen import _parse_source_ids_from_md
+        from checker import check_bullet
+        parsed = _parse_source_ids_from_md(fixed_md)
+        check_result = None
+        if parsed and int(bullet_index) < len(parsed):
+            b = parsed[int(bullet_index)]
+            flags = check_bullet(b["source_ids"], profile or {}, b["text"])
+            check_result = {"text": b["text"], "source_ids": b["source_ids"], "flags": flags}
+        return jsonify({
+            "fixed_md": fixed_md,
+            "check_result": check_result,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ── 市场调研 API ──

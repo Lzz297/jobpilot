@@ -467,12 +467,31 @@ function startSSE(box, resultCb, doneCb, retryCount, startApiCb){
     const d = JSON.parse(e.data);
     logLine(box, {t:'tool', x:d.tool, a:d.args||''});
   });
+  let _reviewState = { arrived: false, flagged: 0, hasError: false, confirmed: false };
+  let _pendingFiles = [];
+
+  es.addEventListener('review', e => {
+    const d = JSON.parse(e.data);
+    showReviewPanel(d);
+    _reviewState.arrived = true;
+    _reviewState.flagged = d.flagged_count || 0;
+    _reviewState.hasError = (d.bullets||[]).some(b => (b.flags||[]).some(f => f==='number_conflict'||f==='placeholder_present'));
+  });
   es.addEventListener('done', e => {
     const d = JSON.parse(e.data);
     es.close(); resolved=true;
     setBusy(false);
     if(d.files) d.files.forEach(f => files.push(f));
-    if(resultCb) resultCb(d.reply||'', files);
+    // If review hasn't arrived or no flags, render immediately
+    if(!_reviewState.arrived || _reviewState.flagged === 0){
+      if(resultCb) resultCb(d.reply||'', files);
+    } else {
+      // Has review flags — defer download until confirmed
+      _pendingFiles = files;
+      // Show reply text only (no download links yet)
+      if(resultCb) resultCb(d.reply||'', []);
+      updateReviewConfirmUI();
+    }
     if(doneCb) doneCb();
   });
   es.addEventListener('error', e => {
@@ -523,6 +542,106 @@ function logLine(box,ev){
   else if(ev.t==='err') el.innerHTML=`<span class="text-red-400">✗ ${escapeHtml(ev.x)}</span>`;
   else el.innerHTML=`<span class="text-slate-400">${escapeHtml(ev.x)}</span>`;
   box.appendChild(el); box.scrollTop=box.scrollHeight; scrollChat();
+}
+function updateReviewConfirmUI(){
+  const panel = document.getElementById('review-panel');
+  if(!panel) return;
+  let btns = '';
+  if(_reviewState.hasError){
+    btns = `<div class="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+      <span class="text-xs text-red-600 flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> 存在必须修正的问题，请修正后确认</span>
+      <button onclick="alert('定点修正功能将在后续版本实现')" class="text-xs border border-slate-200 text-slate-500 rounded-lg px-3 py-1.5 ml-auto" disabled>✏️ 修正</button>
+    </div>`;
+  } else if(!_reviewState.confirmed){
+    btns = `<div class="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100" id="review-confirm-row">
+      <span class="text-xs text-slate-400">以上警告已复核，可以继续</span>
+      <button onclick="confirmReviewAndDownload()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-1.5 ml-auto flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5"></i> 确认并下载</button>
+    </div>`;
+  } else {
+    btns = `<div class="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+      <span class="text-xs text-emerald-600 flex items-center gap-1"><i data-lucide="check-circle" class="w-3.5 h-3.5"></i> 已确认</span>
+    </div>`;
+  }
+  const existing = panel.querySelector('.review-actions');
+  if(existing) existing.remove();
+  const actions = document.createElement('div');
+  actions.className = 'review-actions';
+  actions.innerHTML = btns;
+  panel.appendChild(actions);
+  refreshIcons();
+}
+
+function confirmReviewAndDownload(){
+  _reviewState.confirmed = true;
+  // Remove confirm row
+  const row = document.getElementById('review-confirm-row');
+  if(row) row.remove();
+  updateReviewConfirmUI();
+  // Render download links
+  const panel = document.getElementById('review-panel');
+  if(panel && _pendingFiles.length){
+    const chips = document.createElement('div');
+    chips.innerHTML = fileChips(_pendingFiles);
+    panel.appendChild(chips);
+    refreshIcons();
+  }
+}
+
+function showReviewPanel(data){
+  const bullets = data.bullets || [];
+  const flagged = data.flagged_count || 0;
+  const FLAG_LABELS = {
+    number_conflict: ['数字冲突','','red'],
+    number_not_found: ['数字来源不明','','amber'],
+    approx_out_of_range: ['约数超容差','','amber'],
+    strength_upgrade: ['强度升级','','amber'],
+    placeholder_present: ['占位符残留','','red'],
+    dangling_reference: ['悬空引用','','slate'],
+    empty_source: ['空引用','','slate'],
+  };
+  let html = `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in mt-3" id="review-panel">
+    <div class="flex items-center gap-2 mb-3">
+      <i data-lucide="shield-check" class="w-4 h-4 ${flagged?'text-amber-500':'text-emerald-500'}"></i>
+      <span class="text-sm font-semibold text-slate-700">事实核查报告</span>
+      <span class="text-[11px] ${flagged?'text-amber-600 bg-amber-50':'text-emerald-600 bg-emerald-50'} px-2 py-0.5 rounded-full font-medium">${flagged?flagged+' 条需关注':'全部通过'}</span>
+    </div>`;
+  if(!flagged){
+    html += `<p class="text-sm text-slate-500">所有 bullet 通过核查，与你的档案一致。</p>`;
+  } else {
+    html += `<div class="space-y-2 max-h-64 overflow-y-auto">`;
+    bullets.forEach(b => {
+      const hasErr = (b.flags||[]).some(f => f==='number_conflict'||f==='placeholder_present');
+      const flagTags = b.flags.map(f => {
+        const lbl = FLAG_LABELS[f] || [f,'','slate'];
+        return `<span class="text-[11px] px-1.5 py-0.5 rounded-full bg-${lbl[2]}-50 text-${lbl[2]}-700 border border-${lbl[2]}-200 font-medium">${lbl[1]}${lbl[0]}</span>`;
+      }).join('');
+      const errFlags = (b.flags||[]).filter(f => f==='number_conflict'||f==='placeholder_present'||f==='approx_out_of_range'||f==='number_not_found'||f==='strength_upgrade');
+      const fixFlag = errFlags.length > 0 ? errFlags[0] : '';
+      const fixBtn = fixFlag ? `<button onclick="fixBullet(${i},'${fixFlag}','${escapeHtml(b.text||'').replace(/'/g,"\\'")}')" class="text-[10px] border border-red-200 text-red-500 hover:bg-red-50 rounded px-2 py-0.5 ml-2 shrink-0">✏️ 修正</button>` : '';
+      html += `<div class="text-xs border ${hasErr?'border-red-200 bg-red-50/50':'border-slate-100 bg-slate-50'} rounded-lg p-2.5 review-bullet">
+        <div class="flex items-start gap-2">
+          <div class="flex-1 min-w-0"><div class="bullet-text text-slate-600 line-clamp-2 mb-1.5">${escapeHtml(b.text||'')}</div>
+          <div class="flex items-center gap-1.5 flex-wrap">${flagTags}</div></div>
+          ${fixBtn}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
+  const existing = document.getElementById('review-panel');
+  if(existing) existing.remove();
+  const chat = document.getElementById('chat-messages');
+  if(chat){
+    const wrapper = document.createElement('div');
+    wrapper.className = 'px-6';
+    wrapper.innerHTML = html;
+    chat.appendChild(wrapper);
+    refreshIcons();
+    scrollChat();
+    // Auto-call updateReviewConfirmUI if flagged
+    if(flagged) updateReviewConfirmUI();
+  }
 }
 function fileChips(files){
   if(!files||!files.length) return '';
@@ -601,6 +720,85 @@ function runPipelineFromChat(langs){
 }
 
 /* ===================== PIPELINE ===================== */
+let CURRENT_RESUME_MD = '';
+function setCurrentResumeMd(md){ CURRENT_RESUME_MD = md; }
+
+async function fixBullet(bulletIndex, flagType, bulletText){
+  if(!STATE.sid){ toast('Session 未建立','warn'); return; }
+  const feedbackMap = {
+    number_conflict: '数字与引用源冲突，请修正数字使其与源文件一致',
+    number_not_found: '此数字在引用源中不存在，请移除或修改为源文件中实际存在的数字',
+    approx_out_of_range: '约数超出容差范围，请修正为与源文件数据一致',
+    strength_upgrade: '动词强度升级（源文件用词较温和），请将动词强度降到与源文件一致',
+    placeholder_present: '包含占位符，请替换为实际内容',
+  };
+  const feedback = feedbackMap[flagType] || `请修正此条 bullet 中的 ${flagType} 问题`;
+  toast('正在修正 bullet #'+(bulletIndex+1)+'…', 'info');
+  try {
+    const resp = await apiPost('/api/resume/fix', {
+      bullet_index: bulletIndex,
+      feedback: feedback,
+    });
+    if(resp.error){ toast(resp.error,'err'); return; }
+    if(resp.fixed_md){
+      CURRENT_RESUME_MD = resp.fixed_md;
+      // Re-parse and re-show review
+      const parsed = parseBulletsFromMd(resp.fixed_md);
+      const newBullets = parsed.map((b,i) => ({
+        bullet_index: i, text: b.text, source_ids: b.source_ids,
+        flags: [] // will be re-checked server-side
+      }));
+      // Show updated review state
+      if(resp.check_result){
+        const cr = resp.check_result;
+        if(!cr.flags||!cr.flags.length){
+          toast('✅ bullet #'+(bulletIndex+1)+' 已修正通过','ok');
+        } else {
+          toast('⚠️ bullet #'+(bulletIndex+1)+' 仍有问题: '+cr.flags.join(', '),'warn');
+        }
+      }
+      // Update the text display in the review panel
+      updateBulletInPanel(bulletIndex, resp.check_result);
+    }
+  } catch(e){
+    toast('修正失败: '+e.message, 'err');
+  }
+}
+
+function parseBulletsFromMd(md){
+  const results = [];
+  const lines = md.split('\n');
+  const refPat = /\s*\[ref:\s*([^\]]+)\]/;
+  for(const line of lines){
+    const s = line.trim();
+    if(s.startsWith('- ')){
+      const m = refPat.exec(line);
+      const ids = m ? m[1].split(',').map(x=>x.trim()).filter(Boolean) : [];
+      const text = m ? (line.substring(0, m.index) + line.substring(m.index + m[0].length)).trim().replace(/^- /,'').trim() : s.replace(/^- /,'').trim();
+      results.push({text, source_ids: ids});
+    }
+  }
+  return results;
+}
+
+function updateBulletInPanel(idx, checkResult){
+  const panel = document.getElementById('review-panel');
+  if(!panel||!checkResult) return;
+  const items = panel.querySelectorAll('.review-bullet');
+  if(idx < items.length){
+    const item = items[idx];
+    const hasFlags = checkResult.flags && checkResult.flags.length > 0;
+    item.className = 'text-xs border '+(hasFlags?'border-red-200 bg-red-50/50':'border-emerald-200 bg-emerald-50/50')+' rounded-lg p-2.5 review-bullet';
+    if(checkResult.text){
+      const textEl = item.querySelector('.bullet-text');
+      if(textEl) textEl.textContent = checkResult.text;
+    }
+    // Refresh the whole panel by re-running showReviewPanel with updated data
+    // For simplicity, just update the visual state of this item
+  }
+  refreshIcons();
+}
+
 let PIPE_LANGS = ['en','hk','cn'];
 const LANGS = [['en','英文 EN'],['hk','繁體中文 HK'],['cn','简体中文 CN']];
 const LANG_SHORT = {en:'英文',hk:'繁中',cn:'简中'};

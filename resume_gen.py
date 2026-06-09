@@ -22,6 +22,10 @@ from config import (
 from pdf_renderer import render_resume as render_pdf
 from job_match import classify_job, get_weights
 
+# 模块级变量：最近一次简历核查报告 + 简历 Markdown。供 web_app.py 等调用方获取。
+last_check_report: list[dict] = []
+last_resume_md: str = ""
+
 
 # ============================================================
 #  各模式的 LLM 系统 prompt
@@ -590,6 +594,7 @@ def _call_llm_and_save(system_content, user_content, file_label,
     date_str = datetime.now().strftime("%Y%m%d")
 
     # output_langs: 可选参数，指定输出语言子集。默认全部三种。
+    global last_resume_md
     langs = output_langs if output_langs else ["en", "hk", "cn"]
     lang_results = {lang: {"resume_pdf": None, "resume_md": "", "cl_pdf": None, "cl_md": ""} for lang in langs}
 
@@ -603,11 +608,43 @@ def _call_llm_and_save(system_content, user_content, file_label,
              {"role": "user", "content": user_content}],
         )
         lang_results["en"]["resume_md"] = _strip_code_block(msg.content)
+        last_resume_md = lang_results["en"]["resume_md"]
     except Exception as e:
         return f"英文简历生成失败: {str(e)}"
 
     # ================================================================
-    #  第二步：审查英文简历，不合格则重写
+    #  第二步：source_ids 事实核查
+    # ================================================================
+    en_resume_md = lang_results["en"]["resume_md"]
+    check_report = []
+    if en_resume_md:
+        try:
+            from checker import check_bullet
+            from config import load_profile as _load_profile
+            profile, _ = _load_profile()
+            if profile:
+                parsed_bullets = _parse_source_ids_from_md(en_resume_md)
+                for i, bullet in enumerate(parsed_bullets):
+                    flags = check_bullet(bullet["source_ids"], profile, bullet["text"])
+                    if flags:
+                        check_report.append({
+                            "bullet_index": i,
+                            "text": bullet["text"][:120],
+                            "source_ids": bullet["source_ids"],
+                            "flags": flags,
+                        })
+                if check_report:
+                    emit(f"   ⚠️ 事实核查发现 {len(check_report)} 条 bullet 存在问题")
+                else:
+                    emit(f"   ✅ 事实核查通过（{len(parsed_bullets)} 条 bullet 均无问题）")
+                global last_check_report
+                last_check_report = check_report
+        except Exception as e:
+            emit(f"   ⚠️ 事实核查跳过: {e}")
+            last_check_report = []
+
+    # ================================================================
+    #  第三步：审查英文简历，不合格则重写
     # ================================================================
     review_dict = None
     review_summary = ""
@@ -630,6 +667,7 @@ def _call_llm_and_save(system_content, user_content, file_label,
                      {"role": "user", "content": feedback_user}],
                 )
                 lang_results["en"]["resume_md"] = _strip_code_block(msg.content)
+                last_resume_md = lang_results["en"]["resume_md"]
                 emit("   ✅ 英文简历已根据审查反馈重新生成")
             except Exception as e:
                 emit(f"   ⚠️ 重新生成失败: {e}，使用原版简历")
@@ -637,7 +675,7 @@ def _call_llm_and_save(system_content, user_content, file_label,
     # 英文简历定稿，渲染 PDF
     en_resume_md = lang_results["en"]["resume_md"]
     resume_base = os.path.join(resumes_dir, f"resume_{safe_label}_{date_str}_en.md")
-    lang_results["en"]["resume_pdf"] = render_pdf(en_resume_md, resume_base)
+    lang_results["en"]["resume_pdf"] = render_pdf(_strip_ref_marks(en_resume_md), resume_base)
     if lang_results["en"]["resume_pdf"]:
         tag = " [已优化]" if review_dict and review_dict.get("overall_score", "A") in ("C", "D") else ""
         track_file(lang_results["en"]["resume_pdf"],
@@ -684,7 +722,7 @@ def _call_llm_and_save(system_content, user_content, file_label,
                 lang_results[lang]["resume_md"] = _strip_code_block(msg.content)
                 resume_base = os.path.join(
                     resumes_dir, f"resume_{safe_label}_{date_str}_{lang}.md")
-                lang_results[lang]["resume_pdf"] = render_pdf(lang_results[lang]["resume_md"], resume_base)
+                lang_results[lang]["resume_pdf"] = render_pdf(_strip_ref_marks(lang_results[lang]["resume_md"]), resume_base)
                 if lang_results[lang]["resume_pdf"]:
                     track_file(lang_results[lang]["resume_pdf"],
                                f"{lang_label}简历 PDF [{mode_label}] → {job_label}")
@@ -751,3 +789,161 @@ def _call_llm_and_save(system_content, user_content, file_label,
         result += review_summary
 
     return result
+
+
+# ============================================================
+#  source_ids 标记解析与剥离
+# ============================================================
+
+import re as _re
+
+_REF_PATTERN = _re.compile(r'\s*\[ref:\s*([^\]]+)\]')
+
+
+def _parse_source_ids_from_md(md_text: str) -> list[dict]:
+    """
+    从带 [ref: ...] 标记的 Markdown 中，逐条提取 bullet 和 source_ids。
+
+    Returns: [
+        {"text": "bullet 原文（已剥离标记）", "source_ids": ["dep_001"], "raw": "原始行"},
+        ...
+    ]
+    """
+    results = []
+    for line in md_text.split('\n'):
+        stripped = line.strip()
+        if stripped.startswith('- '):
+            m = _REF_PATTERN.search(line)
+            source_ids = []
+            text = line
+            if m:
+                raw_ids = m.group(1)
+                source_ids = [sid.strip() for sid in raw_ids.split(',') if sid.strip()]
+                text = line[:m.start()] + line[m.end():]
+                text = text.rstrip()
+            results.append({
+                "text": text.lstrip('- ').strip(),
+                "source_ids": source_ids,
+                "raw": line,
+            })
+    return results
+
+
+def _strip_ref_marks(md_text: str) -> str:
+    """从 Markdown 中移除所有 [ref: ...] 标记，用于 PDF 渲染。"""
+    return _REF_PATTERN.sub('', md_text)
+
+
+# ============================================================
+#  定点修补：对单条 bullet 做 LLM 重写
+# ============================================================
+
+def fix_single_bullet(
+    original_md: str,
+    bullet_index: int,
+    user_feedback: str,
+    profile: dict = None,
+    template_config: dict = None,
+    guide_config: dict = None,
+) -> str:
+    """
+    对简历中的单条 bullet 做定点修补。
+
+    Args:
+        original_md: 原始简历 Markdown 全文
+        bullet_index: 要修补的 bullet 序号（从 0 开始）
+        user_feedback: 用户反馈或修正指令
+        profile: 用户画像（用于重新核查）
+        template_config: 简历模板配置
+        guide_config: 简历撰写指南
+
+    Returns:
+        修补后的完整 Markdown 文本（失败时返回原文本）
+    """
+    import re as _re_fix
+
+    # ── 解析出所有 bullet ──
+    parsed = _parse_source_ids_from_md(original_md)
+    if bullet_index < 0 or bullet_index >= len(parsed):
+        return original_md
+
+    target = parsed[bullet_index]
+    original_bullet_text = target["text"]
+    original_raw_line = target["raw"]
+
+    # ── 构造修补 prompt ──
+    fix_prompt = f"""你是一个专业的简历修改助手。以下是已生成的简历全文。
+
+请只修改第 {bullet_index + 1} 条 bullet（从 1 开始计数）：
+原文本：{original_bullet_text}
+
+修改要求：{user_feedback}
+
+规则：
+1. 只修改这一条 bullet，其他所有内容（Summary、Skills、其他 bullet、Education 等）保持完全不变。
+2. 修改后的 bullet 仍然要符合简历的写作风格（业务成果导向、量化、动词开头）。
+3. 如果原 bullet 有 [ref: ...] 标记，保留或更新标记。
+4. 直接输出修改后的完整简历 Markdown，不要输出任何解释或代码块包裹。
+
+--- 简历全文 ---
+{original_md}"""
+
+    # ── 调用 LLM 修补 ──
+    try:
+        msg = llm_call(
+            [{"role": "user", "content": fix_prompt}],
+            temperature=0.3,
+            thinking={"type": "disabled"},
+        )
+        fixed_md = msg.content or ""
+        fixed_md = _strip_code_block(fixed_md)
+    except Exception:
+        return original_md
+
+    # ── 验证：解析修补后的 bullet ──
+    fixed_parsed = _parse_source_ids_from_md(fixed_md)
+    if len(fixed_parsed) != len(parsed):
+        # bullet 数量变了，拒绝修补结果
+        return original_md
+
+    # ── 检查非目标 bullet 是否保持不变 ──
+    for i, (orig, fixed) in enumerate(zip(parsed, fixed_parsed)):
+        if i != bullet_index:
+            if orig["text"] != fixed["text"]:
+                return original_md  # 其他 bullet 被改了，拒绝
+
+    # ── 重新核查修补后的 bullet ──
+    if profile:
+        try:
+            from checker import check_bullet as _check
+            new_flags = _check(fixed_parsed[bullet_index]["source_ids"], profile,
+                               fixed_parsed[bullet_index]["text"])
+            if new_flags:
+                # 仍然有问题，再试一次
+                retry_feedback = f"仍然存在问题（{', '.join(new_flags)}）。请再次修正：{user_feedback}"
+                retry_prompt = f"""你是一个专业的简历修改助手。以下是已生成的简历全文。
+
+第 {bullet_index + 1} 条 bullet 修改后仍然有问题：
+当前文本：{fixed_parsed[bullet_index]['text']}
+问题：{', '.join(new_flags)}
+
+修改要求：{retry_feedback}
+
+规则：只修改这一条 bullet。直接输出修改后的完整简历 Markdown。
+
+--- 简历全文 ---
+{fixed_md}"""
+                try:
+                    msg2 = llm_call(
+                        [{"role": "user", "content": retry_prompt}],
+                        temperature=0.3,
+                        thinking={"type": "disabled"},
+                    )
+                    fixed_md = msg2.content or ""
+                    fixed_md = _strip_code_block(fixed_md)
+                except Exception:
+                    pass  # retry failed, return first attempt
+        except Exception:
+            pass  # checker unavailable, return as-is
+
+    return fixed_md

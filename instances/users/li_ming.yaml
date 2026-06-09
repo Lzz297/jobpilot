@@ -230,9 +230,12 @@ work_experience:
           - V0/V1 双节点互补架构（TronGrid + QuickNode），任一节点漏数据另一个补
 
         resume_bullet_candidates:
-          - "Designed and operated multi-chain deposit monitoring service scanning TRON and Ethereum blocks in real-time, implementing 5-layer verification pipeline (Event Log parsing, contract whitelist validation, on-chain balance cross-check, dust filtering, idempotent deduplication) to defend against fake deposit attacks"
-          - "Built fault-tolerant block scanning engine with checkpoint recovery, batch processing, and dual-node redundancy (TronGrid + QuickNode), ensuring zero missed deposits across 10,000+ daily transactions"
-          - "Discovered and mitigated a fake deposit attack vector where attacker deployed counterfeit token contract — upgraded from input data parsing to Event Log verification, successfully blocking all subsequent attack attempts"
+          - id: "dep_001"
+            text: "Designed and operated multi-chain deposit monitoring service scanning TRON and Ethereum blocks in real-time, implementing 5-layer verification pipeline (Event Log parsing, contract whitelist validation, on-chain balance cross-check, dust filtering, idempotent deduplication) to defend against fake deposit attacks"
+          - id: "dep_002"
+            text: "Built fault-tolerant block scanning engine with checkpoint recovery, batch processing, and dual-node redundancy (TronGrid + QuickNode), ensuring zero missed deposits across 10,000+ daily transactions"
+          - id: "dep_003"
+            text: "Discovered and mitigated a fake deposit attack vector where attacker deployed counterfeit token contract — upgraded from input data parsing to Event Log verification, successfully blocking all subsequent attack attempts"
 
       withdrawal_processing:
         module_name: "提款处理模块"
@@ -267,10 +270,14 @@ work_experience:
           安全门机制：链上确认前不通知商户，防止商户基于未确认状态做业务决策
 
         resume_bullet_candidates:
-          - "Engineered 5-layer anti-duplicate-withdrawal protection (process mutex, Redis distributed lock, DB lock, state double-check, checksum verification) achieving zero duplicate payment incidents across all operations"
-          - "Designed critical state transition strategy — updating order status before chain submission to eliminate duplicate payment window, with CommitChainRecord audit trail for exception handling"
-          - "Integrated Safeheron MPC custody into withdrawal pipeline, implementing 3-party state machine synchronization (local order ↔ Safeheron transaction ↔ on-chain confirmation) with security gate preventing premature merchant notification"
-          - "Built intelligent balance management system with cumulative commitment tracking and wallet rotation, automatically deferring withdrawals during insufficient balance and resuming upon fund replenishment"
+          - id: "wdl_001"
+            text: "Engineered 5-layer anti-duplicate-withdrawal protection (process mutex, Redis distributed lock, DB lock, state double-check, checksum verification) achieving zero duplicate payment incidents across all operations"
+          - id: "wdl_002"
+            text: "Designed critical state transition strategy — updating order status before chain submission to eliminate duplicate payment window, with CommitChainRecord audit trail for exception handling"
+          - id: "wdl_003"
+            text: "Integrated Safeheron MPC custody into withdrawal pipeline, implementing 3-party state machine synchronization (local order ↔ Safeheron transaction ↔ on-chain confirmation) with security gate preventing premature merchant notification"
+          - id: "wdl_004"
+            text: "Built intelligent balance management system with cumulative commitment tracking and wallet rotation, automatically deferring withdrawals during insufficient balance and resuming upon fund replenishment"
 
       fund_sweeping:
         module_name: "归集模块"
@@ -308,9 +315,12 @@ work_experience:
           - 资源钱包余额低于阈值时 Telegram 告警
 
         resume_bullet_candidates:
-          - "Architected 3-phase fund sweeping pipeline (dual-source inventory → resource delegation & fee preparation → delayed execution) consolidating assets from user deposit addresses to hot/cold wallets with zero fund loss"
-          - "Implemented sweeping-withdrawal mutex mechanism via Redis distributed locks, prioritizing direct-from-address withdrawal matching to minimize on-chain operations and Gas/Energy costs"
-          - "Designed configurable multi-tenant sweeping strategy supporting per-tenant frequency control, amount-tiered routing (small → hot wallet, large → cold wallet), and automated TRON resource delegation to optimize transaction costs"
+          - id: "swp_001"
+            text: "Architected 3-phase fund sweeping pipeline (dual-source inventory → resource delegation & fee preparation → delayed execution) consolidating assets from user deposit addresses to hot/cold wallets with zero fund loss"
+          - id: "swp_002"
+            text: "Implemented sweeping-withdrawal mutex mechanism via Redis distributed locks, prioritizing direct-from-address withdrawal matching to minimize on-chain operations and Gas/Energy costs"
+          - id: "swp_003"
+            text: "Designed configurable multi-tenant sweeping strategy supporting per-tenant frequency control, amount-tiered routing (small → hot wallet, large → cold wallet), and automated TRON resource delegation to optimize transaction costs"
 
       merchant_integration:
         module_name: "B2B 商户对接"
@@ -322,8 +332,10 @@ work_experience:
           - 设计商户后台管理培训材料
           - 协调前端/测试/运维推进版本迭代与发布
         resume_bullet_candidates:
-          - "Served as primary technical contact for 5 B2B merchant API integrations, delivering end-to-end onboarding from documentation to production go-live"
-          - "Authored and maintained payment API documentation covering deposit callbacks, withdrawal requests, and transaction status queries, serving as the reference for all merchant integrations"
+          - id: "mch_001"
+            text: "Served as primary technical contact for 5 B2B merchant API integrations, delivering end-to-end onboarding from documentation to production go-live"
+          - id: "mch_002"
+            text: "Authored and maintained payment API documentation covering deposit callbacks, withdrawal requests, and transaction status queries, serving as the reference for all merchant integrations"
 
     # ===== 生产环境关键事件（简历 bullet point 和面试故事的素材库）=====
     key_achievements:
@@ -439,9 +451,12 @@ projects:
     role: "Independent Developer"
     for_resume: true  # 必须展示，作为学习能力和 AI 工程化能力的证据
     resume_bullets:
-      - "Built end-to-end AI agent pipeline: job scraping → LLM-powered filtering → multi-dimensional matching → automated resume generation, processing 1200+ job listings across 12 market categories"
-      - "Implemented RAG (Retrieval-Augmented Generation) architecture for context-aware resume tailoring based on specific JD requirements"
-      - "Designed multi-tool orchestration system enabling the agent to autonomously chain web search, file operations, and API calls"
+      - id: "prj_ai_001"
+        text: "Built end-to-end AI agent pipeline: job scraping → LLM-powered filtering → multi-dimensional matching → automated resume generation, processing 1200+ job listings across 12 market categories"
+      - id: "prj_ai_002"
+        text: "Implemented RAG (Retrieval-Augmented Generation) architecture for context-aware resume tailoring based on specific JD requirements"
+      - id: "prj_ai_003"
+        text: "Designed multi-tool orchestration system enabling the agent to autonomously chain web search, file operations, and API calls"
 
 # ===== 证书 =====
 certifications: []
