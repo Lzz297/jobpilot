@@ -1,45 +1,12 @@
-# 此文件仅包含系统基础设施配置。
-# 搜索策略（搜索词、权重、匹配参数）请通过 instances/campaigns/ 下的 Campaign 文件管理。
-# ==========================================
-
-# 当前用户画像（instances/users/ 下的文件名，不含 .yaml 后缀）
-user: "li_ming"
-
-# ==========================================
-# LLM 模型配置（切换大模型只改这里）
-# ==========================================
-llm:
-  provider: deepseek          # deepseek | qwen | glm
-  model: deepseek-v4-pro      # 模型名称
-  # 切换千问示例：
-  #   provider: qwen
-  #   model: qwen3.6-plus
-  # 各 provider 预设：
-  #   deepseek → base_url: api.deepseek.com,  env: DEEPSEEK_API_KEY
-  #   qwen    → base_url: dashscope.aliyuncs.com,  env: DASHSCOPE_API_KEY
-  #   glm     → base_url: open.bigmodel.cn,  env: GLM_API_KEY
-  # 也可手动覆盖：
-  # base_url: https://custom-endpoint.com/v1
-  # api_key_env: MY_CUSTOM_KEY
-
-# ==========================================
-# 搜索排序设置
-# ==========================================
-# sort_mode 控制搜索结果的排序方式：
-#   "date"      → 按发布时间排序（最新在前），对应 URL ?sortmode=ListedDate
-#   "relevance" → 按相关度排序（JobsDB 默认），不传 sortmode 参数
-# 留空或删除此行，默认按 date 排序（保持向后兼容）
-sort_mode: "date"
-
-# 过滤规则
-# ==========================================
 filters:
-  # 排除特定公司（如已知不合适的公司，面试流程不友好等）
   exclude_companies: []
-
-# ==========================================
+llm:
+  model: deepseek-v4-pro
+  provider: deepseek
 market_analysis:
-  max_pages: 4            # 每次市场调研翻几页
-  max_fetch_jd: 100       # 最多抓取多少条完整 JD
-  batch_size: 5            # LLM 分析时每批处理多少条 JD
-  jd_max_chars: 6000       # 每条 JD 截断长度（节省 token）
+  batch_size: 5
+  jd_max_chars: 6000
+  max_fetch_jd: 100
+  max_pages: 4
+sort_mode: date
+user: li_ming

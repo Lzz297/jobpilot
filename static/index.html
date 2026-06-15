@@ -75,9 +75,9 @@
     <div class="px-3 py-3 border-t border-slate-100 space-y-3">
       <div class="grid grid-cols-2 gap-2">
         <button onclick="openYamlModal('me')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
-          <i data-lucide="eye" class="w-3.5 h-3.5"></i> me.yaml</button>
-        <button onclick="openYamlModal('search_config')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
-          <i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看配置</button>
+          <i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看画像</button>
+        <button onclick="viewCurrentCampaign()" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
+          <i data-lucide="info" class="w-3.5 h-3.5"></i> 当前方向</button>
       </div>
       <div>
         <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="cpu" class="w-3 h-3"></i> LLM 模型（实时切换）</label>
@@ -92,7 +92,7 @@
           <option value="">加载中...</option></select>
       </div>
       <div class="mt-3">
-        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="target" class="w-3 h-3"></i> 求职方向</label>
+        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="target" class="w-3 h-3"></i> 求职方向<button onclick="viewCurrentCampaign()" class="ml-auto text-indigo-400 hover:text-indigo-600" title="查看详情"><i data-lucide="info" class="w-3 h-3"></i></button></label>
         <select id="campaign-select" class="agent-trigger w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none">
           <option value="">加载中...</option></select>
       </div>
@@ -319,7 +319,7 @@
       <section id="view-settings" class="view h-full overflow-y-auto hidden">
         <div class="p-6 max-w-3xl">
           <h1 class="text-lg font-bold text-slate-900">设置</h1>
-          <p class="text-sm text-slate-500 mb-4">在 Web 端编辑个人画像与搜索配置（对应 <code class="text-xs bg-slate-100 px-1 rounded">me.yaml</code> / <code class="text-xs bg-slate-100 px-1 rounded">search_config.yaml</code>）</p>
+          <p class="text-sm text-slate-500 mb-4">在 Web 端编辑个人画像与系统配置</p>
           <div class="flex rounded-lg border border-slate-200 overflow-hidden text-sm w-fit mb-4">
             <button id="set-tab-profile" onclick="setTab('profile')" class="px-4 py-1.5 bg-indigo-600 text-white">个人画像</button>
             <button id="set-tab-config" onclick="setTab('config')" class="px-4 py-1.5 bg-white text-slate-500">搜索配置</button>
@@ -345,7 +345,7 @@
         </div>
         <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
-      <div class="px-5 pt-3 shrink-0">
+      <div id="modal-tabs" class="px-5 pt-3 shrink-0">
         <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
           <button id="mm-friendly" onclick="setModalMode('friendly')" class="px-3 py-1.5">友好视图</button>
           <button id="mm-raw" onclick="setModalMode('raw')" class="px-3 py-1.5">原始 YAML</button>
@@ -939,6 +939,34 @@ document.getElementById('campaign-select').addEventListener('change', async func
   }
 });
 
+async function viewCurrentCampaign(){
+  const campaignName = STATE.campaign;
+  if(!campaignName){ toast('请先选择求职方向','warn'); return; }
+  try {
+    const data = await apiGet('/api/campaigns');
+    const current = data ? data.find(c => c.name === campaignName) : null;
+    if(!current){ toast('未找到当前方向配置','err'); return; }
+    let html = `<div class="space-y-3"><h3 class="font-semibold text-sm">当前方向：${current.name} · ${current.strategy}</h3>`;
+    html += `<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">用户</span><div class="text-slate-700 font-medium">${current.user}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">策略</span><div class="text-slate-700 font-medium">${current.strategy}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">排序</span><div class="text-slate-700 font-medium">${current.sort_mode}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">搜索词</span><div class="text-slate-700 font-medium">${current.queries} 组</div></div></div>`;
+    const kws = (current.keywords||[]).join('、') || '（无）';
+    html += `<div class="bg-slate-50 rounded-lg px-3 py-2 text-xs"><span class="text-slate-400">具体关键词</span><div class="text-slate-700 font-medium mt-1">${kws}</div></div></div>`;
+    showModal('当前 Campaign 配置', html);
+  } catch(e){ toast('加载失败: '+e.message,'err'); }
+}
+
+function showModal(title, bodyHtml){
+  document.getElementById('modal-overlay').classList.remove('hidden');
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-sub').textContent = '';
+  document.getElementById('modal-icon').innerHTML = `<i data-lucide="target" class="w-4 h-4 text-indigo-600"></i>`;
+  document.getElementById('mm-friendly').classList.add('hidden');
+  document.getElementById('mm-raw').classList.add('hidden');
+  document.getElementById('modal-tabs').classList.add('hidden');
+  document.getElementById('modal-body').innerHTML = bodyHtml;
+  document.getElementById('modal-edit').classList.add('hidden');
+  refreshIcons();
+}
+
 /* ===================== USER PROFILE ===================== */
 async function loadUserList(){
   try {
@@ -1423,18 +1451,18 @@ function skillVal(sk, key){ return (sk&&sk[key]&&Array.isArray(sk[key])) ? sk[ke
 
 async function renderSettings(){
   const me = await loadYaml('me');
-  if(!me){ $('#set-profile').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 me.yaml</div>`; }
+  if(!me){ $('#set-profile').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载用户画像</div>`; }
   else {
     const intent = me.job_intent || {};
     const skills = me.skills || {};
     const exp = (me.work_experience||[]).map(e=>`${e.company||''} | ${e.title||''} | ${e.period||''}\n`+(e.highlights||[]).map(h=>'· '+h).join('\n')).join('\n\n');
-    $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入 profiles/me.yaml</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
+    $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入当前用户画像</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
       ${card('基本信息',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('姓名','p-name',me.name)}${field('英文名','p-name-en',me.name_en)}${field('所在地','p-loc',me.location)}${field('电话','p-phone',me.phone)}${field('邮箱','p-email',me.email)}${field('LinkedIn','p-linkedin',me.linkedin)}${field('GitHub','p-github',me.github)}</div>`)}
       ${card('求职意向',`<div class="space-y-3">${areaField('目标岗位（每行一个）','p-titles',(intent.target_titles||[]).join('\n'),4)}<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('薪资期望','p-salary',intent.salary_expectation||'')}${field('到岗时间','p-avail',intent.notice_period||intent.availability||'')}</div>${field('目标行业','p-industry',(intent.target_industries||[]).join(', '))}</div>`)}
       ${card('战略定位',areaField('核心画像','p-core',me.strategic_positioning||'',3))}
       ${card('专业技能',`<div class="space-y-3">${field('数据库','p-db',skillVal(skills,'databases_and_data'))}${field('API 集成','p-api',skillVal(skills,'api_and_integration'))}${field('编程语言','p-lang',skillVal(skills,'programming_languages'))}${field('框架','p-fw',skillVal(skills,'frameworks'))}${field('区块链','p-chain',skillVal(skills,'blockchain'))}${field('DevOps','p-devops',skillVal(skills,'devops_and_tools'))}${field('AI 工具','p-ai',skillVal(skills,'ai_tools'))}${field('业务能力','p-biz',skillVal(skills,'business_skills'))}${field('语言能力','p-spoken',skillVal(skills,'languages'))}</div>`)}
       ${card('自我评价',areaField('p-self',me.summary||'',3))}
-      <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存到 me.yaml</button>`;
+      <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
   }
 
   const cfg = await loadYaml('search_config');
@@ -1464,16 +1492,13 @@ async function renderSettings(){
     marketCls.forEach(c=>clsHtml+=`<div class="cls-row flex gap-2 items-center"><input value="${escapeHtml(c)}" placeholder="如 information-communication-technology" class="cls-in flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-mono"><button onclick="this.closest('.cls-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`);
     clsHtml += `</div><button onclick="addClsRow()" class="text-xs text-indigo-600 flex items-center gap-1 mt-2"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 添加行业分类</button>`;
 
-    $('#set-config').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入 profiles/search_config.yaml</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
-      ${card('搜索关键词组 search_queries',`<p class="text-[11px] text-slate-400 mb-2">direction 由 LLM 在匹配阶段自动判定，无需手动配置。</p>${qHtml}`)}
-      ${card('抓取参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('每组关键词翻页','c-pages',cfg.max_pages_per_query||3,'number')}${field('最终抓取 JD 上限','c-total',cfg.max_total_results||200,'number')}${field('全局排序 sort_mode','c-sort',cfg.sort_mode||'date','text','date / relevance')}</div>`)}
+    $('#set-config').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">业务配置（搜索词、权重）请通过侧边栏「求职方向」管理。以下为系统基础设施。</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
+      ${card('系统参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('全局排序 sort_mode','c-sort',cfg.sort_mode||'date','text','date / relevance')}</div>`)}
       ${card('排除公司',areaField('每行一个公司名（大小写不敏感）','c-exclude',(cfg.filters||{}).exclude_companies?cfg.filters.exclude_companies.join('\n'):'',3,'在基础清洗阶段直接排除'))}
-      ${card('匹配参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('最低达标分','c-min',matching.min_match_score||45,'number')}${field('保留 Top N','c-topn',matching.top_n||999,'number')}${field('复评区间','c-brange',matching.borderline_range||8,'number')}</div><label class="flex items-center gap-2 text-sm text-slate-600 mt-3"><input id="c-rescore" type="checkbox" ${matching.borderline_rescore!==false?'checked':''} class="rounded text-indigo-600"> 开启及格线复评</label>`)}
-      ${card('权重方案（技能/经验/职级/行业/加分）',`<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-[11px] text-slate-400 border-b border-slate-100"><th class="text-left py-1">方案</th><th class="py-1">技能</th><th class="py-1">经验</th><th class="py-1">职级</th><th class="py-1">行业</th><th class="py-1">加分</th></tr></thead><tbody>${wrows}</tbody></table></div>`)}
       ${card('市场调研 · 岗位类别预设',`<p class="text-[11px] text-slate-400 mb-2">在市场调研页可一键填入。</p>${catsHtml}`)}
       ${card('市场调研 · 行业分类预设',`<p class="text-[11px] text-slate-400 mb-2">与岗位类别相互独立。</p>${clsHtml}`)}
       ${card('市场调研参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('列表页翻页','c-mpages',marketCfg.max_pages||4,'number')}${field('最多抓取 JD','c-mjd',marketCfg.max_fetch_jd||100,'number')}${field('LLM 每批','c-mbatch',marketCfg.batch_size||5,'number')}${field('JD 截断字数','c-mchars',marketCfg.jd_max_chars||6000,'number')}</div>`)}
-      <button onclick="saveConfigYaml()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存到 search_config.yaml</button>`;
+      <button onclick="saveConfigYaml()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存系统配置</button>`;
   }
   refreshIcons();
 }
@@ -1502,31 +1527,26 @@ async function saveYaml(name){
       summary: $('#p-self').value,
     };
     const res = await api('PUT', '/api/config/yaml/me', {content:newMe});
-    if(res && !res.error) toast('已保存到 profiles/me.yaml','ok');
+    if(res && !res.error) toast('已保存用户画像','ok');
     else toast('保存失败: '+(res?.error||'未知错误'),'err');
   }
 }
 
 async function saveConfigYaml(){
   const cfg = await loadYaml('search_config') || {};
-  const wprofiles = cfg.matching?.weight_profiles || {default:{skill:30,experience:25,level:15,industry:15,bonus:15},technical:{skill:35,experience:20,level:15,industry:15,bonus:15},solutions:{skill:25,experience:20,level:15,industry:20,bonus:20},web3:{skill:25,experience:15,level:10,industry:30,bonus:20},payment:{skill:25,experience:20,level:10,industry:25,bonus:20}};
-  Object.keys(wprofiles).forEach(name=>{ ['skill','experience','level','industry','bonus'].forEach(dim=>{ const el=$(`#w-${name}-${dim}`); if(el) wprofiles[name][dim]=parseInt(el.value)||0; }); });
 
   const newCfg = {
     llm: cfg.llm || {provider:STATE.model, model:MODELS[STATE.model]},
     sort_mode: $('#c-sort').value.trim()||'date',
-    search_queries: [...document.querySelectorAll('#cfg-queries .query-row')].map(r=>({keywords:r.querySelector('.q-kw').value.trim(),location:r.querySelector('.q-loc').value.trim(),classification:r.querySelector('.q-cls').value.trim()})).filter(q=>q.keywords),
+    user: cfg.user || 'li_ming',
     filters: {exclude_companies: $('#c-exclude').value.split('\n').map(s=>s.trim()).filter(Boolean)},
-    max_pages_per_query: parseInt($('#c-pages').value)||3,
-    max_total_results: parseInt($('#c-total').value)||200,
-    matching: {min_match_score:parseInt($('#c-min').value)||45,top_n:parseInt($('#c-topn').value)||999,borderline_rescore:$('#c-rescore').checked,borderline_range:parseInt($('#c-brange').value)||8,weight_profiles:wprofiles,weight_rules:cfg.matching?.weight_rules||{}},
     market_job_categories: [...document.querySelectorAll('#cfg-cats .cat-in')].map(i=>i.value.trim()).filter(Boolean),
     market_classifications: [...document.querySelectorAll('#cfg-cls .cls-in')].map(i=>i.value.trim()).filter(Boolean),
     market_analysis: {max_pages:parseInt($('#c-mpages').value)||4,max_fetch_jd:parseInt($('#c-mjd').value)||100,batch_size:parseInt($('#c-mbatch').value)||5,jd_max_chars:parseInt($('#c-mchars').value)||6000},
   };
   const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
   if(res && !res.error){
-    toast('已保存到 profiles/search_config.yaml','ok');
+    toast('已保存系统配置','ok');
     // Sync global UI state
     STATE.sort = newCfg.sort_mode||'date';
     document.querySelectorAll('.sortbtn').forEach(x=>{ const on=x.dataset.sort===STATE.sort; x.className='sortbtn flex-1 py-1.5 '+(on?'bg-indigo-600 text-white':'bg-white text-slate-500'); });
@@ -1543,7 +1563,7 @@ function buildMeYamlText(data){
   const tl = (intent.target_titles||[]).map(t=>`    - ${t}`).join('\n');
   const sk = Object.entries(skills).map(([k,vs])=>`  ${k}: [${(Array.isArray(vs)?vs:[]).join(', ')}]`).join('\n');
   const expYaml = exp.map(e=>`  - company: ${e.company||''}\n    title: ${e.title||''}\n    period: ${e.period||''}\n    highlights:\n${(e.highlights||[]).map(h=>`      - ${h}`).join('\n')}`).join('\n');
-  return `# profiles/me.yaml
+  return `# 用户画像
 basic_info:
   name: ${data.name||''}
   name_en: ${data.name_en||''}
@@ -1618,6 +1638,7 @@ async function openYamlModal(which){
   const data = await loadYaml(which);
   if(!data){ toast('无法加载配置','err'); return; }
   $('#modal-overlay').classList.remove('hidden');
+  $('#modal-tabs').classList.remove('hidden');
   $('#modal-title').textContent = which==='me'?'个人画像':'搜索与匹配配置';
   $('#modal-sub').textContent = 'profiles/'+which+'.yaml';
   $('#modal-icon').innerHTML = `<i data-lucide="${which==='me'?'user-round':'sliders-horizontal'}" class="w-4 h-4 text-indigo-600"></i>`;

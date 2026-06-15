@@ -787,11 +787,13 @@ def list_campaigns():
                     with open(filepath, "r", encoding="utf-8") as f:
                         data = yaml.safe_load(f) or {}
                     name = fname.replace(".yaml", "")
+                    sq = data.get("search_queries", [])
                     result.append({
                         "name": name,
                         "user": data.get("user", ""),
                         "strategy": data.get("strategy", ""),
-                        "queries": len(data.get("search_queries", [])),
+                        "queries": len(sq),
+                        "keywords": [q.get("keywords", "") for q in sq if q.get("keywords")],
                         "sort_mode": data.get("sort_mode", ""),
                     })
                 except Exception:

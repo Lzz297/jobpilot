@@ -1,487 +1,601 @@
-# ===== 基本信息 =====
-name: "请替换为真实姓名"
-name_en: "Please Replace With Real Name"
-phone: "+852-XXXX-XXXX"
-email: "your-email@example.com"
-linkedin: ""
-github: ""  # ⚠️ 当前 GitHub (zhangsan) 只有一个空的 test 仓库，简历中暂不放出。建议上传 AI Agent 项目后再启用。
-location: "Hong Kong"
-hk_permanent_resident: true  # 香港永久性居民，无需雇主办签证
-
-# ===== 求职意向 =====
+certifications: []
+education:
+- degree: 本科 / Bachelor's
+  major: 计算机科学与技术 / Computer Science
+  period: 2020.09 - 2024.06
+  school: 暨南大学
+  school_en: Jinan University
+email: your-email@example.com
+github: ''
+hk_permanent_resident: true
 job_intent:
-  # 方向优先级基于 12 份市场报告、1200 条 JD 的交叉验证
-  target_titles:
-    # 第一优先级：支付工程师（WaaS 经验直接对口，面试不考算法）
-    - "Payment Engineer"
-    - "Settlement Engineer"
-    - "Integration Engineer (Payments)"
-    # 第二优先级：售前/方案工程师（ICT/Fintech 领域，侧重业务理解和系统设计）
-    - "Solutions Engineer"
-    - "Implementation Engineer"
-    - "Pre-sales Engineer"
-    - "Customer Success Engineer"
-    # 第三优先级：Web3 后端开发（偏业务集成方向，非底层协议开发）
-    - "Blockchain Developer (Backend)"
-    - "Web3 Backend Engineer"
-    # 第四优先级/保底：技术支持（Web3/Crypto 方向，门槛最低）
-    - "Technical Support Engineer"
-    # 明确回避方向（不要匹配）：
-    # - 传统大厂 Java 后端（八股文 + 算法面试陷阱）
-    # - Banking 领域 Solutions Engineer（英语门槛）
-    # - Technical Account Manager（经验门槛 5年+）
-    # - 纯移动端/前端开发
-    # - 数据科学/ML 研究岗
-
-  target_industries:
-    - "Web3 / 数字资产 / Crypto"
-    - "支付基础设施（Airwallex, Stripe, Adyen, PingPong, 连连等）"
-    - "金融科技 (Fintech)"
-    - "合规科技 (RegTech / AML / KYC)"
-    - "跨境支付 / 跨境电商基础设施"
-    - "B2B SaaS (偏金融/支付方向)"
-    - "虚拟银行 / 数字银行"
-
+  job_type: full-time
   location_preference:
-    - "Hong Kong"
-    - "Remote (HK-based)"
-
+  - Hong Kong
+  - Remote (HK-based)
+  notice_period: 即时到岗
   salary_expectation:
-    min: 25000
+    currency: HKD
     max: 35000
-    currency: "HKD"
-    note: "当前月薪 27K HKD。根据岗位类型和公司规模灵活调整——Web3 公司如有 token/equity 可接受 base 偏低。优先考虑成长空间和业务匹配度。"
+    min: 25000
+    note: 当前月薪 27K HKD。根据岗位类型和公司规模灵活调整——Web3 公司如有 token/equity 可接受 base 偏低。优先考虑成长空间和业务匹配度。
+  target_industries:
+  - Web3 / 数字资产 / Crypto
+  - 支付基础设施（Airwallex, Stripe, Adyen, PingPong, 连连等）
+  - 金融科技 (Fintech)
+  - 合规科技 (RegTech / AML / KYC)
+  - 跨境支付 / 跨境电商基础设施
+  - B2B SaaS (偏金融/支付方向)
+  - 虚拟银行 / 数字银行
+  target_titles:
+  - Payment Engineer
+  - Settlement Engineer
+  - Integration Engineer (Payments)
+  - Solutions Engineer
+  - Implementation Engineer
+  - Pre-sales Engineer
+  - Customer Success Engineer
+  - Blockchain Developer (Backend)
+  - Web3 Backend Engineer
+  - Technical Support Engineer
+linkedin: ''
+location: Hong Kong
+name: 请替换为真实姓名
+name_en: Please Replace With Real Name
+phone: +852-XXXX-XXXX
+projects:
+- description: 'Multi-tenant B2B SaaS platform providing TRON/Ethereum on-chain deposit,
+    withdrawal,
 
-  job_type: "full-time"
-  notice_period: "即时到岗"  # 2026年4月底离职，5月起可入职
+    and fund sweeping infrastructure to merchants. Core services: order management
+    (wallet_exchange)
 
-# ===== 战略定位（供 LLM 理解候选人核心价值）=====
-strategic_positioning: |
-  候选人的最佳定位是 "Web3 Payment Infrastructure Engineer"：
+    and chain interaction (wallet_chain). Integrated Safeheron MPC custody for key
+    management,
+
+    Chainalysis and Slowmist for AML compliance screening.
+
+    '
+  for_resume: true
+  name: WaaS Digital Asset Wallet Platform
+  name_cn: WaaS 数字资产钱包服务平台
+  role: Backend Engineer → Project Lead
+  tech_stack:
+  - Java
+  - Spring Boot
+  - MySQL
+  - Redis
+  - TRON
+  - Ethereum
+  - Safeheron MPC
+  - Chainalysis
+  - Docker
+- description: 'Independently built an LLM-powered agent that automatically scrapes
+    job listings from JobsDB,
+
+    applies 3-layer funnel filtering (listing scan → LLM quick filter → full JD fetch),
+
+    performs multi-dimensional candidate-job matching with weighted scoring,
+
+    conducts market analysis across job categories, and generates tailored resumes.
+
+    Demonstrates full-stack AI engineering: prompt engineering, tool orchestration,
+
+    RAG architecture, and end-to-end pipeline design.
+
+    '
+  for_resume: true
+  name: AI-Powered Job Market Analysis Agent
+  name_cn: AI Agent 智能求职市场分析助手
+  resume_bullets:
+  - id: prj_ai_001
+    text: 'Built end-to-end AI agent pipeline: job scraping → LLM-powered filtering
+      → multi-dimensional matching → automated resume generation, processing 1200+
+      job listings across 12 market categories'
+  - id: prj_ai_002
+    text: Implemented RAG (Retrieval-Augmented Generation) architecture for context-aware
+      resume tailoring based on specific JD requirements
+  - id: prj_ai_003
+    text: Designed multi-tool orchestration system enabling the agent to autonomously
+      chain web search, file operations, and API calls
+  role: Independent Developer
+  tech_stack:
+  - Python
+  - Claude API (LangChain)
+  - Playwright (web scraping)
+  - RAG
+  - Markdown/HTML/PDF generation
+skills:
+  ai_tools:
+  - detail: 工作中 90% 的代码通过 AI 辅助完成。建立了成熟的 AI 辅助开发工作流：需求拆解 → AI 生成代码 → 人工审查业务逻辑 → 集成测试。这不是'让
+      AI 写 Hello World'，而是在复杂业务系统中高效利用 AI 加速开发。
+    level: 深度使用
+    name: Cursor / GitHub Copilot / Claude
+  - detail: AI Agent 项目中实现了 RAG 检索增强生成，用于市场数据分析和简历生成。
+    level: 项目实现
+    name: RAG 架构
+  api_and_integration:
+  - detail: 为 B2B 商户设计支付 API（充值回调、提款请求、余额查询），编写 API 文档，指导商户完成集成联调。也对接过 Safeheron /
+      Chainalysis / Slowmist 等第三方 API。
+    level: 熟练
+    name: RESTful API 设计与对接
+  - detail: 设计并维护商户回调通知系统，处理重试、签名验证、幂等性等问题。
+    level: 熟练
+    name: Webhook / Callback 机制
+  blockchain:
+  - detail: 日常工作核心技能。通过 TronGrid REST API 和 QuickNode 双节点扫描区块、解析 Event Log、广播交易。深入了解
+      TRON 的 Energy/Bandwidth 资源模型、确认机制、DelegateResource 委托机制。
+    level: 熟练
+    name: TRON 链交互
+  - detail: WaaS 平台支持 ETH 链，了解 EVM 事件日志、Gas 机制、交易确认模型。开发方式与 TRON 类似（均为 EVM 体系）。
+    level: 掌握
+    name: Ethereum 链交互
+  - detail: 集成 Safeheron SDK 实现 MPC 签名的提款流程。理解 MPC 托管的三方状态机设计——本地订单状态、Safeheron 交易状态、链上确认状态的三方同步。
+    level: 集成经验
+    name: MPC 多方签名托管 (Safeheron)
+  - detail: 在提款和归集流程中集成 AML 筛查，实现自动风险评分和地址黑名单拦截。了解香港地区数字资产合规要求。
+    level: 集成经验
+    name: AML 链上风控 (Chainalysis / Slowmist)
+  business_skills:
+  - B2B 商户 API 集成全流程对接（文档→联调→测试→上线→日常支持）
+  - 数字资产充值 / 提款 / 归集完整业务闭环设计与维护
+  - 多租户 SaaS 系统架构理解（租户隔离、权限体系、按租户配置策略）
+  - 跨角色项目协调（前端 / 后端 / 测试 / 运维 / 商户）
+  - 非技术人员的技术产品沟通与培训（向商户解释链上确认机制等）
+  - 生产环境问题排查与根因分析（链上交易异常、资金对账差异、节点数据延迟等）
+  databases_and_data:
+  - detail: 每日用于资金流水查询、充提对账报表、异常交易排查、多租户数据隔离查询。这是工作中使用最多的技能。
+    level: 熟练 — 日常高频使用
+    name: SQL (MySQL)
+    years: 1.5
+  - detail: 分布式锁（防重复出款）、缓存（地址集合、配置信息）、计数器（累计出款额跟踪）
+    level: 熟练
+    name: Redis
+    years: 1.5
+  devops_and_tools:
+  - detail: 开发和部署环境容器化。Kubernetes 暂未涉及。
+    level: 日常使用
+    name: Docker
+  - level: 日常使用
+    name: Git
+  - detail: 日志排查、服务部署、基本命令操作。
+    level: 基础运维
+    name: Linux
+  frameworks:
+  - detail: WaaS 平台两大核心服务（wallet_exchange 订单服务、wallet_chain 链服务）均基于 Spring Boot。
+    level: 工作主力框架
+    name: Spring Boot
+  - detail: 所有数据库交互层使用 MyBatis-Plus。
+    level: 熟练
+    name: MyBatis / MyBatis-Plus
+  - detail: AI Agent 项目中使用，实现工具调用链、RAG 检索增强、多步推理。
+    level: 项目可用
+    name: LangChain
+  languages:
+  - level: 母语
+    name: 粤语
+  - level: 母语
+    name: 普通话
+  - level: Professional Working（阅读写作可用，听说薄弱）
+    name: 英文
+    note: CET-6 450 分。能阅读英文 JD 和技术文档、撰写英文 API 文档和邮件。但无法胜任需要大量英文电话会议或客户沟通的岗位。简历中写 'English
+      (Professional Working)'，不要写分数。
+  programming_languages:
+  - caveat: 不建议面试中深入考察 Java 八股文，这是候选人的弱项
+    detail: 使用 Spring Boot 开发 WaaS 平台后端所有业务模块。坦率说底层原理（JVM 调优、并发底层机制）不够扎实，90% 代码借助
+      AI 辅助完成，但业务逻辑理解和系统设计能力可以独立胜任。
+    level: 工作主力语言
+    name: Java
+    years: 1.5
+  - detail: 独立完成 AI Agent 项目（LangChain + RAG + 多工具协同）。FastAPI 水平待加强，但在 AI 辅助下可以快速补齐。
+    level: 项目可用水平
+    name: Python
+    years: 0.5
+strategic_positioning: '候选人的最佳定位是 "Web3 Payment Infrastructure Engineer"：
+
   - 不是传统 Java 后端开发（底层原理不够扎实，会在八股文面试中吃亏）
+
   - 不是 AI 应用开发工程师（AI Agent 项目是加分项但不是主赛道）
+
   - 核心竞争力是"懂支付业务全链路 + 能用 AI 极速交付"的复合能力
 
+
   差异化优势：
+
   1. WaaS 支付系统完整业务经验（充值→提款→归集→合规→商户对接）在市场上是稀缺的
+
   2. 同时拥有 B2B 商户技术对接经验（多数后端开发没有客户面对经验）
+
   3. AI 辅助开发能力（独立完成 LangChain + RAG Agent），信号是学习速度快
+
   4. 粤语+普通话双母语，在大中华区客户沟通中是硬通货
 
+
   结构性限制：
+
   1. 英语听说薄弱 → 砍掉约 50% 需要英文会议的岗位
+
   2. 算法面试弱 → 回避重算法面试的公司
+
   3. 经验仅 1.5 年 → 需要用业务深度弥补年限不足
 
-# ===== 专业技能 =====
-# 排列顺序遵循市场需求频率（基于跨 12 个方向的交叉验证数据）
-skills:
-  # 第一梯队：跨所有目标方向需求最高的技能
-  databases_and_data:
-    - name: "SQL (MySQL)"
-      level: "熟练 — 日常高频使用"
-      detail: "每日用于资金流水查询、充提对账报表、异常交易排查、多租户数据隔离查询。这是工作中使用最多的技能。"
-      years: 1.5
-    - name: "Redis"
-      level: "熟练"
-      detail: "分布式锁（防重复出款）、缓存（地址集合、配置信息）、计数器（累计出款额跟踪）"
-      years: 1.5
-
-  api_and_integration:
-    - name: "RESTful API 设计与对接"
-      level: "熟练"
-      detail: "为 B2B 商户设计支付 API（充值回调、提款请求、余额查询），编写 API 文档，指导商户完成集成联调。也对接过 Safeheron / Chainalysis / Slowmist 等第三方 API。"
-    - name: "Webhook / Callback 机制"
-      level: "熟练"
-      detail: "设计并维护商户回调通知系统，处理重试、签名验证、幂等性等问题。"
-
-  programming_languages:
-    - name: "Java"
-      level: "工作主力语言"
-      detail: "使用 Spring Boot 开发 WaaS 平台后端所有业务模块。坦率说底层原理（JVM 调优、并发底层机制）不够扎实，90% 代码借助 AI 辅助完成，但业务逻辑理解和系统设计能力可以独立胜任。"
-      years: 1.5
-      caveat: "不建议面试中深入考察 Java 八股文，这是候选人的弱项"
-    - name: "Python"
-      level: "项目可用水平"
-      detail: "独立完成 AI Agent 项目（LangChain + RAG + 多工具协同）。FastAPI 水平待加强，但在 AI 辅助下可以快速补齐。"
-      years: 0.5
-
-  frameworks:
-    - name: "Spring Boot"
-      level: "工作主力框架"
-      detail: "WaaS 平台两大核心服务（wallet_exchange 订单服务、wallet_chain 链服务）均基于 Spring Boot。"
-    - name: "MyBatis / MyBatis-Plus"
-      level: "熟练"
-      detail: "所有数据库交互层使用 MyBatis-Plus。"
-    - name: "LangChain"
-      level: "项目可用"
-      detail: "AI Agent 项目中使用，实现工具调用链、RAG 检索增强、多步推理。"
-
-  blockchain:
-    - name: "TRON 链交互"
-      level: "熟练"
-      detail: "日常工作核心技能。通过 TronGrid REST API 和 QuickNode 双节点扫描区块、解析 Event Log、广播交易。深入了解 TRON 的 Energy/Bandwidth 资源模型、确认机制、DelegateResource 委托机制。"
-    - name: "Ethereum 链交互"
-      level: "掌握"
-      detail: "WaaS 平台支持 ETH 链，了解 EVM 事件日志、Gas 机制、交易确认模型。开发方式与 TRON 类似（均为 EVM 体系）。"
-    - name: "MPC 多方签名托管 (Safeheron)"
-      level: "集成经验"
-      detail: "集成 Safeheron SDK 实现 MPC 签名的提款流程。理解 MPC 托管的三方状态机设计——本地订单状态、Safeheron 交易状态、链上确认状态的三方同步。"
-    - name: "AML 链上风控 (Chainalysis / Slowmist)"
-      level: "集成经验"
-      detail: "在提款和归集流程中集成 AML 筛查，实现自动风险评分和地址黑名单拦截。了解香港地区数字资产合规要求。"
-
-  devops_and_tools:
-    - name: "Docker"
-      level: "日常使用"
-      detail: "开发和部署环境容器化。Kubernetes 暂未涉及。"
-    - name: "Git"
-      level: "日常使用"
-    - name: "Linux"
-      level: "基础运维"
-      detail: "日志排查、服务部署、基本命令操作。"
-
-  ai_tools:
-    - name: "Cursor / GitHub Copilot / Claude"
-      level: "深度使用"
-      detail: "工作中 90% 的代码通过 AI 辅助完成。建立了成熟的 AI 辅助开发工作流：需求拆解 → AI 生成代码 → 人工审查业务逻辑 → 集成测试。这不是'让 AI 写 Hello World'，而是在复杂业务系统中高效利用 AI 加速开发。"
-    - name: "RAG 架构"
-      level: "项目实现"
-      detail: "AI Agent 项目中实现了 RAG 检索增强生成，用于市场数据分析和简历生成。"
-
-  business_skills:
-    - "B2B 商户 API 集成全流程对接（文档→联调→测试→上线→日常支持）"
-    - "数字资产充值 / 提款 / 归集完整业务闭环设计与维护"
-    - "多租户 SaaS 系统架构理解（租户隔离、权限体系、按租户配置策略）"
-    - "跨角色项目协调（前端 / 后端 / 测试 / 运维 / 商户）"
-    - "非技术人员的技术产品沟通与培训（向商户解释链上确认机制等）"
-    - "生产环境问题排查与根因分析（链上交易异常、资金对账差异、节点数据延迟等）"
-
-  languages:
-    - name: "粤语"
-      level: "母语"
-    - name: "普通话"
-      level: "母语"
-    - name: "英文"
-      level: "Professional Working（阅读写作可用，听说薄弱）"
-      note: "CET-6 450 分。能阅读英文 JD 和技术文档、撰写英文 API 文档和邮件。但无法胜任需要大量英文电话会议或客户沟通的岗位。简历中写 'English (Professional Working)'，不要写分数。"
-
-# ===== 工作经历 =====
+  '
+summary: "Web3 支付基础设施工程师，拥有 WaaS（Wallet-as-a-Service）平台全链路实战经验。\n\n核心竞争力：\n1. 支付系统业务深度\
+  \ — 充值（五层防假充值验证）、提款（五层防重复出款 + MPC 三方状态机）、\n   归集（三阶段流水线 + 互斥调度）全流程 ownership，经历过假充值攻击、节点故障、重复出款事故等\n\
+  \   真实生产事件的排查和优化。\n2. B2B 技术对接复合能力 — 不只是写代码，还负责商户 API 集成全流程（文档→联调→上线→支持），\n   能用通俗语言向非技术人员解释链上确认机制等技术概念。\n\
+  3. AI 辅助开发能力 — 独立构建 Python + LangChain + RAG 的 AI Agent 项目，\n   工作中 90% 的代码通过 AI\
+  \ 辅助完成，体现快速学习和高效交付能力。\n4. 语言优势 — 粤语和普通话双母语，在大中华区 B2B 客户沟通中具备稀缺优势。\n\n真实短板（供系统内部评估，不要写入简历）：\n\
+  - Java 底层原理不扎实，八股文面试会吃亏\n- 算法能力薄弱，无法通过中等难度以上算法题\n- 英语听说弱，无法胜任需要大量英文会议的岗位\n- 仅 1.5\
+  \ 年工作经验，来自小公司\n\n香港永久性居民，可即时到岗。\n"
 work_experience:
-  - company: "某科技有限公司"
-    company_en: "A Hong Kong-based Web3 Fintech Company"
-    company_description: "Web3 payment infrastructure provider offering WaaS (Wallet-as-a-Service) to B2B merchants"
-    company_size: 20  # 简历中不要写出这个数字
-    title: "Java Backend Engineer → De facto Project Lead"
-    title_for_resume: "Backend Engineer / Project Lead"  # 简历用这个标题
-    period: "2024.08 - 2026.05"
-    location: "Hong Kong"
+- company: 某科技有限公司
+  company_description: Web3 payment infrastructure provider offering WaaS (Wallet-as-a-Service)
+    to B2B merchants
+  company_en: A Hong Kong-based Web3 Fintech Company
+  company_size: 20
+  core_modules:
+    deposit_monitoring:
+      description: 链上区块扫描 → 交易解析 → 多层验证 → 入库通知
+      module_name: 充值监听模块
+      resume_bullet_candidates:
+      - id: dep_001
+        text: Designed and operated multi-chain deposit monitoring service scanning
+          TRON and Ethereum blocks in real-time, implementing 5-layer verification
+          pipeline (Event Log parsing, contract whitelist validation, on-chain balance
+          cross-check, dust filtering, idempotent deduplication) to defend against
+          fake deposit attacks
+      - id: dep_002
+        text: Built fault-tolerant block scanning engine with checkpoint recovery,
+          batch processing, and dual-node redundancy (TronGrid + QuickNode), ensuring
+          zero missed deposits across 10,000+ daily transactions
+      - id: dep_003
+        text: Discovered and mitigated a fake deposit attack vector where attacker
+          deployed counterfeit token contract — upgraded from input data parsing to
+          Event Log verification, successfully blocking all subsequent attack attempts
+      technical_details: '【核心机制：五层防假充值验证】
 
-    # ===== 岗位概述 =====
-    overview: |
-      公司核心产品为 WaaS（Wallet as a Service）平台，面向 B2B 商户提供 TRON/Ethereum 链上的
-      数字资产充值、提款、归集一站式钱包基础设施服务。多租户 SaaS 架构。
-      系统包含两大核心服务：wallet_exchange（订单服务）和 wallet_chain（链服务）。
-      外部集成 Safeheron MPC 托管、Slowmist + Chainalysis AML 风控。
+        1. 交易状态校验：遍历 ret 数组，只有所有 contractRet 为 SUCCESS 才处理，过滤链上执行失败的交易
 
-      入职后因团队人员流动，从普通后端开发逐步成长为项目实际负责人，
-      对系统全部业务模块和大部分代码均有深入了解和修改权限。
+        2. Event Log 校验（最关键）：不依赖交易 input data（攻击者可伪造），只信任合约实际 emit 的 Transfer 事件。同时校验
+        emit 事件的合约地址是否在系统白名单中，防止同名假代币合约攻击
 
-    # ===== 兼容旧格式（job_match.py 读取此字段构建候选人摘要）=====
-    tech_stack:
-      - "Java"
-      - "Spring Boot"
-      - "MyBatis"
-      - "MySQL"
-      - "Redis"
-      - "TRON (TronGrid / QuickNode)"
-      - "Ethereum"
-      - "Safeheron MPC"
-      - "Slowmist"
-      - "Chainalysis"
-      - "Docker"
+        3. 链上余额反查：解析金额后调用 RPC 查收款地址实时余额做交叉验证，异常时通过 getTransactionById 二次确认
 
-    highlights:
-      - "从初级后端开发成长为项目实际负责人，拥有 WaaS 支付系统全模块 ownership"
-      - "充值监听（五层防假充值）、提款处理（五层防重复出款 + MPC 三方状态机）"
-      - "归集调度（三阶段流水线 + 归集-提款互斥）、商户 API 对接、AML 合规集成"
-      - "经历过假充值攻击、节点故障、重复出款事故等生产事件，具备真实排障和优化经验"
-      - "独立负责全部商户对接与 API 集成支持，服务 5-6 家 B2B 商户"
+        4. 最小金额过滤：低于配置阈值的转账丢弃，过滤粉尘攻击
 
-    # ===== 核心业务模块详解（LLM 生成简历时从这里取素材）=====
-    core_modules:
+        5. 去重校验：transactionId + txIndex 联合唯一键防止重复入库，depositSuccess 方法加 synchronized
 
-      deposit_monitoring:
-        module_name: "充值监听模块"
-        description: "链上区块扫描 → 交易解析 → 多层验证 → 入库通知"
-        technical_details: |
-          【核心机制：五层防假充值验证】
-          1. 交易状态校验：遍历 ret 数组，只有所有 contractRet 为 SUCCESS 才处理，过滤链上执行失败的交易
-          2. Event Log 校验（最关键）：不依赖交易 input data（攻击者可伪造），只信任合约实际 emit 的 Transfer 事件。同时校验 emit 事件的合约地址是否在系统白名单中，防止同名假代币合约攻击
-          3. 链上余额反查：解析金额后调用 RPC 查收款地址实时余额做交叉验证，异常时通过 getTransactionById 二次确认
-          4. 最小金额过滤：低于配置阈值的转账丢弃，过滤粉尘攻击
-          5. 去重校验：transactionId + txIndex 联合唯一键防止重复入库，depositSuccess 方法加 synchronized
 
-          【防漏单机制】
-          - 区块高度持久化：每批次解析完成后 updateContractHeight 写回数据库，服务重启从断点续扫
-          - 批量缓存机制：累积 5 个区块统一解析和更新高度，崩溃后从批次起点重扫（靠去重保证幂等）
-          - 多级容错：dataMissingCounter + exceptionCounter 控制退出策略，单次偶发异常跳过继续
-          - 地址集合每 5 个区块刷新，新创建的用户地址及时纳入监听
-          - V0/V1 双节点互补架构（TronGrid + QuickNode），任一节点漏数据另一个补
+        【防漏单机制】
 
-        resume_bullet_candidates:
-          - id: "dep_001"
-            text: "Designed and operated multi-chain deposit monitoring service scanning TRON and Ethereum blocks in real-time, implementing 5-layer verification pipeline (Event Log parsing, contract whitelist validation, on-chain balance cross-check, dust filtering, idempotent deduplication) to defend against fake deposit attacks"
-          - id: "dep_002"
-            text: "Built fault-tolerant block scanning engine with checkpoint recovery, batch processing, and dual-node redundancy (TronGrid + QuickNode), ensuring zero missed deposits across 10,000+ daily transactions"
-          - id: "dep_003"
-            text: "Discovered and mitigated a fake deposit attack vector where attacker deployed counterfeit token contract — upgraded from input data parsing to Event Log verification, successfully blocking all subsequent attack attempts"
+        - 区块高度持久化：每批次解析完成后 updateContractHeight 写回数据库，服务重启从断点续扫
 
-      withdrawal_processing:
-        module_name: "提款处理模块"
-        description: "商户提款请求 → 多层校验 → MPC 签名 → 链上广播 → 状态同步"
-        technical_details: |
-          【核心机制：五层防重复出款】
-          1. AtomicBoolean：进程级互斥，单 JVM 内同时刻只有一个线程执行提款
-          2. Redis 分布式锁：按订单 ID 加锁，解决多实例部署并发
-          3. DB 分布式锁：Redis 的冗余保护层，防 Redis 主从切换或脑裂导致的锁丢失
-          4. 状态二次校验：拿到双重锁后重新查库确认订单仍为 INIT 状态
-          5. Checksum 校验：上链前验证订单数据完整性，防篡改
+        - 批量缓存机制：累积 5 个区块统一解析和更新高度，崩溃后从批次起点重扫（靠去重保证幂等）
 
-          【关键设计：先改状态再上链】
-          在调用链上转账 API 之前，先将订单状态从 INIT 更新为 SUCCESS。
-          原因：如果等链上确认后再改状态，存在时间窗口——交易已发出但未确认，
-          下一轮定时任务会重复纳入这笔订单，导致重复出款。
-          先改状态保证了无论 API 异常、网络超时、程序崩溃，订单都不会被重复处理。
-          上链失败的情况通过 CommitChainRecord 追踪，人工介入处理。
+        - 多级容错：dataMissingCounter + exceptionCounter 控制退出策略，单次偶发异常跳过继续
 
-          【两阶段设计】
-          第一阶段（for 循环）：校验 + 准备，通过的订单收集到待发送列表，锁持有不释放
-          中间 sleep 10 秒等撮合手续费到账
-          第二阶段：逐笔 checksum → 改状态 → 上链 → 释锁
+        - 地址集合每 5 个区块刷新，新创建的用户地址及时纳入监听
 
-          【余额不足处理】
-          - 标记 NOT_ENOUGH_BALANCE_WITHDRAW 但不改 state，下一轮自动重试
-          - addressOutAmountSum 内存累计余额检测，防同一轮批次超额承诺
-          - 能量类提款支持钱包轮换（energyWithdrawWalletIndexMap）
+        - V0/V1 双节点互补架构（TronGrid + QuickNode），任一节点漏数据另一个补
 
-          【MPC 三方状态机】
-          本地订单状态 ↔ Safeheron 交易状态 ↔ 链上确认状态 的三方同步
-          安全门机制：链上确认前不通知商户，防止商户基于未确认状态做业务决策
+        '
+    fund_sweeping:
+      description: 分散在用户地址上的代币 → 统一归集到热钱包/冷钱包
+      module_name: 归集模块
+      resume_bullet_candidates:
+      - id: swp_001
+        text: Architected 3-phase fund sweeping pipeline (dual-source inventory →
+          resource delegation & fee preparation → delayed execution) consolidating
+          assets from user deposit addresses to hot/cold wallets with zero fund loss
+      - id: swp_002
+        text: Implemented sweeping-withdrawal mutex mechanism via Redis distributed
+          locks, prioritizing direct-from-address withdrawal matching to minimize
+          on-chain operations and Gas/Energy costs
+      - id: swp_003
+        text: Designed configurable multi-tenant sweeping strategy supporting per-tenant
+          frequency control, amount-tiered routing (small → hot wallet, large → cold
+          wallet), and automated TRON resource delegation to optimize transaction
+          costs
+      technical_details: '【三阶段设计】
 
-        resume_bullet_candidates:
-          - id: "wdl_001"
-            text: "Engineered 5-layer anti-duplicate-withdrawal protection (process mutex, Redis distributed lock, DB lock, state double-check, checksum verification) achieving zero duplicate payment incidents across all operations"
-          - id: "wdl_002"
-            text: "Designed critical state transition strategy — updating order status before chain submission to eliminate duplicate payment window, with CommitChainRecord audit trail for exception handling"
-          - id: "wdl_003"
-            text: "Integrated Safeheron MPC custody into withdrawal pipeline, implementing 3-party state machine synchronization (local order ↔ Safeheron transaction ↔ on-chain confirmation) with security gate preventing premature merchant notification"
-          - id: "wdl_004"
-            text: "Built intelligent balance management system with cumulative commitment tracking and wallet rotation, automatically deferring withdrawals during insufficient balance and resuming upon fund replenishment"
+        阶段一：构建归集名单
 
-      fund_sweeping:
-        module_name: "归集模块"
-        description: "分散在用户地址上的代币 → 统一归集到热钱包/冷钱包"
-        technical_details: |
-          【三阶段设计】
-          阶段一：构建归集名单
-          - 双数据源取并集：充值记录表（有过充值的地址）+ 链上余额索引服务（有余额的地址）
-          - 第二数据源覆盖边缘场景：地址上有币但无充值记录（外部直接转入）
-          - 多重过滤：排除热钱包自身、废弃旧地址、未注册地址
+        - 双数据源取并集：充值记录表（有过充值的地址）+ 链上余额索引服务（有余额的地址）
 
-          阶段二：逐地址校验与手续费准备
-          - 查链上余额确认值得归集
-          - 匹配归集策略（按金额区间：小额→热钱包，大额→冷钱包）
-          - AML 风控检测
-          - 手续费补充：优先资源委托（DelegateResource，不消耗 TRX），fallback 到发送 TRX 差额补发
-          - 通过校验的地址放入延迟队列
+        - 第二数据源覆盖边缘场景：地址上有币但无充值记录（外部直接转入）
 
-          阶段三：延迟归集上链（等待 3 分钟让手续费到账）
-          - 重新校验余额和风控（3 分钟内状态可能变化）
-          - 执行归集转账
+        - 多重过滤：排除热钱包自身、废弃旧地址、未注册地址
 
-          【归集与提款撮合互斥】
-          通过 Redis 锁互斥：撮合锁住的地址归集跳过；归集先锁住的提款等 20 秒尝试。
-          撮合优先级更高（直接从用户地址出款减少一次链上操作）。
 
-          【多租户配置化】
-          - 定时任务每 15 分钟触发，不同租户配置不同频率（15/30/60 分钟）
-          - 取模运算 currentMinute % collectFrequency == 0 做频率过滤
-          - 每租户支持多条金额区间策略
+        阶段二：逐地址校验与手续费准备
 
-          【TRON 资源管理】
-          - Energy/Bandwidth 价格动态刷新
-          - 资源委托优先于直接发送 TRX（成本更低）
-          - 资源钱包余额低于阈值时 Telegram 告警
+        - 查链上余额确认值得归集
 
-        resume_bullet_candidates:
-          - id: "swp_001"
-            text: "Architected 3-phase fund sweeping pipeline (dual-source inventory → resource delegation & fee preparation → delayed execution) consolidating assets from user deposit addresses to hot/cold wallets with zero fund loss"
-          - id: "swp_002"
-            text: "Implemented sweeping-withdrawal mutex mechanism via Redis distributed locks, prioritizing direct-from-address withdrawal matching to minimize on-chain operations and Gas/Energy costs"
-          - id: "swp_003"
-            text: "Designed configurable multi-tenant sweeping strategy supporting per-tenant frequency control, amount-tiered routing (small → hot wallet, large → cold wallet), and automated TRON resource delegation to optimize transaction costs"
+        - 匹配归集策略（按金额区间：小额→热钱包，大额→冷钱包）
 
-      merchant_integration:
-        module_name: "B2B 商户对接"
-        description: "新商户 onboarding 全流程 + 日常技术支持"
-        technical_details: |
-          - 全程负责新商户 API 集成 onboarding：提供文档 → 指导接入 → 联调测试 → 上线验收 → 日常支持
-          - 编写和维护支付 API 文档（充值回调、提款请求、余额查询、交易状态查询）
-          - 处理商户技术咨询（链上确认机制解释、回调签名验证、错误码排查）
-          - 设计商户后台管理培训材料
-          - 协调前端/测试/运维推进版本迭代与发布
-        resume_bullet_candidates:
-          - id: "mch_001"
-            text: "Served as primary technical contact for 5 B2B merchant API integrations, delivering end-to-end onboarding from documentation to production go-live"
-          - id: "mch_002"
-            text: "Authored and maintained payment API documentation covering deposit callbacks, withdrawal requests, and transaction status queries, serving as the reference for all merchant integrations"
+        - AML 风控检测
 
-    # ===== 生产环境关键事件（简历 bullet point 和面试故事的素材库）=====
-    key_achievements:
+        - 手续费补充：优先资源委托（DelegateResource，不消耗 TRX），fallback 到发送 TRX 差额补发
 
-      - id: "fake_deposit_defense"
-        title: "假充值攻击发现与防御升级"
-        category: "安全防护"
-        story: |
-          发现攻击者部署同名 USDT 假合约，构造看似正常的 transfer 交易绕过了基于 input data 的解析逻辑。
-          将充值解析从 input data 模式升级为 Event Log 模式，增加合约地址白名单校验和链上余额反查。
-          上线后成功拦截后续多次类似攻击，零假充值入账。
-        resume_bullet: "Discovered and mitigated fake deposit attack exploiting counterfeit token contracts — redesigned verification from input data parsing to Event Log validation with contract whitelist, blocking all subsequent attack attempts with zero false deposits"
-        interview_keywords: ["Event Log vs input data", "合约地址白名单", "链上余额反查", "攻击向量分析"]
+        - 通过校验的地址放入延迟队列
 
-      - id: "node_delay_recovery"
-        title: "TronGrid 节点数据延迟导致批量漏单恢复"
-        category: "系统稳定性"
-        story: |
-          TronGrid 节点数据迁移导致部分区块数据临时不可用，充值监听循环连续返回空数据后退出，
-          该区块内所有充值交易被跳过。短期手动回调区块高度触发重扫，长期增加 V0/V1 双节点互补、
-          提高空数据退出阈值、引入链上余额索引服务作为兜底。
-        resume_bullet: "Diagnosed and resolved batch deposit miss incident caused by TronGrid node maintenance — implemented dual-node redundancy (TronGrid + QuickNode) and on-chain balance index fallback, preventing recurrence"
-        interview_keywords: ["断点续扫", "双节点互补", "链上余额索引兜底", "dataMissingCounter"]
 
-      - id: "sweep_withdrawal_conflict"
-        title: "归集与提款撮合资源竞争问题解决"
-        category: "系统设计"
-        story: |
-          归集在第二阶段给地址委托资源后，3 分钟等待期内撮合截胡该地址出款，消耗掉委托的资源。
-          归集到第三阶段时余额仍有剩余但资源已耗尽，交易失败。
-          修复方案：第三阶段增加资源充足性重新检查，不足则标记进入下一轮归集。
-        resume_bullet: "Resolved sweep-withdrawal resource contention issue where concurrent withdrawal matching consumed delegated Energy/Bandwidth during sweep wait period — added resource re-validation in execution phase"
-        interview_keywords: ["Redis 互斥锁", "撮合优先级", "资源委托", "延迟队列"]
+        阶段三：延迟归集上链（等待 3 分钟让手续费到账）
 
-      - id: "duplicate_withdrawal_prevention"
-        title: "重复出款事故复盘与多重锁机制建设"
-        category: "安全防护"
-        story: |
-          早期仅用 Redis 锁防重复。Redis 主从切换时锁丢失，两个实例同时处理同一笔订单导致重复出款。
-          复盘后增加 DB 分布式锁、状态二次校验、Checksum 校验三层防护，
-          并将状态更新时机改为上链之前。上线后零重复出款事故。
-        resume_bullet: "Led post-incident remediation after duplicate withdrawal event — engineered 5-layer protection mechanism (process mutex, Redis lock, DB lock, state double-check, checksum) and pre-submission state update strategy, achieving zero duplicate payments since deployment"
-        interview_keywords: ["Redis 脑裂", "先改状态再上链", "CommitChainRecord", "防重幂等"]
+        - 重新校验余额和风控（3 分钟内状态可能变化）
 
-      - id: "energy_price_volatility"
-        title: "TRON 能量价格波动导致归集手续费超支"
-        category: "资源管理"
-        story: |
-          TRON 链上能量价格大幅波动，按旧价格计算的委托量不够覆盖实际消耗，大量归集交易失败。
-          优化方案：缩短价格刷新间隔、计算时增加 10% 余量缓冲、增加 Telegram 告警提醒租户补充资源。
-        resume_bullet: "Optimized TRON Energy/Bandwidth cost management by implementing dynamic price refresh, 10% buffer margin on resource delegation, and automated low-balance alerting, reducing failed sweep transactions from 15% to near zero"
-        interview_keywords: ["energyPerTrx", "资源委托", "DelegateResource", "成本优化"]
+        - 执行归集转账
 
-      - id: "balance_exhaustion_handling"
-        title: "热钱包余额耗尽导致提款积压处理"
-        category: "业务运营"
-        story: |
-          某租户集中提现耗尽热钱包余额，数百笔提款积压。
-          系统设计上余额不足只是暂时跳过不改状态，订单安全留在队列中。
-          补充余额后自动恢复处理。暴露两个优化点：增加余额预警机制、优化日志格式便于运维定位。
-        resume_bullet: "Designed graceful degradation for hot wallet balance exhaustion — withdrawal orders automatically deferred without state corruption, with cumulative commitment tracking preventing over-allocation; added proactive balance threshold alerting for merchant notification"
-        interview_keywords: ["NOT_ENOUGH_BALANCE_WITHDRAW", "addressOutAmountSum", "自动恢复", "余额预警"]
 
-    tech_stack:
-      - "Java / Spring Boot / MyBatis-Plus"
-      - "MySQL / Redis"
-      - "TRON (TronGrid + QuickNode dual-node)"
-      - "Ethereum"
-      - "Safeheron MPC SDK"
-      - "Slowmist AML API"
-      - "Chainalysis Compliance API"
-      - "Docker / Git"
+        【归集与提款撮合互斥】
 
-    highlights_summary: |
-      从初级后端开发成长为项目实际负责人，拥有 WaaS 支付系统全模块 ownership：
-      充值监听（五层防假充值）、提款处理（五层防重复出款 + MPC 三方状态机）、
-      归集调度（三阶段流水线 + 归集-提款互斥）、商户 API 对接、AML 合规集成。
-      经历过假充值攻击、节点故障、重复出款事故等生产事件，具备真实的排障和优化经验。
+        通过 Redis 锁互斥：撮合锁住的地址归集跳过；归集先锁住的提款等 20 秒尝试。
 
-# ===== 教育背景 =====
-education:
-  - school: "暨南大学"
-    school_en: "Jinan University"
-    degree: "本科 / Bachelor's"
-    major: "计算机科学与技术 / Computer Science"
-    period: "2020.09 - 2024.06"
-    # 简历中只写：B.S. in Computer Science — Jinan University, 2024
-    # 不要写：港澳台联考、GPA（除非特别高）
+        撮合优先级更高（直接从用户地址出款减少一次链上操作）。
 
-# ===== 项目经历 =====
-projects:
-  - name: "WaaS Digital Asset Wallet Platform"
-    name_cn: "WaaS 数字资产钱包服务平台"
-    description: |
-      Multi-tenant B2B SaaS platform providing TRON/Ethereum on-chain deposit, withdrawal,
-      and fund sweeping infrastructure to merchants. Core services: order management (wallet_exchange)
-      and chain interaction (wallet_chain). Integrated Safeheron MPC custody for key management,
-      Chainalysis and Slowmist for AML compliance screening.
-    tech_stack: ["Java", "Spring Boot", "MySQL", "Redis", "TRON", "Ethereum", "Safeheron MPC", "Chainalysis", "Docker"]
-    role: "Backend Engineer → Project Lead"
-    for_resume: true  # 工作经历中已详细展开，Projects 部分可简写或省略
 
-  - name: "AI-Powered Job Market Analysis Agent"
-    name_cn: "AI Agent 智能求职市场分析助手"
-    description: |
-      Independently built an LLM-powered agent that automatically scrapes job listings from JobsDB,
-      applies 3-layer funnel filtering (listing scan → LLM quick filter → full JD fetch),
-      performs multi-dimensional candidate-job matching with weighted scoring,
-      conducts market analysis across job categories, and generates tailored resumes.
-      Demonstrates full-stack AI engineering: prompt engineering, tool orchestration,
-      RAG architecture, and end-to-end pipeline design.
-    tech_stack: ["Python", "Claude API (LangChain)", "Playwright (web scraping)", "RAG", "Markdown/HTML/PDF generation"]
-    role: "Independent Developer"
-    for_resume: true  # 必须展示，作为学习能力和 AI 工程化能力的证据
-    resume_bullets:
-      - id: "prj_ai_001"
-        text: "Built end-to-end AI agent pipeline: job scraping → LLM-powered filtering → multi-dimensional matching → automated resume generation, processing 1200+ job listings across 12 market categories"
-      - id: "prj_ai_002"
-        text: "Implemented RAG (Retrieval-Augmented Generation) architecture for context-aware resume tailoring based on specific JD requirements"
-      - id: "prj_ai_003"
-        text: "Designed multi-tool orchestration system enabling the agent to autonomously chain web search, file operations, and API calls"
+        【多租户配置化】
 
-# ===== 证书 =====
-certifications: []
-  # 建议优先考虑（按性价比排序）：
-  # 1. AWS Cloud Practitioner — 难度低，1-2 周可考，Fintech 面试加分
-  # 2. CCEE / HKMA 相关合规认证 — 如果走合规科技方向
+        - 定时任务每 15 分钟触发，不同租户配置不同频率（15/30/60 分钟）
 
-# ===== 自我评价（供 LLM 生成 Summary 时参考）=====
-summary: |
-  Web3 支付基础设施工程师，拥有 WaaS（Wallet-as-a-Service）平台全链路实战经验。
+        - 取模运算 currentMinute % collectFrequency == 0 做频率过滤
 
-  核心竞争力：
-  1. 支付系统业务深度 — 充值（五层防假充值验证）、提款（五层防重复出款 + MPC 三方状态机）、
-     归集（三阶段流水线 + 互斥调度）全流程 ownership，经历过假充值攻击、节点故障、重复出款事故等
-     真实生产事件的排查和优化。
-  2. B2B 技术对接复合能力 — 不只是写代码，还负责商户 API 集成全流程（文档→联调→上线→支持），
-     能用通俗语言向非技术人员解释链上确认机制等技术概念。
-  3. AI 辅助开发能力 — 独立构建 Python + LangChain + RAG 的 AI Agent 项目，
-     工作中 90% 的代码通过 AI 辅助完成，体现快速学习和高效交付能力。
-  4. 语言优势 — 粤语和普通话双母语，在大中华区 B2B 客户沟通中具备稀缺优势。
+        - 每租户支持多条金额区间策略
 
-  真实短板（供系统内部评估，不要写入简历）：
-  - Java 底层原理不扎实，八股文面试会吃亏
-  - 算法能力薄弱，无法通过中等难度以上算法题
-  - 英语听说弱，无法胜任需要大量英文会议的岗位
-  - 仅 1.5 年工作经验，来自小公司
 
-  香港永久性居民，可即时到岗。
+        【TRON 资源管理】
+
+        - Energy/Bandwidth 价格动态刷新
+
+        - 资源委托优先于直接发送 TRX（成本更低）
+
+        - 资源钱包余额低于阈值时 Telegram 告警
+
+        '
+    merchant_integration:
+      description: 新商户 onboarding 全流程 + 日常技术支持
+      module_name: B2B 商户对接
+      resume_bullet_candidates:
+      - id: mch_001
+        text: Served as primary technical contact for 5 B2B merchant API integrations,
+          delivering end-to-end onboarding from documentation to production go-live
+      - id: mch_002
+        text: Authored and maintained payment API documentation covering deposit callbacks,
+          withdrawal requests, and transaction status queries, serving as the reference
+          for all merchant integrations
+      technical_details: '- 全程负责新商户 API 集成 onboarding：提供文档 → 指导接入 → 联调测试 → 上线验收 →
+        日常支持
+
+        - 编写和维护支付 API 文档（充值回调、提款请求、余额查询、交易状态查询）
+
+        - 处理商户技术咨询（链上确认机制解释、回调签名验证、错误码排查）
+
+        - 设计商户后台管理培训材料
+
+        - 协调前端/测试/运维推进版本迭代与发布
+
+        '
+    withdrawal_processing:
+      description: 商户提款请求 → 多层校验 → MPC 签名 → 链上广播 → 状态同步
+      module_name: 提款处理模块
+      resume_bullet_candidates:
+      - id: wdl_001
+        text: Engineered 5-layer anti-duplicate-withdrawal protection (process mutex,
+          Redis distributed lock, DB lock, state double-check, checksum verification)
+          achieving zero duplicate payment incidents across all operations
+      - id: wdl_002
+        text: Designed critical state transition strategy — updating order status
+          before chain submission to eliminate duplicate payment window, with CommitChainRecord
+          audit trail for exception handling
+      - id: wdl_003
+        text: Integrated Safeheron MPC custody into withdrawal pipeline, implementing
+          3-party state machine synchronization (local order ↔ Safeheron transaction
+          ↔ on-chain confirmation) with security gate preventing premature merchant
+          notification
+      - id: wdl_004
+        text: Built intelligent balance management system with cumulative commitment
+          tracking and wallet rotation, automatically deferring withdrawals during
+          insufficient balance and resuming upon fund replenishment
+      technical_details: '【核心机制：五层防重复出款】
+
+        1. AtomicBoolean：进程级互斥，单 JVM 内同时刻只有一个线程执行提款
+
+        2. Redis 分布式锁：按订单 ID 加锁，解决多实例部署并发
+
+        3. DB 分布式锁：Redis 的冗余保护层，防 Redis 主从切换或脑裂导致的锁丢失
+
+        4. 状态二次校验：拿到双重锁后重新查库确认订单仍为 INIT 状态
+
+        5. Checksum 校验：上链前验证订单数据完整性，防篡改
+
+
+        【关键设计：先改状态再上链】
+
+        在调用链上转账 API 之前，先将订单状态从 INIT 更新为 SUCCESS。
+
+        原因：如果等链上确认后再改状态，存在时间窗口——交易已发出但未确认，
+
+        下一轮定时任务会重复纳入这笔订单，导致重复出款。
+
+        先改状态保证了无论 API 异常、网络超时、程序崩溃，订单都不会被重复处理。
+
+        上链失败的情况通过 CommitChainRecord 追踪，人工介入处理。
+
+
+        【两阶段设计】
+
+        第一阶段（for 循环）：校验 + 准备，通过的订单收集到待发送列表，锁持有不释放
+
+        中间 sleep 10 秒等撮合手续费到账
+
+        第二阶段：逐笔 checksum → 改状态 → 上链 → 释锁
+
+
+        【余额不足处理】
+
+        - 标记 NOT_ENOUGH_BALANCE_WITHDRAW 但不改 state，下一轮自动重试
+
+        - addressOutAmountSum 内存累计余额检测，防同一轮批次超额承诺
+
+        - 能量类提款支持钱包轮换（energyWithdrawWalletIndexMap）
+
+
+        【MPC 三方状态机】
+
+        本地订单状态 ↔ Safeheron 交易状态 ↔ 链上确认状态 的三方同步
+
+        安全门机制：链上确认前不通知商户，防止商户基于未确认状态做业务决策
+
+        '
+  highlights:
+  - 从初级后端开发成长为项目实际负责人，拥有 WaaS 支付系统全模块 ownership
+  - 充值监听（五层防假充值）、提款处理（五层防重复出款 + MPC 三方状态机）
+  - 归集调度（三阶段流水线 + 归集-提款互斥）、商户 API 对接、AML 合规集成
+  - 经历过假充值攻击、节点故障、重复出款事故等生产事件，具备真实排障和优化经验
+  - 独立负责全部商户对接与 API 集成支持，服务 5-6 家 B2B 商户
+  highlights_summary: '从初级后端开发成长为项目实际负责人，拥有 WaaS 支付系统全模块 ownership：
+
+    充值监听（五层防假充值）、提款处理（五层防重复出款 + MPC 三方状态机）、
+
+    归集调度（三阶段流水线 + 归集-提款互斥）、商户 API 对接、AML 合规集成。
+
+    经历过假充值攻击、节点故障、重复出款事故等生产事件，具备真实的排障和优化经验。
+
+    '
+  key_achievements:
+  - category: 安全防护
+    id: fake_deposit_defense
+    interview_keywords:
+    - Event Log vs input data
+    - 合约地址白名单
+    - 链上余额反查
+    - 攻击向量分析
+    resume_bullet: Discovered and mitigated fake deposit attack exploiting counterfeit
+      token contracts — redesigned verification from input data parsing to Event Log
+      validation with contract whitelist, blocking all subsequent attack attempts
+      with zero false deposits
+    story: '发现攻击者部署同名 USDT 假合约，构造看似正常的 transfer 交易绕过了基于 input data 的解析逻辑。
+
+      将充值解析从 input data 模式升级为 Event Log 模式，增加合约地址白名单校验和链上余额反查。
+
+      上线后成功拦截后续多次类似攻击，零假充值入账。
+
+      '
+    title: 假充值攻击发现与防御升级
+  - category: 系统稳定性
+    id: node_delay_recovery
+    interview_keywords:
+    - 断点续扫
+    - 双节点互补
+    - 链上余额索引兜底
+    - dataMissingCounter
+    resume_bullet: Diagnosed and resolved batch deposit miss incident caused by TronGrid
+      node maintenance — implemented dual-node redundancy (TronGrid + QuickNode) and
+      on-chain balance index fallback, preventing recurrence
+    story: 'TronGrid 节点数据迁移导致部分区块数据临时不可用，充值监听循环连续返回空数据后退出，
+
+      该区块内所有充值交易被跳过。短期手动回调区块高度触发重扫，长期增加 V0/V1 双节点互补、
+
+      提高空数据退出阈值、引入链上余额索引服务作为兜底。
+
+      '
+    title: TronGrid 节点数据延迟导致批量漏单恢复
+  - category: 系统设计
+    id: sweep_withdrawal_conflict
+    interview_keywords:
+    - Redis 互斥锁
+    - 撮合优先级
+    - 资源委托
+    - 延迟队列
+    resume_bullet: Resolved sweep-withdrawal resource contention issue where concurrent
+      withdrawal matching consumed delegated Energy/Bandwidth during sweep wait period
+      — added resource re-validation in execution phase
+    story: '归集在第二阶段给地址委托资源后，3 分钟等待期内撮合截胡该地址出款，消耗掉委托的资源。
+
+      归集到第三阶段时余额仍有剩余但资源已耗尽，交易失败。
+
+      修复方案：第三阶段增加资源充足性重新检查，不足则标记进入下一轮归集。
+
+      '
+    title: 归集与提款撮合资源竞争问题解决
+  - category: 安全防护
+    id: duplicate_withdrawal_prevention
+    interview_keywords:
+    - Redis 脑裂
+    - 先改状态再上链
+    - CommitChainRecord
+    - 防重幂等
+    resume_bullet: Led post-incident remediation after duplicate withdrawal event
+      — engineered 5-layer protection mechanism (process mutex, Redis lock, DB lock,
+      state double-check, checksum) and pre-submission state update strategy, achieving
+      zero duplicate payments since deployment
+    story: '早期仅用 Redis 锁防重复。Redis 主从切换时锁丢失，两个实例同时处理同一笔订单导致重复出款。
+
+      复盘后增加 DB 分布式锁、状态二次校验、Checksum 校验三层防护，
+
+      并将状态更新时机改为上链之前。上线后零重复出款事故。
+
+      '
+    title: 重复出款事故复盘与多重锁机制建设
+  - category: 资源管理
+    id: energy_price_volatility
+    interview_keywords:
+    - energyPerTrx
+    - 资源委托
+    - DelegateResource
+    - 成本优化
+    resume_bullet: Optimized TRON Energy/Bandwidth cost management by implementing
+      dynamic price refresh, 10% buffer margin on resource delegation, and automated
+      low-balance alerting, reducing failed sweep transactions from 15% to near zero
+    story: 'TRON 链上能量价格大幅波动，按旧价格计算的委托量不够覆盖实际消耗，大量归集交易失败。
+
+      优化方案：缩短价格刷新间隔、计算时增加 10% 余量缓冲、增加 Telegram 告警提醒租户补充资源。
+
+      '
+    title: TRON 能量价格波动导致归集手续费超支
+  - category: 业务运营
+    id: balance_exhaustion_handling
+    interview_keywords:
+    - NOT_ENOUGH_BALANCE_WITHDRAW
+    - addressOutAmountSum
+    - 自动恢复
+    - 余额预警
+    resume_bullet: Designed graceful degradation for hot wallet balance exhaustion
+      — withdrawal orders automatically deferred without state corruption, with cumulative
+      commitment tracking preventing over-allocation; added proactive balance threshold
+      alerting for merchant notification
+    story: '某租户集中提现耗尽热钱包余额，数百笔提款积压。
+
+      系统设计上余额不足只是暂时跳过不改状态，订单安全留在队列中。
+
+      补充余额后自动恢复处理。暴露两个优化点：增加余额预警机制、优化日志格式便于运维定位。
+
+      '
+    title: 热钱包余额耗尽导致提款积压处理
+  location: Hong Kong
+  overview: '公司核心产品为 WaaS（Wallet as a Service）平台，面向 B2B 商户提供 TRON/Ethereum 链上的
+
+    数字资产充值、提款、归集一站式钱包基础设施服务。多租户 SaaS 架构。
+
+    系统包含两大核心服务：wallet_exchange（订单服务）和 wallet_chain（链服务）。
+
+    外部集成 Safeheron MPC 托管、Slowmist + Chainalysis AML 风控。
+
+
+    入职后因团队人员流动，从普通后端开发逐步成长为项目实际负责人，
+
+    对系统全部业务模块和大部分代码均有深入了解和修改权限。
+
+    '
+  period: 2024.08 - 2026.05
+  tech_stack:
+  - Java / Spring Boot / MyBatis-Plus
+  - MySQL / Redis
+  - TRON (TronGrid + QuickNode dual-node)
+  - Ethereum
+  - Safeheron MPC SDK
+  - Slowmist AML API
+  - Chainalysis Compliance API
+  - Docker / Git
+  title: Java Backend Engineer → De facto Project Lead
+  title_for_resume: Backend Engineer / Project Lead
