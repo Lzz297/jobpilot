@@ -161,11 +161,11 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
     gap_analysis = None
     if include_gap_analysis:
         emit(f"\n   🔍 差距分析...")
-        profile, err = load_profile()
-        if err:
-            emit(f"   ⚠️ 无法加载用户画像: {err}，跳过差距分析")
-        else:
+        try:
+            profile = load_profile()
             gap_analysis = _run_gap_analysis(analysis, profile)
+        except RuntimeError as e:
+            emit(f"   ⚠️ 无法加载用户画像: {e}，跳过差距分析")
 
     # ── Phase D: LLM 撰写报告 ──
     emit(f"\n   📝 LLM 正在撰写分析报告...")

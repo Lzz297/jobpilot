@@ -67,6 +67,16 @@ def _run_agent_turn(sid, user_message):
         set_emit_target(q)
 
         # ── 注入 campaign 配置 ──
+        # 未选择 campaign 时自动选择第一个可用 campaign
+        if not session.get("campaign"):
+            import glob as _glob
+            campaign_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "campaigns")
+            files = sorted(_glob.glob(os.path.join(campaign_dir, "*.yaml")))
+            if files:
+                first = os.path.splitext(os.path.basename(files[0]))[0]
+                session["campaign"] = first
+                q.put({"type": "status", "text": f"自动选择求职方向: {first}"})
+
         if session.get("campaign"):
             try:
                 from config_assembler import load_campaign
@@ -145,6 +155,16 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
 
         # ── 注入 campaign 配置（Pipeline 不经过 execute_tool，需显式传入）──
         cfg = None
+        # 未选择 campaign 时自动选择第一个可用 campaign
+        if not session.get("campaign"):
+            import glob as _glob
+            campaign_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "campaigns")
+            files = sorted(_glob.glob(os.path.join(campaign_dir, "*.yaml")))
+            if files:
+                first = os.path.splitext(os.path.basename(files[0]))[0]
+                session["campaign"] = first
+                q.put({"type": "status", "text": f"自动选择求职方向: {first}"})
+
         if session.get("campaign"):
             try:
                 from config_assembler import load_campaign
@@ -557,7 +577,7 @@ def fix_resume_bullet():
     try:
         from resume_gen import fix_single_bullet
         from config import load_profile as _lp
-        profile, _ = _lp()
+        profile = _lp()
         fixed_md = fix_single_bullet(
             original_md=resume_md,
             bullet_index=int(bullet_index),
@@ -680,41 +700,56 @@ def api_market_batch():
 
 @app.route("/api/config/yaml/<name>", methods=["GET"])
 def get_yaml_config(name):
-    """读取 profiles/{name}.yaml，返回 JSON 格式内容。"""
-    if name not in ("me", "search_config"):
-        return jsonify({"error": "仅支持 me 或 search_config"}), 400
-    data, err = config.load_yaml(f"{name}.yaml")
-    if err:
-        return jsonify({"error": err}), 404
-    return jsonify({"name": name, "content": data})
+    """读取配置文件，返回 JSON 格式内容。me 从 instances/users/ 读取。"""
+    if name == "me":
+        cfg, _ = config.load_yaml("search_config.yaml")
+        user_name = (cfg or {}).get("user", "li_ming")
+        user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
+        filepath = os.path.join(user_dir, f"{user_name}.yaml")
+        if not os.path.exists(filepath):
+            return jsonify({"error": f"画像文件不存在: {filepath}"}), 404
+        with open(filepath, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return jsonify({"name": name, "content": data})
+    elif name == "search_config":
+        data, err = config.load_yaml(f"{name}.yaml")
+        if err:
+            return jsonify({"error": err}), 404
+        return jsonify({"name": name, "content": data})
+    else:
+        return jsonify({"error": f"不支持的配置文件: {name}"}), 400
 
 
 @app.route("/api/config/yaml/<name>", methods=["PUT"])
 def put_yaml_config(name):
-    """回写 profiles/{name}.yaml，前端提交 JSON，后端转 YAML 存储。"""
-    if name not in ("me", "search_config"):
-        return jsonify({"error": "仅支持 me 或 search_config"}), 400
+    """回写配置文件。me 写入 instances/users/ 下。"""
     data = request.json
     if not data or "content" not in data:
         return jsonify({"error": "Missing content"}), 400
 
     new_content = data["content"]
-    # 基本校验：确保是合法 dict
     if not isinstance(new_content, dict):
         return jsonify({"error": "content 必须是 JSON 对象"}), 400
 
-    try:
-        yaml_text = yaml.dump(new_content, allow_unicode=True, default_flow_style=False)
-    except Exception as e:
-        return jsonify({"error": f"YAML 序列化失败: {str(e)}"}), 400
-
-    filepath = os.path.join(config.PROFILES_DIR, f"{name}.yaml")
-    try:
+    if name == "me":
+        cfg, _ = config.load_yaml("search_config.yaml")
+        user_name = (cfg or {}).get("user", "li_ming")
+        user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
+        os.makedirs(user_dir, exist_ok=True)
+        filepath = os.path.join(user_dir, f"{user_name}.yaml")
         with open(filepath, "w", encoding="utf-8") as f:
-            f.write(yaml_text)
+            yaml.dump(new_content, f, allow_unicode=True, default_flow_style=False)
         return jsonify({"status": "ok", "name": name})
-    except Exception as e:
-        return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
+    elif name == "search_config":
+        filepath = os.path.join(config.PROFILES_DIR, f"{name}.yaml")
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(yaml.dump(new_content, allow_unicode=True, default_flow_style=False))
+        except Exception as e:
+            return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
+        return jsonify({"status": "ok", "name": name})
+    else:
+        return jsonify({"error": f"不支持的配置文件: {name}"}), 400
 
 
 # ── 模型配置 API ──
@@ -787,6 +822,51 @@ def set_session_campaign():
 
     session["campaign"] = campaign
     return jsonify({"status": "ok", "campaign": campaign})
+
+
+# ── 用户画像 API ──
+
+@app.route("/api/users", methods=["GET"])
+def list_users():
+    """列出 instances/users/ 下所有可用的画像文件。"""
+    users_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "users")
+    result = []
+    if os.path.isdir(users_dir):
+        for fname in sorted(os.listdir(users_dir)):
+            if fname.endswith(".yaml"):
+                try:
+                    with open(os.path.join(users_dir, fname), "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f) or {}
+                    result.append({
+                        "name": fname.replace(".yaml", ""),
+                        "user_name": data.get("name", fname.replace(".yaml", "")),
+                    })
+                except Exception:
+                    continue
+    return jsonify(result)
+
+
+@app.route("/api/config/user", methods=["POST"])
+def set_config_user():
+    """更新 search_config.yaml 的 user 字段。"""
+    data = request.json or {}
+    new_user = data.get("user", "").strip()
+    if not new_user:
+        return jsonify({"error": "user 不能为空"}), 400
+
+    user_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "users")
+    if not os.path.isfile(os.path.join(user_dir, f"{new_user}.yaml")):
+        return jsonify({"error": f"画像文件不存在: {new_user}.yaml"}), 400
+
+    filepath = os.path.join(config.PROFILES_DIR, "search_config.yaml")
+    with open(filepath, "r", encoding="utf-8") as f:
+        text = f.read()
+    import re
+    text = re.sub(r'^(user:\s*)\S+', rf'\g<1>"{new_user}"', text, count=1, flags=re.MULTILINE)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(text)
+
+    return jsonify({"status": "ok", "user": new_user})
 
 
 @app.route("/download/<path:filepath>")

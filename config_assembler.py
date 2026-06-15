@@ -90,13 +90,11 @@ def load_campaign(campaign_name: str) -> dict:
     if wp:
         _validate_weight_profile(strategy_name, wp)
 
-    # ── 4. 加载通用配置（search_config.yaml 中的非方向特定部分）──
+    # ── 4. 加载通用配置（search_config.yaml 中的系统基础设施部分）──
     search_cfg = _load_yaml(os.path.join(PROFILES_DIR, "search_config.yaml"))
     base_config = {
         "llm": search_cfg.get("llm", {}),
         "filters": search_cfg.get("filters", {}),
-        "max_pages_per_query": search_cfg.get("max_pages_per_query", 3),
-        "max_total_results": search_cfg.get("max_total_results", 200),
         "market_analysis": search_cfg.get("market_analysis", {}),
         "sort_mode": search_cfg.get("sort_mode", "date"),
     }
@@ -106,14 +104,14 @@ def load_campaign(campaign_name: str) -> dict:
     resume_template = _load_yaml(os.path.join(PROFILES_DIR, "resume_template.yaml"))
     resume_guide = _load_yaml(os.path.join(PROFILES_DIR, "resume_guide.yaml"))
 
-    # ── 6. 构建 matching 段（从 strategy 文件）──
+    # ── 6. 构建 matching 段（从 strategy 文件 + 策略通用参数）──
     matching = {
         "weight_profiles": {strategy_name: strategy.get("weight_profile", {})},
         "weight_rules": {strategy_name: strategy.get("weight_rules_keywords", [])},
-        "min_match_score": 45,
-        "top_n": 999,
-        "borderline_rescore": True,
-        "borderline_range": 8,
+        "min_match_score": strategy.get("min_match_score", 45),
+        "top_n": strategy.get("top_n", 999),
+        "borderline_rescore": strategy.get("borderline_rescore", True),
+        "borderline_range": strategy.get("borderline_range", 8),
     }
 
     # ── 7. 组装基础配置 ──
@@ -125,8 +123,8 @@ def load_campaign(campaign_name: str) -> dict:
         "sort_mode": campaign.get("sort_mode", base_config["sort_mode"]),
         "llm": base_config["llm"],
         "filters": base_config["filters"],
-        "max_pages_per_query": base_config["max_pages_per_query"],
-        "max_total_results": base_config["max_total_results"],
+        "max_pages_per_query": campaign.get("overrides", {}).get("max_pages_per_query", 3),
+        "max_total_results": campaign.get("overrides", {}).get("max_total_results", 200),
         "matching": matching,
         "market_analysis": base_config["market_analysis"],
         "prompts": prompts,

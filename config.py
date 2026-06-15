@@ -239,8 +239,39 @@ def get_model_info():
 
 
 def load_profile():
-    """加载 profiles/me.yaml，返回 (dict, None) 或 (None, error_msg)"""
-    return load_yaml("me.yaml")
+    """
+    加载用户画像。唯一来源：instances/users/{user}.yaml。
+
+    从 search_config.yaml 读取 user 字段（默认 "li_ming"），
+    拼接 instances/users/{user}.yaml 路径并加载。
+    文件不存在或加载失败时抛出 RuntimeError。
+    """
+    import os
+    cfg, err = load_yaml("search_config.yaml")
+    if err or not cfg:
+        raise RuntimeError(f"无法加载 search_config.yaml: {err}")
+
+    user_name = cfg.get("user")
+    if not user_name:
+        raise RuntimeError(
+            "profiles/search_config.yaml 中未配置 user 字段，"
+            "请在 llm: 段之前新增 user: \"your_name\""
+        )
+
+    user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
+    filepath = os.path.join(user_dir, f"{user_name}.yaml")
+
+    if not os.path.exists(filepath):
+        raise RuntimeError(
+            f"用户画像文件不存在: {filepath}"
+            f"（search_config.yaml 中 user 字段为 \"{user_name}\"）"
+        )
+
+    data, err = load_yaml(f"{user_name}.yaml", directory=user_dir)
+    if err:
+        raise RuntimeError(f"加载用户画像失败: {err}")
+
+    return data
 
 
 def load_search_config_dict():

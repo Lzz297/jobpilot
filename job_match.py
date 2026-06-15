@@ -152,9 +152,7 @@ def match_jobs(config: dict = None, profile: dict = None):
     """
     # 加载用户档案
     if profile is None:
-        profile, err = load_profile()
-        if err:
-            return err
+        profile = load_profile()
 
     # 找到当前 run 目录中的岗位文件
     run_dir = get_current_run_dir() or get_latest_run_dir()
@@ -172,8 +170,7 @@ def match_jobs(config: dict = None, profile: dict = None):
 
     # 加载匹配配置
     if config is None:
-        config, _ = load_search_config_dict()
-    config = config or {}
+        raise RuntimeError("match_jobs 需要 config 参数，请通过 Campaign 提供。CLI 使用 --campaign，Web UI 选择求职方向。")
     matching_cfg = config.get("matching", {})
     min_score = matching_cfg.get("min_match_score", 50)
     top_n = matching_cfg.get("top_n", 10)
@@ -562,8 +559,8 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         }
     """
     if config is None:
-        config, _ = load_search_config_dict()
-        config = config or {}
+        raise RuntimeError("score_single_jd 需要 config 参数，请从 Campaign 提供。")
+    config = config or {}
 
     matching_cfg = config.get("matching", {})
     weight_profiles = matching_cfg.get("weight_profiles", {"default": _DEFAULT_WEIGHTS})

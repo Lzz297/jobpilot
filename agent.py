@@ -91,18 +91,29 @@ if __name__ == "__main__":
                         help="Campaign 名称（如 web3_hunt），使用 instances/campaigns/ 下的配置")
     args = parser.parse_args()
 
-    if args.campaign:
-        from config_assembler import load_campaign
-        from config import set_campaign_config
-        try:
-            campaign_config = load_campaign(args.campaign)
-            set_campaign_config(campaign_config)
-            print(f"[OK] Campaign loaded: {args.campaign}")
-            print(f"    User: {campaign_config.get('user_profile', {}).get('name', 'N/A')}")
-            print(f"    Strategy: {campaign_config['strategy_name']}")
-            print(f"    Search queries: {len(campaign_config.get('search_queries', []))} groups")
-        except Exception as e:
-            print(f"[ERROR] Campaign load failed: {e}")
-            sys.exit(1)
+    if not args.campaign:
+        print("[ERROR] 必须指定 --campaign 参数。")
+        print("可用 campaign 请查看 instances/campaigns/ 目录。")
+        import os as _os
+        d = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "instances", "campaigns")
+        if _os.path.isdir(d):
+            for f in sorted(_os.listdir(d)):
+                if f.endswith(".yaml"):
+                    print(f"  - {f.replace('.yaml', '')}")
+        print("示例: python agent.py --campaign web3_hunt")
+        sys.exit(1)
+
+    from config_assembler import load_campaign
+    from config import set_campaign_config
+    try:
+        campaign_config = load_campaign(args.campaign)
+        set_campaign_config(campaign_config)
+        print(f"[OK] Campaign loaded: {args.campaign}")
+        print(f"    User: {campaign_config.get('user_profile', {}).get('name', 'N/A')}")
+        print(f"    Strategy: {campaign_config['strategy_name']}")
+        print(f"    Search queries: {len(campaign_config.get('search_queries', []))} groups")
+    except Exception as e:
+        print(f"[ERROR] Campaign load failed: {e}")
+        sys.exit(1)
 
     run_agent_loop()

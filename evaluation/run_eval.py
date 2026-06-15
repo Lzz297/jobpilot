@@ -121,15 +121,11 @@ def main():
     print(f"加载 {set_name}.json: {len(cases)} 条")
 
     # ── 加载用户画像 ──
-    profile, err = load_profile()
-    if err:
-        print(f"WARNING: 无法加载 me.yaml: {err}")
-        profile = {}
+    profile = load_profile()
+    if is_placeholder_profile(profile):
+        print("WARNING: 用户画像可能为占位模板，评分结果仅供流程验证")
     else:
-        if is_placeholder_profile(profile):
-            print("WARNING: profiles/me.yaml 可能为占位模板，评分结果仅供流程验证")
-        else:
-            print("用户画像已加载，包含完整个人信息")
+        print("用户画像已加载，包含完整个人信息")
 
     # ── 加载配置 ──
     config, _ = load_search_config_dict()

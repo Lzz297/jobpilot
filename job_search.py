@@ -70,9 +70,7 @@ def search_jobs(sort_by: str = None, config: dict = None):
     """
     # ── 读取配置 ──
     if config is None:
-        config, err = load_search_config_dict()
-        if err:
-            return err
+        raise RuntimeError("search_jobs 需要 config 参数，请通过 Campaign 提供。CLI 使用 --campaign，Web UI 选择求职方向。")
 
     # ── 确定排序方式：参数 > 全局 sort_mode > 默认 "date" ──
     if sort_by is None:

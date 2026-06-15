@@ -119,8 +119,7 @@ def _generate_for_direction_batch(profile, profile_text, template_text, base_rul
     if not matched_jobs:
         return "匹配结果为空，无法按方向生成简历"
 
-    search_cfg, _ = load_search_config_dict()
-    search_cfg = search_cfg or {}
+    search_cfg = {}  # 匹配配置已迁移到 Campaign，此处仅用于 weight_rules 回退
 
     emit(f"\n{'='*50}")
     emit(f"📊 第一步：按方向聚合分析（{len(matched_jobs)} 个达标岗位）")
@@ -194,9 +193,7 @@ def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direct
     """
     # ── 加载公共资源 ──
     if profile is None:
-        profile, err = load_profile()
-        if err:
-            return err
+        profile = load_profile()
 
     template_config, _ = load_yaml("resume_template.yaml")
     template_config = template_config or {}
@@ -433,7 +430,7 @@ def _call_llm_and_save(system_content, user_content, file_label,
         try:
             from checker import check_bullet
             from config import load_profile as _load_profile
-            profile, _ = _load_profile()
+            profile = _load_profile()
             if profile:
                 parsed_bullets = _parse_source_ids_from_md(en_resume_md)
                 for i, bullet in enumerate(parsed_bullets):

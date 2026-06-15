@@ -87,9 +87,14 @@
           <option value="glm" selected>GLM · glm-5.1</option></select>
       </div>
       <div class="mt-3">
+        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="user" class="w-3 h-3"></i> 用户画像</label>
+        <select id="user-select" class="agent-trigger w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none">
+          <option value="">加载中...</option></select>
+      </div>
+      <div class="mt-3">
         <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="target" class="w-3 h-3"></i> 求职方向</label>
         <select id="campaign-select" class="agent-trigger w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none">
-          <option value="">默认（profiles/ 配置）</option></select>
+          <option value="">加载中...</option></select>
       </div>
       <div>
         <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="arrow-down-up" class="w-3 h-3"></i> 搜索排序（实时切换）</label>
@@ -378,7 +383,7 @@
 
 <script>
 /* ===================== STATE ===================== */
-const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, sid:null };
+const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, sid:null };
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
 const DIR_META = {
   payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
@@ -905,6 +910,7 @@ async function loadCampaignList(){
     const data = await apiGet('/api/campaigns');
     const sel = document.getElementById('campaign-select');
     if(!sel) return;
+    sel.innerHTML = '';
     if(data && data.length){
       data.forEach(c => {
         const opt = document.createElement('option');
@@ -912,6 +918,10 @@ async function loadCampaignList(){
         opt.textContent = `${c.name} · ${c.strategy}`;
         sel.appendChild(opt);
       });
+      // 自动选中第一个 campaign 并通知后端
+      sel.value = data[0].name;
+      STATE.campaign = data[0].name;
+      await apiPost('/api/session/campaign', {sid:STATE.sid, campaign:data[0].name});
     }
   } catch(e){ console.warn('加载 campaign 列表失败', e); }
 }
@@ -922,10 +932,38 @@ document.getElementById('campaign-select').addEventListener('change', async func
   try {
     await apiPost('/api/session/campaign', {sid:STATE.sid, campaign:campaign});
     STATE.campaign = campaign;
-    toast(campaign ? `已切换求职方向：${campaign}` : '已恢复默认配置','ok');
+    toast(`已切换求职方向：${campaign}`,'ok');
   } catch(e){
     toast('切换失败: '+e.message,'err');
     this.value = STATE.campaign||'';
+  }
+});
+
+/* ===================== USER PROFILE ===================== */
+async function loadUserList(){
+  try {
+    const data = await apiGet('/api/users');
+    const sel = document.getElementById('user-select');
+    if(!sel) return;
+    if(data && data.length){
+      sel.innerHTML = data.map(c =>
+        `<option value="${c.name}" ${c.name===STATE.user?'selected':''}>${c.user_name} · ${c.name}</option>`
+      ).join('');
+    }
+  } catch(e){ console.warn('加载画像列表失败', e); }
+}
+
+document.getElementById('user-select').addEventListener('change', async function(e){
+  if(guardBusy()){ this.value = STATE.user||''; return; }
+  const user = this.value;
+  if(!user) return;
+  try {
+    await apiPost('/api/config/user', {user:user});
+    STATE.user = user;
+    toast(`已切换画像：${user}`,'ok');
+  } catch(e){
+    toast('切换失败: '+e.message,'err');
+    this.value = STATE.user||'';
   }
 });
 
@@ -1645,6 +1683,7 @@ function setTab(t){
   await initSession();
   if(STATE.sid){
     await loadModelConfig();
+    await loadUserList();
     await loadCampaignList();
     $('#status-text').textContent = 'Agent 空闲';
   } else {

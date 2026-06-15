@@ -19,3 +19,9 @@ weight_rules_keywords:
   - "acquiring"
   - "merchant services"
   - "treasury"
+
+# 通用匹配参数
+min_match_score: 45
+borderline_rescore: true
+borderline_range: 8
+top_n: 999
