@@ -13,6 +13,7 @@ from config import (
 )
 from scraper import scan_jobsdb_listings, fetch_multiple_details
 from pdf_renderer import render_report as render_pdf
+from engine.contracts import MarketAnalysisResult, GapAnalysisResult
 
 
 def _load_market_prompt(key: str) -> str:
@@ -119,20 +120,33 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
             jobs_text += f"描述:\n{desc}\n"
 
         try:
-            msg = llm_call(
+            # 主路径：Instructor + Pydantic 结构化输出
+            result = llm_call(
                 [{"role": "system", "content": render_prompt(
                     _load_market_prompt("analysis_system_prompt"),
                     job_category=job_category)},
                  {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
                 temperature=0, thinking={"type": "disabled"},
+                response_model=MarketAnalysisResult,
             )
-            result = parse_json_response(msg.content)
-            if result and isinstance(result, dict):
-                batch_results.append(result)
-            else:
-                emit(f"   ⚠️ 第 {batch_num} 批解析失败，跳过")
-        except Exception as e:
-            emit(f"   ❌ 第 {batch_num} 批分析失败: {e}")
+            batch_results.append(result.model_dump())
+        except Exception:
+            # Instructor 失败 → 回退旧方式
+            try:
+                msg = llm_call(
+                    [{"role": "system", "content": render_prompt(
+                        _load_market_prompt("analysis_system_prompt"),
+                        job_category=job_category)},
+                     {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
+                    temperature=0, thinking={"type": "disabled"},
+                )
+                parsed = parse_json_response(msg.content)
+                if parsed and isinstance(parsed, dict):
+                    batch_results.append(parsed)
+                else:
+                    emit(f"   ⚠️ 第 {batch_num} 批解析失败，跳过")
+            except Exception as e:
+                emit(f"   ❌ 第 {batch_num} 批分析失败: {e}")
 
     if not batch_results:
         return "❌ LLM 分析全部失败，请稍后重试"
@@ -503,22 +517,35 @@ def _run_gap_analysis(analysis, profile):
     }, ensure_ascii=False, indent=2)
 
     try:
-        msg = llm_call(
+        # 主路径：Instructor + Pydantic 结构化输出
+        result = llm_call(
             [{"role": "system", "content": render_prompt(
                 _load_market_prompt("gap_analysis_prompt"),
                 technical_skills=skills_text, profile=profile_summary)},
              {"role": "user", "content": "请进行差距分析。"}],
-            temperature=0,
+            temperature=0, thinking={"type": "disabled"},
+            response_model=GapAnalysisResult,
         )
-        result = parse_json_response(msg.content)
-        if result and isinstance(result, dict):
-            return result
-        else:
-            emit("   ⚠️ 差距分析解析失败")
+        return result.model_dump()
+    except Exception:
+        # Instructor 失败 → 回退旧方式
+        try:
+            msg = llm_call(
+                [{"role": "system", "content": render_prompt(
+                    _load_market_prompt("gap_analysis_prompt"),
+                    technical_skills=skills_text, profile=profile_summary)},
+                 {"role": "user", "content": "请进行差距分析。"}],
+                temperature=0,
+            )
+            result = parse_json_response(msg.content)
+            if result and isinstance(result, dict):
+                return result
+            else:
+                emit("   ⚠️ 差距分析解析失败")
+                return None
+        except Exception as e:
+            emit(f"   ❌ 差距分析失败: {e}")
             return None
-    except Exception as e:
-        emit(f"   ❌ 差距分析失败: {e}")
-        return None
 
 
 def _generate_report_via_llm(job_category, location, sample_size, analysis, gap_analysis):
