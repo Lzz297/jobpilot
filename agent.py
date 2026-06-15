@@ -18,27 +18,27 @@ def run_agent_loop():
     messages = [{"role": "system", "content": get_system_prompt()}]
 
     print("=" * 50)
-    print("🤖 JobsDB 智能求职 Agent 已启动！")
+    print("[Agent] JobsDB 智能求职 Agent 已启动！")
     print("=" * 50)
     print()
     print("你可以说：")
-    print("  💼 「帮我找工作」              → 三层漏斗搜索 + 匹配分析")
-    print("  📋 「看看匹配结果」            → 查看多维度排名列表")
-    print("  📊 「分析 Java 开发市场行情」    → 独立市场调研（技能/薪资/差距）")
-    print("  📝 「为第1个生成简历」          → 基于匹配岗位生成定制简历")
-    print("  📝 「生成通用简历」            → 基于个人画像生成通用版")
-    print("  📝 「生成 SE 方向的简历」       → 基于岗位方向生成")
-    print("  📝  直接粘贴 JD + 「生成简历」  → 基于任意 JD 生成")
-    print("  👤 「看看我的档案」            → 查看个人配置")
-    print("  🔍 「搜索 xxx」               → 自由搜索")
-    print("  📄 「查看这个岗位 URL」         → 抓取单个岗位完整JD")
+    print("  [Job] 「帮我找工作」              → 三层漏斗搜索 + 匹配分析")
+    print("  [List] 「看看匹配结果」            → 查看多维度排名列表")
+    print("  [Market] 「分析 Java 开发市场行情」    → 独立市场调研（技能/薪资/差距）")
+    print("  [Resume] 「为第1个生成简历」          → 基于匹配岗位生成定制简历")
+    print("  [Resume] 「生成通用简历」            → 基于个人画像生成通用版")
+    print("  [Resume] 「生成 SE 方向的简历」       → 基于岗位方向生成")
+    print("  [Resume]  直接粘贴 JD + 「生成简历」  → 基于任意 JD 生成")
+    print("  [Profile] 「看看我的档案」            → 查看个人配置")
+    print("  [Search] 「搜索 xxx」               → 自由搜索")
+    print("  [File] 「查看这个岗位 URL」         → 抓取单个岗位完整JD")
     print("  输入 quit 退出")
     print()
 
     while True:
         user_input = input("你: ").strip()
         if user_input.lower() == "quit":
-            print("👋 再见，祝你求职顺利！")
+            print("[Bye] 再见，祝你求职顺利！")
             cleanup_playwright()
             cleanup_renderer()
             break
@@ -52,7 +52,7 @@ def run_agent_loop():
 
         # 工具调用循环
         while reply.tool_calls:
-            print("⚙️  Agent 正在工作...")
+            print("[Tool] Agent 正在工作...")
 
             unique_calls = deduplicate_tool_calls(reply.tool_calls)
 
@@ -75,7 +75,7 @@ def run_agent_loop():
             reply = llm_call(messages, tools=tools)
             messages.append(reply)
 
-        print(f"\n🤖: {reply.content}\n")
+        print(f"\n[Agent]: {reply.content}\n")
 
         # ── 本轮结束，打印文件总览 ──
         print_session_summary()
@@ -93,14 +93,16 @@ if __name__ == "__main__":
 
     if args.campaign:
         from config_assembler import load_campaign
+        from config import set_campaign_config
         try:
             campaign_config = load_campaign(args.campaign)
-            print(f"✅ Campaign 加载成功: {args.campaign}")
-            print(f"   用户: {campaign_config.get('user_profile', {}).get('name', 'N/A')}")
-            print(f"   策略: {campaign_config['strategy_name']}")
-            print(f"   搜索关键词: {len(campaign_config.get('search_queries', []))} 组")
+            set_campaign_config(campaign_config)
+            print(f"[OK] Campaign loaded: {args.campaign}")
+            print(f"    User: {campaign_config.get('user_profile', {}).get('name', 'N/A')}")
+            print(f"    Strategy: {campaign_config['strategy_name']}")
+            print(f"    Search queries: {len(campaign_config.get('search_queries', []))} groups")
         except Exception as e:
-            print(f"❌ Campaign 加载失败: {e}")
+            print(f"[ERROR] Campaign load failed: {e}")
             sys.exit(1)
 
     run_agent_loop()

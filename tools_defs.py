@@ -1,7 +1,7 @@
 """
 tools_defs.py - 工具 JSON 定义、tool_map、执行逻辑
 """
-from config import emit
+from config import emit, get_campaign_config
 import json
 
 from tools_basic import (
@@ -288,6 +288,14 @@ tool_map = {
 #  工具执行
 # ============================================================
 
+# ── 需要系统层注入 config 的工具集合 ──
+_CONFIG_AWARE_TOOLS = {
+    "search_jobs",
+    "match_jobs",
+    "generate_resume",
+}
+
+
 def execute_tool(tool_call):
     """执行工具调用"""
     func_name = tool_call.function.name
@@ -300,6 +308,18 @@ def execute_tool(tool_call):
     func = tool_map.get(func_name)
     if not func:
         return f"错误：未知工具 {func_name}"
+
+    # ── 系统层注入 campaign config ──
+    if func_name in _CONFIG_AWARE_TOOLS:
+        cfg = get_campaign_config()
+        if cfg is not None:
+            if "config" in args:
+                emit(f"   ⚠️ [系统] LLM 传入了 config 参数，已被系统配置覆盖")
+            args["config"] = cfg
+            # match_jobs 和 generate_resume 还需要 user_profile
+            if func_name in ("match_jobs", "generate_resume"):
+                if "profile" not in args:
+                    args["profile"] = cfg.get("user_profile")
 
     try:
         result = func(**args) if args else func()

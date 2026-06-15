@@ -286,6 +286,19 @@ def parse_json_response(text):
 
 _emit_local = threading.local()
 
+# ── Campaign 配置管理（线程安全）──
+_campaign_local = threading.local()
+
+
+def set_campaign_config(cfg: dict) -> None:
+    """设置当前线程的 campaign 配置。CLI 入口调用，Web 端暂不调用。"""
+    _campaign_local.config = cfg
+
+
+def get_campaign_config() -> dict | None:
+    """获取当前线程的 campaign 配置。没有则返回 None。"""
+    return getattr(_campaign_local, 'config', None)
+
 
 def set_emit_target(queue):
     """设置当前线程的 emit 目标队列（Web 模式用）。传 None 清除。"""
