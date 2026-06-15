@@ -22,7 +22,8 @@
 |------|----------|------|
 | 编程语言 | Python 3.13 | 主开发语言 |
 | LLM | DeepSeek / Qwen / GLM（可配置切换） | 通过 OpenAI SDK 兼容接口调用，`config.py` 中的 `llm_call()` 为统一入口 |
-| LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 15 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出 |
+| LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 19 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出。支持 `thinking` 模式（DeepSeek V4）和 `response_model` 模式（Instructor + Pydantic 结构化输出） |
+| 结构化输出 | Instructor（Pydantic schema 校验） | 匹配评分走 Instructor 模式，自动校验 LLM 输出结构并重试修正 |
 | 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
 | HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
 | PDF 渲染 | Playwright/Chromium | Markdown → HTML → PDF，两个独立浏览器实例（爬虫 + 渲染器各一个） |
@@ -44,12 +45,31 @@ D:\job-agent/
 ├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 ├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
 │
-├── scraper.py                # [爬虫] JobsDB 页面抓取（~1032 行），4 层列表解析 + 3 层详情解析
+├── scraper.py                # [爬虫] JobsDB 页面抓取（~1031 行），4 层列表解析 + 3 层详情解析
 ├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
 ├── job_match.py              # [匹配] LLM 五维评分 + 动态权重 + 及格线复评 + 方向分类
 ├── resume_gen.py             # [简历] 5 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
+├── checker.py                # [核查] 简历 bullet 事实核查 — 检测数字矛盾、强度升级、占位符
 ├── pdf_renderer.py           # [渲染] Markdown → HTML → PDF（独立 Playwright 实例）
 ├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
+├── config_assembler.py       # [组装] Campaign 配置三层组装（user × strategy × campaign）
+│
+├── engine/                   # [契约] Pydantic 数据模型
+│   └── contracts/            #     MatchResult / Resume / MarketResult 等
+│
+├── evaluation/               # [评估] Prompt 评估脚本 + 数据集
+│   ├── run_eval.py           #     匹配评分评估
+│   ├── run_checker_eval.py   #     Checker 用例评估
+│   └── split_eval.py         #     训练集/验证集拆分
+│
+├── instances/                # [实例] 新配置架构（三层组合）
+│   ├── campaigns/            #     Campaign 定义（用户 + 策略 + 搜索词组合）
+│   ├── strategies/           #     策略文件（权重方案 + 关键词规则）
+│   ├── users/                #     用户画像（按用户拆分）
+│   └── eval/                 #     评估数据集 + 标注规范
+│
+├── prompts/                  # [示例] Prompt 模板示例
+│   └── examples/job_match/   #     各方向的评分 prompt 示例
 │
 ├── profiles/                 # [配置文件目录]
 │   ├── me.yaml               #     用户个人画像
@@ -59,11 +79,11 @@ D:\job-agent/
 │   └── resume_guide.yaml     #     简历撰写指南
 │
 ├── static/
-│   ├── index.html            #     Web UI 前端（单页应用，~1478 行）
+│   ├── index.html            #     Web UI 前端（单页应用）
 │   └── index_old.html        #     旧版 UI 备份（Phase 1 改造前）
 │
 ├── new-ui/                   # [Demo] PM 交付的 UI 原型（独立交互演示）
-│   └── index.html            #     Demo 原型（~928 行）
+│   └── index.html            #     Demo 原型
 │
 ├── tests/                    # [测试] Playwright 自动化测试套件
 │   ├── conftest.py           #     Fixture 层（配置管理、DeepSeek 切换）
@@ -114,7 +134,7 @@ D:\job-agent/
 │  │              config.py                   │      │
 │  │  ┌──────────────────────────────────┐   │      │
 │  │  │  llm_call()  统一 LLM 调用入口    │   │      │
-│  │  │  · 15 处调用点全部收敛到这里      │   │      │
+│  │  │  · 19 处调用点全部收敛到这里      │   │      │
 │  │  │  · 指数退避重试（429/超时/5xx）  │   │      │
 │  │  │  · 错误分类（不可重试直接抛出）   │   │      │
 │  │  │  · 3 Provider 运行时切换         │   │      │
@@ -153,9 +173,21 @@ D:\job-agent/
 所有模块的 LLM 调用不再直接使用 `client.chat.completions.create()`，而是通过 `config.py` 中的 `llm_call()` 函数：
 
 ```python
-llm_call(messages, *, temperature=None, tools=None, max_retries=2)
-# 返回：message 对象（含 .content 和 .tool_calls 属性）
+llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=None, response_model=None)
+# 默认模式：返回 message 对象（含 .content 和 .tool_calls 属性）
+# Instructor 模式（response_model 不为 None）：返回 Pydantic 模型实例，附带 ._usage 属性
 ```
+
+**参数说明**：
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `messages` | list | — | 对话消息列表 |
+| `temperature` | float | `None` | `None` 时不传（使用 API 默认 1.0）；`0` 时显式传递（确定性任务） |
+| `tools` | list | `None` | Function Calling 工具定义列表 |
+| `max_retries` | int | `2` | 可重试错误的最大重试次数 |
+| `thinking` | dict | `None` | DeepSeek V4 思考模式：`{"type": "disabled"}` 关闭。开启时不传 `temperature`（会被忽略） |
+| `response_model` | Pydantic | `None` | 传入 Pydantic 模型后走 Instructor 结构化输出模式，自动校验 + 重试修正。此时 `tools` 参数被忽略 |
 
 **错误处理策略**：
 
@@ -173,7 +205,7 @@ llm_call(messages, *, temperature=None, tools=None, max_retries=2)
 - `temperature` 参数为 `None` 时不传给 API（使用默认值 1.0，用于简历生成等创造性任务）
 - `temperature=0` 时显式传递（用于匹配评分、市场分析等确定性任务）
 - `tools` 参数为 `None` 时不传（纯文本分析类调用不需要工具）
-- 所有 15 处调用点已收敛，新增任何 LLM 功能（如 token 统计、缓存、fallback）只需改这一处
+- 所有 19 处调用点已收敛，新增任何 LLM 功能（如 token 统计、缓存、fallback）只需改这一处
 
 ### 2.3 核心工作流
 
@@ -234,7 +266,7 @@ def parse_json_response(text):
     # 策略 3：find("{") / rfind("}") 截取 JSON 对象
 ```
 
-注意：此函数仅校验 JSON 语法，不校验字段语义和类型。未来计划引入 Instructor（Pydantic schema 校验 + 自动重试修正），参见 [GitHub Issue #1](https://github.com/Lzz297/jobsdb-agent/issues/1)。
+注意：此函数仅校验 JSON 语法，不校验字段语义和类型。对于关键调用路径（如匹配评分），已通过 `llm_call()` 的 `response_model` 参数走 Instructor + Pydantic 模式进行结构化输出校验和自动重试修正。
 
 #### 3.1.5 Prompt 模板引擎
 
@@ -349,13 +381,14 @@ data: {json_payload}
 
 ```
 
-前端监听 6 种事件类型，与后端一一对应：
+前端监听 7 种事件类型，与后端一一对应：
 
 | type | 含义 | 后端 payload | 前端渲染 |
 |------|------|-------------|---------|
 | `status` | 阶段性状态提示 | `{"type": "status", "text": "Starting job search..."}` | 🟡 琥珀色圆点 + 文字 |
 | `progress` | 执行结果文本 | `{"type": "progress", "text": "搜索完成 → raw_jobs.json"}` | ⚪ 灰色文字 |
 | `tool_call` | 正在调用的工具 | `{"type": "tool_call", "tool": "search_jobs", "args": "{...}"}` | 🔵 青色工具名 + 参数 |
+| `review` | 简历核查报告 | `{"type": "review", "bullets": [...], "flagged_count": N}` | 🟠 核查标记列表（checker 系统产出） |
 | `done` | 任务完成 | `{"type": "done", "reply": "...", "files": [...]}` | 🟢 完成面板含文件列表 |
 | `error` | 执行出错 | `{"type": "error", "text": "..."}` | 🔴 红色错误信息 |
 | `ping` | 30 秒心跳保活 | `{}` | 忽略 |
@@ -389,8 +422,7 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 `progress` / `tool_call` / `done` / `error` 事件。
-
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 `progress` / `tool_call` / `review` / `done` / `error` 事件。
 ---
 
 ##### `POST /api/pipeline`
@@ -413,7 +445,7 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / done / error。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。
 
 ---
 
@@ -548,7 +580,27 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / done / error。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。
+
+##### `POST /api/resume/fix`
+定点修正单条 resume bullet（配合 checker 系统使用），返回修正后的完整 Markdown。
+
+**Request**:
+```json
+{
+  "resume_md": "（完整简历 Markdown）",
+  "bullet_index": 0,
+  "feedback": "这条 bullet 的量化数据不对，实际是 10,000+ 笔而不是 5,000 笔"
+}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `resume_md` | 否 | 完整简历 Markdown。不传则使用最近一次生成的简历 |
+| `bullet_index` | 是 | 要修正的 bullet 索引（从 0 开始） |
+| `feedback` | 是 | 用户对这条 bullet 的修正意见 |
+
+**Response**: `{"fixed_md": "...", "check_result": {"text": "...", "source_ids": [...], "flags": [...]}}`
 
 ##### `POST /api/market`
 直接调用单个市场调研。SSE 流返回进度。
@@ -845,7 +897,14 @@ skill × w1 + experience × w2 + level × w3 + industry × w4 + bonus × w5
 
 ### 3.10 resume_gen.py — 多模式简历生成
 
-**职责**：5 种生成模式 × 英文先行 × 三语翻译 × 质量自检。
+**职责**：5 种生成模式 × 英文先行 × 三语翻译 × 质量自检 × bullet 事实核查。
+
+**函数签名**：
+```python
+def generate_resume(job_index=None, jd_text=None, role_direction=None,
+                    by_direction=False, output_langs=None, config=None, profile=None)
+```
+其中 `output_langs` 控制输出语言子集（如 `["en","hk"]`，默认 `["en","hk","cn"]`），Web API 通过 `languages` 字段透传。`config` 和 `profile` 供 Campaign 模式注入，留空则从 `profiles/` 自动加载。
 
 #### 5 种生成模式
 
@@ -909,7 +968,7 @@ resume_review_{label}_{date}.json     # 审查报告
 
 #### 质量自检机制
 
-审查维度：6 秒测试、关键词覆盖、业务/技术平衡、量化程度、弱点暴露、ATS 友好度。
+**第一层：LLM 审查**。审查维度：6 秒测试、关键词覆盖、业务/技术平衡、量化程度、弱点暴露、ATS 友好度。
 
 审查输出 JSON 结构（示例）：
 ```json
@@ -923,6 +982,16 @@ resume_review_{label}_{date}.json     # 审查报告
   "top_3_improvements": ["增加第2段经历的量化数据"]
 }
 ```
+
+**第二层：Bullet 事实核查（`checker.py`）**。对 LLM 生成的每条 bullet 与 `me.yaml` 源条目进行逐条比对，检测三类问题：
+
+| 检测类型 | 说明 | 示例 |
+|----------|------|------|
+| 数字矛盾 | bullet 中的数字与源数据不一致 | bullet 写"处理 5,000+ 笔交易"，源数据是 10,000+ |
+| 强度升级 | bullet 动词强度超出源数据支撑 | 源数据是"参与"项目，bullet 写成"主导"项目 |
+| 占位符残留 | bullet 中含有未替换的占位符 | `[请在此填写具体数据]`、`[TODO]` |
+
+核查结果通过 SSE `review` 事件推送至前端，用户可通过 `/api/resume/fix` 端点逐条修正。
 
 #### 输出文件（方向聚合模式）
 
@@ -1418,7 +1487,7 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 | 4 | **Playwright 而非 wkhtmltopdf 渲染 PDF** | Chromium CSS 支持最完整、原生 CJK 字体、复用爬虫的 Playwright 依赖 |
 | 5 | **简历英文先行 + 精确翻译** | 英文是通用求职语言；各语言独立生成会导致内容差异（面试时信息不一致）；翻译 prompt 严格控制结构一致性 |
 | 6 | **简历质量自检 + 自动重写** | LLM 生成的简历可能暴露候选人弱点（年限、英语水平）、缺少量化、ATS 不友好；审查 → 反馈 → 自动修正 |
-| 7 | **llm_call() 统一入口** | 消除 15 处分散调用点的维护负担；集中管理重试/退避/错误分类；任何新功能（缓存、fallback、token 统计）只需改一处 |
+| 7 | **llm_call() 统一入口** | 消除 19 处分散调用点的维护负担；集中管理重试/退避/错误分类；任何新功能（缓存、fallback、token 统计）只需改一处 |
 | 8 | **方向聚合跳过 default** | `default` 方向的岗位无法归类到具体方向，聚合分析无意义（JD 之间共性不足） |
 | 9 | **LLM 判断方向优先 + 标题关键词回退** | LLM 基于完整 JD 判断更准确；标题关键词回退作为兜底（LLM 输出不可靠时） |
 
@@ -1459,7 +1528,7 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 ## 十、项目亮点总结
 
 1. **双入口架构**：终端 CLI + Web UI（Flask + SSE），共用同一套 Agent 和工具系统
-2. **统一 LLM 调用层**：`llm_call()` 收敛 15 处调用点 + 内建指数退避重试 + 错误分类
+2. **统一 LLM 调用层**：`llm_call()` 收敛 19 处调用点 + 内建指数退避重试 + 错误分类
 3. **多 Provider 支持**：DeepSeek / Qwen / GLM 运行时动态切换，不重启、立即生效
 4. **全量抓取 + 精准评分**：三层漏斗不经过 LLM 预过滤，确保匹配评分基于完整 JD
 5. **数据驱动爬虫**：通用字段提取器 + 4 层解析回退 + GraphQL 模式支持，适应 JobsDB 页面结构变化

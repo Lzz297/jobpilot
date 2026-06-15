@@ -1,9 +1,9 @@
 # 配置使用手册
 
-本项目的所有可调节配置集中在 `profiles/` 目录和项目根目录的 `.env` 文件中。修改方式有两种：
+本项目有两套配置体系，可独立使用也可组合使用：
 
-- **通过 Web UI**：`me.yaml` 和 `search_config.yaml` 可在 Web 界面"设置"面板中直接编辑，LLM 模型可在侧边栏下拉菜单中一键切换。改动即时生效，同时自动回写文件。
-- **直接编辑文件**：`.env`、`prompts.yaml`、`resume_guide.yaml`、`resume_template.yaml` 仅支持文件编辑方式。
+- **旧体系（`profiles/`）**：单用户配置文件，适合个人日常使用。支持 Web UI 直接编辑。
+- **新体系（`instances/`）**：三层组装架构（User × Strategy × Campaign），适合多用户、多策略的批量实验和评估场景。通过 `python agent.py --campaign <name>` 启动。
 
 无论哪种方式，均**无需改动任何代码**。
 
@@ -19,6 +19,7 @@
 | [`profiles/resume_guide.yaml`](#3-resume_guideyaml--简历撰写规范) | 简历内容怎么写 | 仅文件 | 低（基本不用动） |
 | [`profiles/resume_template.yaml`](#4-resume_templateyaml--简历模板结构) | 简历段落顺序和格式 | 仅文件 | 低（微调排版时改） |
 | [`profiles/prompts.yaml`](#5-promptsyaml--llm-提示词) | 教 LLM 怎么筛选、评分、分析、写简历 | 仅文件 | 中（优化判断逻辑时改） |
+| [`instances/` 新配置架构](#6-instances--三层配置组装) | 多用户 × 多策略 × 多 Campaign 的灵活组合 | 仅文件 | 中（新增策略/用户时改） |
 
 ---
 
@@ -470,7 +471,93 @@ customization:
 
 ---
 
+## 6. `instances/` — 三层配置组装（新架构）
+
+**作用：** 将配置按变化轴拆分为 User（谁）、Strategy（怎么评）、Campaign（搜什么）三层，支持灵活组合。通过 `config_assembler.py` 在运行时组装成完整配置。
+
+### 6.1 目录结构
+
+```text
+instances/
+├── campaigns/       # Campaign 定义：绑定 user + strategy + search_queries
+│   └── web3_hunt.yaml
+├── strategies/      # 策略文件：权重方案 + 关键词规则
+│   ├── default.yaml
+│   ├── payment.yaml
+│   ├── solutions.yaml
+│   ├── technical.yaml
+│   └── web3.yaml
+├── users/           # 用户画像（替代 profiles/me.yaml 的用户维度）
+│   └── li_ming.yaml
+└── eval/            # 评估数据集 + 标注规范
+    ├── all_cases.json
+    ├── dev_set.json
+    ├── holdout.json
+    ├── checker_test_cases.json
+    ├── ANNOTATION_GUIDE.md
+    └── ANNOTATION_TODO.md
+```
+
+### 6.2 三层组装流程
+
+```
+campaigns/web3_hunt.yaml
+  │
+  ├── user: li_ming     → 加载 instances/users/li_ming.yaml
+  ├── strategy: web3    → 加载 instances/strategies/web3.yaml（含 weight_profile + weight_rules_keywords）
+  │
+  └── 组装逻辑（config_assembler.py）：
+       1. 加载 profiles/search_config.yaml 获取通用配置（llm / filters / 数量控制）
+       2. 加载 profiles/prompts.yaml 获取 prompt 模板
+       3. 加载 profiles/resume_template.yaml + resume_guide.yaml
+       4. 从 strategy 构建 matching 段（weight_profiles + weight_rules）
+       5. 合并 campaign.overrides（如 max_total_results / min_match_score 覆盖）
+       → 输出完整配置字典
+```
+
+### 6.3 Campaign 文件格式
+
+```yaml
+# instances/campaigns/web3_hunt.yaml
+user: "li_ming"               # 必填：用户 ID
+strategy: "web3"              # 必填：策略 ID
+search_queries:               # 必填：搜索关键词组
+  - keywords: "Web3"
+    location: "Hong Kong"
+  - keywords: "Blockchain Developer"
+    location: "Hong Kong"
+sort_mode: "date"             # 可选：覆盖全局 sort_mode
+overrides:                    # 可选：覆盖通用配置
+  max_total_results: 200
+  min_match_score: 45
+```
+
+### 6.4 使用方式
+
+```bash
+# 终端模式 — 加载 campaign
+python agent.py --campaign web3_hunt
+
+# Web UI 模式 — 目前仅支持 profiles/ 配置
+python web_app.py
+```
+
+### 6.5 新旧体系对比
+
+| 维度 | 旧体系（profiles/） | 新体系（instances/） |
+|------|-------------------|---------------------|
+| 用户画像 | `profiles/me.yaml`（单用户） | `instances/users/*.yaml`（多用户） |
+| 权重方案 | `search_config.yaml` 内嵌 5 种 | `instances/strategies/*.yaml`（独立文件） |
+| 搜索词 | `search_config.yaml` 内嵌注释切换 | `instances/campaigns/*.yaml`（显式声明） |
+| 配置覆盖 | 直接修改 YAML | `overrides` 字段 + 深度合并 |
+| Web UI 支持 | ✅ 支持 | ❌ 不支持（仅 CLI） |
+| 适用场景 | 个人日常使用 | 批量实验、评估、多用户 |
+
+---
+
 ## 配置文件之间的关系
+
+### 旧体系（profiles/）
 
 ```
 .env (API 密钥)
@@ -500,4 +587,23 @@ prompts.yaml (教 LLM 怎么判断)
   ├──→ job_match.py            匹配评分指导
   ├──→ market_analysis.py      市场分析 + 差距分析
   └──→ resume_gen.py           简历撰写 + Cover Letter
+```
+
+### 新体系（instances/）— 三层组装
+
+```
+instances/users/{user}.yaml         # 用户画像
+        │
+instances/strategies/{strategy}.yaml # 权重方案 + 关键词规则
+        │
+instances/campaigns/{name}.yaml     # 搜索词 + overrides
+        │
+        ├──→ config_assembler.py  合并组装
+        │         │
+        │         ├── base: profiles/search_config.yaml（llm / filters / 数量）
+        │         ├── + profiles/prompts.yaml
+        │         ├── + profiles/resume_template.yaml + resume_guide.yaml
+        │         └── → 输出完整配置字典
+        │
+        └──→ job_search / job_match / resume_gen 等模块接收 config 参数
 ```
