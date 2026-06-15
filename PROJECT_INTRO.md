@@ -108,7 +108,8 @@ D:\job-agent/
 │   └── market/               #     市场调研输出
 │
 ├── .env                      # API Key
-├── CONFIG_GUIDE.md           # 配置文件详细说明（独立手册）
+├── CONFIG_GUIDE.md           # 配置文件详细说明
+├── PROMPT_CHANGE_PROCESS.md  # Prompt 修改流程与评估规范
 ├── .claude/                  # Claude Code 工作文件
 └── .venv/                    # Python 虚拟环境
 ```
