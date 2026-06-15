@@ -399,7 +399,7 @@ customization:
 
 ```yaml
 注意：
-- total_score = <score_formula>（四舍五入取整）
+- 总分由系统根据策略权重自动计算，你不需要输出 total_score
 - 如果岗位属于 Web3/区块链行业，industry 维度应该给予额外加分
 - 候选人有粤语母语优势，如果 JD 提到需要粤语/广东话，bonus 应给高分
 ```
@@ -538,7 +538,7 @@ overrides:                    # 可选：覆盖通用配置
 # 终端模式 — 加载 campaign
 python agent.py --campaign web3_hunt
 
-# Web UI 模式 — 目前仅支持 profiles/ 配置
+# Web UI 模式 — 通过侧边栏「求职方向」下拉框选择 campaign
 python web_app.py
 ```
 
@@ -550,7 +550,7 @@ python web_app.py
 | 权重方案 | `search_config.yaml` 内嵌 5 种 | `instances/strategies/*.yaml`（独立文件） |
 | 搜索词 | `search_config.yaml` 内嵌注释切换 | `instances/campaigns/*.yaml`（显式声明） |
 | 配置覆盖 | 直接修改 YAML | `overrides` 字段 + 深度合并 |
-| Web UI 支持 | ✅ 支持 | ❌ 不支持（仅 CLI） |
+| Web UI 支持 | ✅ 支持 | ✅ 支持（侧边栏下拉框） |
 | 适用场景 | 个人日常使用 | 批量实验、评估、多用户 |
 
 ---

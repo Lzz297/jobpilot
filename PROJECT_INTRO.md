@@ -23,7 +23,7 @@
 | 编程语言 | Python 3.13 | 主开发语言 |
 | LLM | DeepSeek / Qwen / GLM（可配置切换） | 通过 OpenAI SDK 兼容接口调用，`config.py` 中的 `llm_call()` 为统一入口 |
 | LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 19 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出。支持 `thinking` 模式（DeepSeek V4）和 `response_model` 模式（Instructor + Pydantic 结构化输出） |
-| 结构化输出 | Instructor（Pydantic schema 校验） | 匹配评分走 Instructor 模式，自动校验 LLM 输出结构并重试修正 |
+| 结构化输出 | Instructor（Pydantic schema 校验） | 匹配评分、市场分析 Phase B/C 走 Instructor 模式，自动校验 LLM 输出结构并重试修正 |
 | 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
 | HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
 | PDF 渲染 | Playwright/Chromium | Markdown → HTML → PDF，两个独立浏览器实例（爬虫 + 渲染器各一个） |
@@ -55,7 +55,11 @@ D:\job-agent/
 ├── config_assembler.py       # [组装] Campaign 配置三层组装（user × strategy × campaign）
 │
 ├── engine/                   # [契约] Pydantic 数据模型
-│   └── contracts/            #     MatchResult / Resume / MarketResult 等
+│   ├── contracts/            #     7 个 Pydantic 模型（4 个文件）
+│   │   ├── match_result.py   #       MatchResult + Scores
+│   │   ├── market_result.py  #       MarketAnalysisResult + TechnicalSkill
+│   │   ├── gap_result.py     #       GapAnalysisResult + 4 个子模型
+│   │   └── resume.py         #       Resume + ResumeBullet
 │
 ├── evaluation/               # [评估] Prompt 评估脚本 + 数据集
 │   ├── run_eval.py           #     匹配评分评估
@@ -700,6 +704,7 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 - **多 Provider 切换**：用户可在 DeepSeek / Qwen / GLM 之间实时切换 LLM，切换立即生效
 - **排序切换**：用户可切换搜索排序方式（按发布时间最新在前 / 按相关度），影响 `search_jobs` 和 `analyze_market` 的行为
 - **Campaign 切换**：用户可通过侧边栏下拉框选择求职方向（campaign），切换后后续请求自动使用对应的搜索词和权重策略。选择"默认"恢复 `profiles/` 配置
+- **简历审查面板**：生成简历后自动展示 bullet 核查结果（checker 系统产出），支持逐条查看标记（数字矛盾/强度升级/占位符）、确认放行、一键修正
 - **简历生成**：支持 5 种模式的简历生成触发方式（含基于粘贴 JD、基于岗位方向、基于通用画像等）
 - **市场调研**：用户可输入岗位类别参数直接触发市场调研
 - **文件管理**：浏览所有历史 Run 和市场调研的输出文件，支持文件下载
@@ -1128,6 +1133,8 @@ Phase D: LLM 撰写报告 + 保存所有文件
   结构化数据 → LLM 撰写专业 Markdown 报告 → 渲染 PDF
   若 LLM 报告生成失败 → 回退到 JSON dump 格式（确保数据不丢）
 ```
+
+> **Instructor 模式**：Phase B（JD 分析）和 Phase C（差距分析）已改用 Instructor + Pydantic 结构化输出。Phase B 使用 `MarketAnalysisResult` 模型（12 字段），Phase C 使用 `GapAnalysisResult` 模型（6 字段）。Instructor 自动校验 LLM 输出结构，格式错误时自动重试修正；失败时通过 try/except 回退到旧 `parse_json_response()` 方式，确保兼容性。`.model_dump()` 转回 dict，后续聚合逻辑和报告撰写代码零改动。
 
 #### 函数签名
 
