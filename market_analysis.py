@@ -15,121 +15,12 @@ from scraper import scan_jobsdb_listings, fetch_multiple_details
 from pdf_renderer import render_report as render_pdf
 
 
-# ============================================================
-#  市场分析 prompt
-# ============================================================
-
-_ANALYSIS_SYSTEM_PROMPT = """你是一位资深人力资源市场分析师。请根据以下 <job_category> 类岗位的 JD 数据，提取并分析市场行情。
-
-重要：technical_skills 只收录「可以学习和练习的具体技术技能」，例如编程语言、框架、数据库、云平台、协议、工具等。
-以下内容不算技术技能，不要放进 technical_skills：
-- 岗位职责（如 "商业开发"、"合作伙伴管理"、"项目管理"）→ 放 common_responsibilities
-- 软技能（如 "沟通能力"、"团队协作"、"领导力"）→ 放 common_responsibilities
-- 行业知识（如 "了解加密货币市场"）→ 放 key_trends
-- 学历/证书要求 → 不放
-
-分析要求——输出严格的 JSON 对象，不要输出其他文字：
-{
-  "sample_size": 实际分析的JD数量,
-  "technical_skills": [
-    {
-      "skill": "具体技术名称（如 'Solidity Smart Contract Development'，而非笼统的 'Blockchain'）",
-      "category": "编程语言/框架/数据库/云平台/DevOps/安全/协议/其他工具",
-      "description": "用 1-2 句话解释这个技术是什么、在工作中具体做什么",
-      "typical_tools": ["该技术领域常用的具体工具/框架/库，列 2-5 个"],
-      "count": 出现次数,
-      "percentage": "百分比%",
-      "level": "必须/优先/加分"
-    }
-  ],
-  "soft_skills": [
-    {
-      "skill": "软技能或业务能力名称",
-      "description": "具体说明在该类岗位中这个能力怎么体现",
-      "count": 出现次数,
-      "percentage": "百分比%"
-    }
-  ],
-  "salary_overview": {
-    "ranges": [
-      {"level": "Junior/Mid/Senior", "range": "薪资范围", "count": 该级别岗位数}
-    ],
-    "notes": "薪资相关备注（如大部分未标明薪资等）"
-  },
-  "experience_distribution": [
-    {"range": "0-2年/3-5年/5-8年/8年+", "count": 岗位数, "percentage": "百分比%"}
-  ],
-  "common_responsibilities": [
-    "用完整的句子描述最常见的职责，要具体（如：'设计和维护 RESTful API，支持前端和第三方系统集成'）"
-  ],
-  "industry_distribution": [
-    {"industry": "行业名称", "count": 岗位数}
-  ],
-  "key_trends": [
-    "趋势观察——要具体说明趋势是什么、为什么重要、对求职者意味着什么"
-  ]
-}
-
-注意：
-- technical_skills 按出现频次从高到低排列，最多列 20 项
-- 技能名称必须具体到可以去学习的程度（如 "Ethers.js Web3 Library" 而非 "Web3"，"PostgreSQL Database" 而非 "数据库"）
-- description 要让一个不了解该技能的人也能看懂它是什么
-- typical_tools 列出实际使用的工具，不要笼统
-- soft_skills 最多列 10 项，按频次排序
-- salary_overview 只统计明确标明薪资的岗位，未标明的不要猜测
-- 如果某个维度数据不足，如实说明而不要编造"""
-
-_GAP_ANALYSIS_PROMPT = """你是一位求职策略顾问。请对比市场技能需求和候选人画像，进行差距分析。
-
-市场技术技能需求（按频次排序）：
-<technical_skills>
-
-候选人画像：
-<profile>
-
-请输出严格的 JSON 对象，不要输出其他文字：
-{
-  "strengths": [
-    {
-      "skill": "技能完整名称",
-      "description": "这个技能是什么、候选人在哪些项目中用到了它",
-      "market_demand": "高/中",
-      "candidate_level": "熟练/掌握/了解",
-      "advantage": "候选人的这个技能比一般求职者强在哪里，有什么独特价值"
-    }
-  ],
-  "gaps": [
-    {
-      "skill": "技能完整名称",
-      "description": "这个技能具体是什么，在工作中用来做什么",
-      "market_demand": "高/中",
-      "learning_difficulty": "低/中/高",
-      "current_gap": "候选人目前在这个技能上的具体差距是什么（如：有 Docker 经验但没用过 K8s 编排）",
-      "learning_path": [
-        "第 1 步：具体要学什么、怎么学",
-        "第 2 步：做什么练习或项目来巩固",
-        "第 3 步：达到面试水平需要多久"
-      ],
-      "priority": "高/中/低 — 附一句话说明为什么是这个优先级（如：'高 — 75% 的后端岗位要求'）"
-    }
-  ],
-  "low_value_skills": [
-    {
-      "skill": "技能名称",
-      "note": "市场需求低但候选人掌握——说明是否值得继续深入，或者可以如何转化为其他方向的优势"
-    }
-  ],
-  "strategic_advice": [
-    "具体的策略建议——不要说'建议学习 XX'这种空话，要说清楚：学什么、怎么学、学到什么程度、预计多久、学完后能投什么岗位"
-  ]
-}
-
-注意：
-- strengths: 候选人具备且市场需求高的技能，说清楚为什么是优势
-- gaps: 市场需求高但候选人缺失/薄弱的技能，必须给出可执行的学习路径（不是一句笼统的建议）
-- learning_path 每一步要具体到可以直接去执行（如 "在 LeetCode 刷 50 道 medium 难度的树/图题"），而不是 "加强算法能力"
-- priority 要基于市场数据说明（如 "高 — 15/20 条 JD 都要求此技能"）
-- strategic_advice: 综合建议，优先级排序，告诉候选人应该先补什么、后补什么、为什么"""
+def _load_market_prompt(key: str) -> str:
+    """加载市场分析 prompt。唯一来源为 prompts.yaml，缺失时报错。"""
+    template = load_prompts().get("market_analysis", {}).get(key)
+    if not template:
+        raise RuntimeError(f"market_analysis.{key} 在 prompts.yaml 中缺失或为空")
+    return template
 
 
 # ============================================================
@@ -230,7 +121,7 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
         try:
             msg = llm_call(
                 [{"role": "system", "content": render_prompt(
-                    load_prompts().get("market_analysis", {}).get("analysis_system_prompt", _ANALYSIS_SYSTEM_PROMPT),
+                    _load_market_prompt("analysis_system_prompt"),
                     job_category=job_category)},
                  {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
                 temperature=0, thinking={"type": "disabled"},
@@ -614,7 +505,7 @@ def _run_gap_analysis(analysis, profile):
     try:
         msg = llm_call(
             [{"role": "system", "content": render_prompt(
-                load_prompts().get("market_analysis", {}).get("gap_analysis_prompt", _GAP_ANALYSIS_PROMPT),
+                _load_market_prompt("gap_analysis_prompt"),
                 technical_skills=skills_text, profile=profile_summary)},
              {"role": "user", "content": "请进行差距分析。"}],
             temperature=0,
@@ -632,15 +523,7 @@ def _run_gap_analysis(analysis, profile):
 
 def _generate_report_via_llm(job_category, location, sample_size, analysis, gap_analysis):
     """Stage 2: 用 LLM 将结构化 JSON 数据撰写成专业的 Markdown 分析报告。"""
-    # 默认 prompt（prompts.yaml 中未配置时的回退）
-    default_prompt = (
-        "你是一位资深市场分析报告撰写专家。请根据以下结构化数据，撰写一份完整的 <job_category> 岗位市场分析报告。\n\n"
-        "岗位类别: <job_category> | 地点: <location> | 样本量: <sample_size> 条 JD\n\n"
-        "市场分析数据：\n<analysis_json>\n\n差距分析数据：\n<gap_analysis_json>\n\n"
-        "规则：JSON 中每个有数据的维度都必须体现，禁止省略或编造。输出纯 Markdown 格式。"
-    )
-
-    prompt_template = load_prompts().get("market_analysis", {}).get("report_prompt", default_prompt)
+    prompt_template = _load_market_prompt("report_prompt")
 
     analysis_json = json.dumps(analysis, ensure_ascii=False, indent=2)
     gap_json = json.dumps(gap_analysis, ensure_ascii=False, indent=2) if gap_analysis else "无"

@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class Scores(BaseModel):
+    model_config = ConfigDict(extra='allow')
     skill: int = Field(ge=0, le=100, description="技能匹配度 0-100")
     experience: int = Field(ge=0, le=100, description="经验年限匹配度 0-100")
     level: int = Field(ge=0, le=100, description="职级匹配度 0-100")
@@ -10,6 +11,7 @@ class Scores(BaseModel):
 
 
 class MatchResult(BaseModel):
+    model_config = ConfigDict(extra='allow')
     reasoning: str = Field(
         alias="reason",
         description="匹配推理过程。prompt 中 LLM 返回字段名为 reason，Pydantic 通过 alias 自动映射为 reasoning"

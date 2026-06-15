@@ -75,40 +75,13 @@ def _calc_total_score(scores, weights):
 #  LLM 评分（单批次）
 # ============================================================
 
-_SCORING_SYSTEM_PROMPT = """你是一个专业求职顾问。根据候选人档案，对每个岗位从多个维度做匹配评分。
 
-候选人档案：
-<profile_summary>
-
-请对每个岗位从以下5个维度打分（0-100），并计算加权总分：
-<weights_text>
-
-输出严格的 JSON 数组，不要输出其他任何文字：
-[
-  {
-    "index": 岗位编号,
-    "title": "岗位标题",
-    "company": "公司名称",
-    "direction": "payment/solutions/web3/technical/default",
-    "scores": {
-      "skill": 85,
-      "experience": 90,
-      "level": 80,
-      "industry": 75,
-      "bonus": 90
-    },
-    "total_score": 84,
-    "skill_match": ["Python ✅", "FastAPI ✅", "Go ❌"],
-    "missing_skills": ["Go"],
-    "reason": "一段具体的匹配分析说明",
-    "recommendation": "强烈推荐/推荐/考虑/不推荐"
-  }
-]
-
-注意：
-- total_score = <score_formula>（四舍五入取整）
-- 如果 JD 内容不完整或过于笼统，在 reason 中注明并适当降低置信度
-- skill_match 用 ✅❌⚠️ 标注每个关键技能"""
+def _load_scoring_prompt():
+    """加载匹配评分 prompt。唯一来源为 prompts.yaml。"""
+    template = load_prompts().get("job_match", {}).get("scoring_system_prompt")
+    if not template:
+        raise RuntimeError("job_match.scoring_system_prompt 在 prompts.yaml 中缺失或为空")
+    return template
 
 
 def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str = None):
@@ -119,7 +92,7 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
     """
 
     prompts = load_prompts()
-    template = prompts.get("job_match", {}).get("scoring_system_prompt", _SCORING_SYSTEM_PROMPT)
+    template = _load_scoring_prompt()
     system_prompt = render_prompt(template,
         profile_summary=profile_summary,
         weights_text=_build_weights_text(weights),
@@ -604,7 +577,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
 
     # ── 加载并渲染评分 prompt（与 _score_batch 完全一致）──
     prompts = load_prompts()
-    template = prompts.get("job_match", {}).get("scoring_system_prompt", _SCORING_SYSTEM_PROMPT)
+    template = _load_scoring_prompt()
     system_prompt = render_prompt(template,
         profile_summary=profile_summary,
         weights_text=_build_weights_text(weights),

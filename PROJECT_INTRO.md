@@ -225,7 +225,7 @@ search_jobs()  →  match_jobs()  →  generate_resume(by_direction=True)
 
 ### 3.1 config.py — 共享配置中心
 
-**职责**：LLM 调用统一入口、多 Provider 管理、YAML 加载、JSON 解析、文件追踪、emit 双模式输出、Run 目录管理、Prompt 模板引擎。
+**职责**：LLM 调用统一入口、多 Provider 管理、YAML 加载、JSON 解析、文件追踪、emit 双模式输出、Run 目录管理、Prompt 模板引擎、Campaign 配置管理。
 
 #### 3.1.1 llm_call() — 统一 LLM 调用入口
 
@@ -273,10 +273,10 @@ def parse_json_response(text):
 ```python
 load_prompts()           # 加载 prompts.yaml（有缓存）
 render_prompt(tpl, **kw)  # 替换 <key> 占位符（尖括号避免与 JSON {} 冲突）
-get_system_prompt()      # 获取 Agent 系统提示词，优先 YAML，缺失回退硬编码
+get_system_prompt()      # 获取 Agent 系统提示词，唯一来源为 prompts.yaml，缺失时抛出 RuntimeError
 ```
 
-所有模块通过 `render_prompt()` 将 `<key>` 占位符替换为实际值。如果 `prompts.yaml` 中未配置某个 prompt，各调用点回退到 Python 硬编码默认值。
+所有模块通过 `render_prompt()` 将 `<key>` 占位符替换为实际值。每个 prompt 的唯一来源是 `prompts.yaml`——任何 key 缺失时程序会抛出 `RuntimeError`，不允许静默回退。所有模块通过 `_load_*_prompt()` helper 函数（如 `job_match.py:_load_scoring_prompt()`、`market_analysis.py:_load_market_prompt()`、`resume_gen.py:_load_resume_prompt()`）统一加载，确保 prompt 变更只需编辑一个文件。
 
 #### 3.1.6 Run 目录管理
 
@@ -296,6 +296,17 @@ get_session_files()                # 获取并清空本轮文件列表
 ```
 
 每轮对话后汇总生成的文件列表（路径 + 大小），在终端打印或在 Web UI 中展示。
+
+#### 3.1.8 Campaign 配置管理
+
+通过线程本地存储（`threading.local()`）管理 campaign 配置，与 `emit()` 使用相同的架构模式：
+
+```python
+set_campaign_config(cfg)   # 设置当前线程的 campaign 配置
+get_campaign_config()      # 获取当前线程的 campaign 配置（无则返回 None）
+```
+
+CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模式通过 `/api/session/campaign` 端点按 session 注入。在 `execute_tool()` 中，系统层自动将 campaign 配置注入到 `search_jobs`、`match_jobs`、`generate_resume` 三个工具函数——LLM 无需感知 config 的存在。
 
 ---
 
@@ -527,6 +538,24 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 切换立即生效（原地修改全局 client 属性），同时回写 `search_config.yaml`。
 
+##### `GET /api/campaigns`
+列出所有可用的 campaign（摘要信息）。
+
+**Response**:
+```json
+[{"name": "web3_hunt", "user": "li_ming", "strategy": "web3", "queries": 3, "sort_mode": "date"}]
+```
+
+##### `POST /api/session/campaign`
+设置当前 session 的 campaign。传 `null` 清除选择。
+
+**Request**:
+```json
+{"sid": "a1b2c3d4", "campaign": "web3_hunt"}
+```
+
+**Response**: `{"status": "ok", "campaign": "web3_hunt"}`
+
 ##### `GET /download/<path>`
 文件下载。路径相对于 `output/` 目录。如 `/download/run_xxx/resumes/resume_web3_20260417_en.pdf`。
 
@@ -670,6 +699,7 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 - **实时进度反馈**：通过 SSE（Server-Sent Events）协议向界面推送执行进度，包括当前操作日志、工具调用状态、阶段完成通知和错误信息
 - **多 Provider 切换**：用户可在 DeepSeek / Qwen / GLM 之间实时切换 LLM，切换立即生效
 - **排序切换**：用户可切换搜索排序方式（按发布时间最新在前 / 按相关度），影响 `search_jobs` 和 `analyze_market` 的行为
+- **Campaign 切换**：用户可通过侧边栏下拉框选择求职方向（campaign），切换后后续请求自动使用对应的搜索词和权重策略。选择"默认"恢复 `profiles/` 配置
 - **简历生成**：支持 5 种模式的简历生成触发方式（含基于粘贴 JD、基于岗位方向、基于通用画像等）
 - **市场调研**：用户可输入岗位类别参数直接触发市场调研
 - **文件管理**：浏览所有历史 Run 和市场调研的输出文件，支持文件下载
@@ -1242,7 +1272,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 ### 4.3 profiles/prompts.yaml — LLM 提示词配置
 
-所有模块的 LLM 提示词均可通过此文件配置（共 17 个 prompt 模板）。各调用点在文件不存在或对应 key 缺失时回退到 Python 硬编码默认值。
+所有模块的 LLM 提示词均可通过此文件配置（共 17 个 prompt 模板）。**此文件是所有 prompt 的唯一来源**——任何 key 缺失时程序会抛出 `RuntimeError`，不允许静默回退。各模块通过 `_load_*_prompt()` helper 函数统一加载。
 
 ```yaml
 agent:
@@ -1273,7 +1303,7 @@ resume:
 
 占位符用 `<name>` 尖括号格式（避免与 JSON `{}` 冲突），通过 `render_prompt()` 替换。
 
-> **注意**：`agent.system_prompt` 在 `prompts.yaml` 中的版本与 `config.py` 中的硬编码回退版本内容有所不同——YAML 版本包含详细的候选人战略定位和方向优先级，而 `config.py` 版本更简洁通用。两个版本都描述了 `generate_resume` 的全部 5 种模式。修改 Agent 行为时务必保持两者模式数量和工作流描述同步。
+> **注意**：`agent.system_prompt` 的唯一来源是 `prompts.yaml`。`config.py` 中原有的硬编码 `SYSTEM_PROMPT` 已在 prompt 体系清理中删除——不再存在双版本同步问题。修改 Agent 行为只需编辑 `prompts.yaml` 即可。
 
 ### 4.4 profiles/resume_guide.yaml — 简历撰写指南
 

@@ -49,6 +49,7 @@ def _get_or_create_session(sid):
                 "messages": [{"role": "system", "content": get_system_prompt()}],
                 "queue": queue.Queue(),
                 "busy": False,
+                "campaign": None,  # 用户选择的 campaign 名称（str 或 None）
             }
         return _sessions[sid]
 
@@ -64,6 +65,17 @@ def _run_agent_turn(sid, user_message):
 
     try:
         set_emit_target(q)
+
+        # ── 注入 campaign 配置 ──
+        if session.get("campaign"):
+            try:
+                from config_assembler import load_campaign
+                from config import set_campaign_config
+                cfg = load_campaign(session["campaign"])
+                set_campaign_config(cfg)
+                q.put({"type": "status", "text": f"当前求职方向: {session['campaign']} (策略: {cfg['strategy_name']})"})
+            except Exception as e:
+                q.put({"type": "progress", "text": f"⚠️ Campaign 加载失败: {e}"})
 
         session["messages"].append({"role": "user", "content": user_message})
 
@@ -131,19 +143,31 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
     try:
         set_emit_target(q)
 
+        # ── 注入 campaign 配置（Pipeline 不经过 execute_tool，需显式传入）──
+        cfg = None
+        if session.get("campaign"):
+            try:
+                from config_assembler import load_campaign
+                cfg = load_campaign(session["campaign"])
+                from config import set_campaign_config
+                set_campaign_config(cfg)
+                q.put({"type": "status", "text": f"当前求职方向: {session['campaign']} (策略: {cfg['strategy_name']})"})
+            except Exception as e:
+                q.put({"type": "progress", "text": f"⚠️ Campaign 加载失败: {e}"})
+
         if action == "search_match":
             q.put({"type": "status", "text": "Starting job search..."})
-            search_result = search_jobs(sort_by=sort_by)
+            search_result = search_jobs(sort_by=sort_by, config=cfg)
             q.put({"type": "progress", "text": search_result})
 
             if not search_result.startswith("❌"):
                 q.put({"type": "status", "text": "Starting match analysis..."})
-                match_result = match_jobs()
+                match_result = match_jobs(config=cfg, profile=cfg.get("user_profile") if cfg else None)
                 q.put({"type": "progress", "text": match_result})
 
                 if not match_result.startswith("错误"):
                     q.put({"type": "status", "text": "Generating direction-based resumes..."})
-                    resume_result = generate_resume(by_direction=True, output_langs=languages)
+                    resume_result = generate_resume(by_direction=True, output_langs=languages, config=cfg, profile=cfg.get("user_profile") if cfg else None)
                     q.put({"type": "progress", "text": resume_result})
                     reply = resume_result
                 else:
@@ -711,6 +735,58 @@ def set_model_config():
     if "error" in result:
         return jsonify(result), 400
     return jsonify(result)
+
+
+# ── Campaign 配置 API ──
+
+@app.route("/api/campaigns", methods=["GET"])
+def list_campaigns():
+    """列出所有可用的 campaign（摘要信息，不加载完整配置）。"""
+    campaigns_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "campaigns")
+    result = []
+    if os.path.isdir(campaigns_dir):
+        for fname in sorted(os.listdir(campaigns_dir)):
+            if fname.endswith(".yaml"):
+                filepath = os.path.join(campaigns_dir, fname)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        data = yaml.safe_load(f) or {}
+                    name = fname.replace(".yaml", "")
+                    result.append({
+                        "name": name,
+                        "user": data.get("user", ""),
+                        "strategy": data.get("strategy", ""),
+                        "queries": len(data.get("search_queries", [])),
+                        "sort_mode": data.get("sort_mode", ""),
+                    })
+                except Exception:
+                    continue
+    return jsonify(result)
+
+
+@app.route("/api/session/campaign", methods=["POST"])
+def set_session_campaign():
+    """设置当前 session 的 campaign。传 null 清除选择。"""
+    data = request.json or {}
+    sid = data.get("sid", "").strip()
+    campaign = data.get("campaign")  # 可以是 str 或 None
+
+    if not sid:
+        return jsonify({"error": "Missing sid"}), 400
+
+    session = _get_or_create_session(sid)
+
+    # 验证 campaign 文件存在（传 None 直接清除）
+    if campaign is not None:
+        filepath = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "instances", "campaigns", f"{campaign}.yaml"
+        )
+        if not os.path.isfile(filepath):
+            return jsonify({"error": f"Campaign '{campaign}' 不存在"}), 400
+
+    session["campaign"] = campaign
+    return jsonify({"status": "ok", "campaign": campaign})
 
 
 @app.route("/download/<path:filepath>")
