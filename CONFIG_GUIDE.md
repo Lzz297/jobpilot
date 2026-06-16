@@ -2,8 +2,8 @@
 
 本项目有两套配置体系，可独立使用也可组合使用：
 
-- **旧体系（`profiles/`）**：单用户配置文件，适合个人日常使用。支持 Web UI 直接编辑。
-- **新体系（`instances/`）**：三层组装架构（User × Strategy × Campaign），适合多用户、多策略的批量实验和评估场景。通过 `python agent.py --campaign <name>` 启动。
+- **系统基础设施（`profiles/`）**：LLM 供应商、过滤条件、市场调研参数、画像选择。不随求职方向变化。支持 Web UI 直接编辑。
+- **业务配置（`instances/`）**：三层组装架构（User × Strategy × Campaign）— 搜索词、匹配权重、数量控制。换方向时主要改这里。通过 `python agent.py --campaign <name>` 启动。
 
 无论哪种方式，均**无需改动任何代码**。
 
@@ -14,12 +14,12 @@
 | 配置文件 | 控制什么 | 修改方式 | 改动频率 |
 |---------|---------|---------|---------|
 | [`.env`](#0-env--环境变量) | API 密钥 | 仅文件 | 极低（换供应商时改） |
-| [`profiles/me.yaml`](#1-meyaml--个人档案) | 你是谁、会什么、想找什么 | 文件 / Web UI 设置面板 | 低（换方向时改） |
-| [`profiles/search_config.yaml`](#2-search_configyaml--搜索与匹配策略) | 搜什么词、怎么过滤、怎么评分 | 文件 / Web UI 设置面板 | 高（每次调方向都改） |
+| [`instances/users/{user}.yaml`](#1-用户画像--个人档案) | 你是谁、会什么、想找什么 | 文件 / Web UI 设置面板 | 低（换方向时改） |
+| [`profiles/search_config.yaml`](#2-search_configyaml--系统基础设施) | LLM 供应商、过滤、市场参数、画像选择 | 文件 / Web UI 设置面板 | 低 |
+| [`instances/campaigns/` + `strategies/`](#6-instances--三层配置组装) | 搜索词、匹配权重、翻页数、JD 上限 | 仅文件 | 高（每次调方向都改） |
 | [`profiles/resume_guide.yaml`](#3-resume_guideyaml--简历撰写规范) | 简历内容怎么写 | 仅文件 | 低（基本不用动） |
 | [`profiles/resume_template.yaml`](#4-resume_templateyaml--简历模板结构) | 简历段落顺序和格式 | 仅文件 | 低（微调排版时改） |
 | [`profiles/prompts.yaml`](#5-promptsyaml--llm-提示词) | 教 LLM 怎么筛选、评分、分析、写简历 | 仅文件 | 中（优化判断逻辑时改） |
-| [`instances/` 新配置架构](#6-instances--三层配置组装) | 多用户 × 多策略 × 多 Campaign 的灵活组合 | 仅文件 | 中（新增策略/用户时改） |
 
 ---
 
@@ -47,11 +47,13 @@ GLM_API_KEY=sk-your-key-here
 
 ---
 
-## 1. `me.yaml` — 个人档案
+## 1. 用户画像 — 个人档案
 
 **作用：** 这是 Agent 认识你的唯一来源。搜索过滤、匹配评分、简历生成全部依赖它。
 
-> **💡 修改方式：** 除了直接编辑文件外，也可在 Web UI 侧边栏点击「设置」进入编辑面板，或在侧边栏点击「me.yaml」按钮预览 YAML 原文。
+**文件位置：** `instances/users/{user}.yaml`（由 `search_config.yaml` 的 `user` 字段指定，如 `user: "li_ming"` → 加载 `instances/users/li_ming.yaml`）。
+
+> **💡 修改方式：** 除了直接编辑文件外，也可在 Web UI 侧边栏点击「设置」进入编辑面板（实际读写 `instances/users/` 目录），或通过画像下拉框切换不同用户。
 
 ### 结构一览
 
@@ -100,11 +102,28 @@ education / projects / certifications / summary
 
 ---
 
-## 2. `search_config.yaml` — 搜索与匹配策略
+## 2. `search_config.yaml` — 系统基础设施
 
-**作用：** 控制整条流水线——搜什么、过滤什么、怎么评分。**换方向时主要改这个文件。**
+**作用：** 存放不随求职方向变化的系统级配置——LLM 供应商、公司过滤、市场调研参数、当前画像选择。**换方向时主要改 `instances/campaigns/` 和 `instances/strategies/`，而非此文件。**
 
 > **💡 修改方式：** 除了直接编辑文件外，也可在 Web UI 侧边栏进行快速操作——「设置」面板可编辑完整 YAML 内容，LLM 下拉菜单可一键切换模型，排序按钮可切换按时间/按相关度。
+
+当前文件完整内容：
+
+```yaml
+filters:
+  exclude_companies: []
+llm:
+  model: deepseek-v4-pro
+  provider: deepseek
+market_analysis:
+  batch_size: 5
+  jd_max_chars: 6000
+  max_fetch_jd: 100
+  max_pages: 4
+sort_mode: date
+user: li_ming
+```
 
 ### 2.1 `llm` — LLM 供应商
 
@@ -120,32 +139,13 @@ llm:
 | 用更便宜/更强的模型 | 改 `model` 为供应商支持的模型名 |
 | **不编辑文件，一键切换** | Web UI 侧边栏 LLM 下拉菜单直接选择，切换**即时生效**并自动回写配置 |
 
-### 2.2 `search_queries` — 搜索关键词
+### 2.2 `user` — 当前用户画像
 
 ```yaml
-search_queries:
-  - keywords: "Web3"
-    location: "Hong Kong"
-  - keywords: "Solutions Engineer"
-    location: "Hong Kong"
-    classification: "science-technology"   # 可选：限定行业分类
+user: li_ming
 ```
 
-**原理：** 每组生成一次 JobsDB 搜索请求，然后翻页抓取列表。
-- 不填 `classification`：`hk.jobsdb.com/{keywords}-jobs`（搜索全部行业）
-- 填 `classification`：`hk.jobsdb.com/{keywords}-jobs-in-{classification}`（限定行业）
-- 可选填 `sort_by`：覆盖全局 `sort_mode`，`"date"` = 按发布时间，`"relevance"` = 按相关度
-
-| 你想达到的效果 | 怎么改 |
-|--------------|-------|
-| 搜索范围更广 | 增加更多关键词组（如加上 "Crypto", "DeFi"） |
-| 搜索更精准、减少噪音 | 用更具体的词，或者加 `classification` 限定行业 |
-| 搜其他城市 | 修改 `location`（如 "Singapore"、"Remote"） |
-| 某组搜索词用不同排序 | 在该组加 `sort_by: "relevance"` |
-
-**建议：** 宽泛词（Web3）和精确词（Web3 Product）搭配使用，5-8 组为宜。对于含义很广的岗位名称（如 Solutions Engineer），建议加 `classification` 缩小范围。`classification` 的值直接对应 JobsDB URL 中 `-in-` 后面的部分，自行在 JobsDB 上确认即可。
-
----
+指定当前使用的用户画像文件名（不含 `.yaml` 后缀）。`load_profile()` 和 Web UI 的 `/api/config/yaml/me` 均通过此字段定位 `instances/users/{user}.yaml`。Web UI 侧边栏画像下拉框可切换，切换即时生效。
 
 ### 2.3 `filters` — 过滤条件
 
@@ -159,119 +159,47 @@ filters:
 | 你想达到的效果 | 怎么改 |
 |--------------|-------|
 | 排除特定公司 | 在 `exclude_companies` 加公司名 |
-| 提高匹配精度 | 调整 `matching.min_match_score` |
 
----
-
-### 2.4 数量控制
-
-```yaml
-max_pages_per_query: 3     # 每组搜索词翻几页（每页约30条）
-max_total_results: 200     # 进入 JD 抓取阶段的上限
-```
-
-| 你想达到的效果 | 怎么改 |
-|--------------|-------|
-| 看到更多候选岗位 | 调大 `max_total_results`（如 50），但会更慢 |
-| 搜索更快 | 减小 `max_pages_per_query`（如 2）和 `max_total_results`（如 15） |
-
-**经验值：**
-- 快速扫一下：`max_pages=2, max_total=50` → 约 2 分钟
-- 正常搜索：`max_pages=3, max_total=200` → 约 5-10 分钟
-- 深度搜索：`max_pages=6, max_total=300` → 约 15 分钟
-
----
-
-### 2.5 `matching` — 匹配评分
-
-这是最核心的部分，控制 LLM 如何给每个岗位打分。
-
-#### 基础设置
-
-```yaml
-matching:
-  min_match_score: 45    # 及格线
-  top_n: 999             # 达标岗位全部保留（不限数量）
-```
-
-#### 及格线复评
-
-```yaml
-  borderline_rescore: true   # 开启二次评分
-  borderline_range: 8        # ±8 分内做复评
-```
-
-#### `weight_profiles` — 权重模板
-
-```yaml
-  weight_profiles:
-    web3:
-      skill: 25         # 技能匹配
-      experience: 15    # 经验年限
-      level: 10         # 职级匹配
-      industry: 30      # 行业对口
-      bonus: 20         # 加分项
-```
-
-**5 个维度必须加起来 = 100。**
-
-| 维度 | LLM 评分依据 | 什么时候给高权重 |
-|-----|-------------|---------------|
-| `skill` | JD 要求的语言/框架/工具，你会多少 | 技术岗、JD 技能要求明确时 |
-| `experience` | 工作年限是否达标 | 要求资深经验的岗位 |
-| `level` | 岗位级别 vs 你的级别 | 职级明确的大公司岗位 |
-| `industry` | 行业是否对口 | 行业壁垒高的岗位（如 Web3、金融） |
-| `bonus` | 双语、AI 工具、沟通能力等软技能 | 复合型/非纯技术岗位 |
-
-#### `weight_rules` — 岗位分类（备用）
-
-```yaml
-  weight_rules:
-    web3:
-      - "web3"
-      - "blockchain"
-    technical:
-      - "developer"
-      - "engineer"
-```
-
-**原理：** 岗位方向主要由 LLM 评分时根据完整 JD 判断（`llm_direction` 字段），比标题关键词匹配更准确。`weight_rules` 仅在 LLM 未返回有效方向时作为备用分类方案。
-
----
-
-### 2.6 `market_analysis` — 市场调研设置
+### 2.4 `market_analysis` — 市场调研设置
 
 ```yaml
 market_analysis:
-  max_pages: 4            # 翻几页列表
-  max_fetch_jd: 100       # 最多抓几条 JD
-  batch_size: 5            # LLM 每批分析几条
-  jd_max_chars: 6000       # 每条 JD 截断长度
+  max_pages: 4            # 翻几页列表（代码级 fallback: 3）
+  max_fetch_jd: 100       # 最多抓几条 JD（代码级 fallback: 40）
+  batch_size: 5            # LLM 每批分析几条（代码级 fallback: 10）
+  jd_max_chars: 6000       # 每条 JD 截断长度（代码级 fallback: 2000）
 ```
 
 **作用：** 仅在调用 `analyze_market` 工具时使用，与找工作流程独立。
 
----
-
-### 2.7 `sort_mode` — 排序设置
+### 2.5 `sort_mode` — 排序设置
 
 ```yaml
 sort_mode: "date"      # "date" = 按发布时间排序（最新在前）
                        # "relevance" = 按相关度排序（JobsDB 默认）
 ```
 
-**原理：** 控制 JobsDB 搜索结果的排序方式。`"date"` 对应 URL 参数 `?sortmode=ListedDate`，`"relevance"` 则不传 `sortmode` 参数（走 JobsDB 默认相关度排序）。
+**原理：** 控制 JobsDB 搜索结果的排序方式。Web UI 侧边栏排序切换按钮可临时覆盖，不写入配置文件。
 
-**单个搜索词覆盖：** 如果某个关键词组需要不同的排序方式，可以在 `search_queries` 条目中加 `sort_by` 字段：
+---
 
-```yaml
-search_queries:
-  - keywords: "Web3"
-    location: "Hong Kong"
-    sort_by: "relevance"   # 覆盖全局 sort_mode，按相关度搜索
-```
+### ⚠️ 已迁移的配置项
 
-**Web UI：** 侧边栏 "Find & Match Jobs" 区域有排序切换按钮（按发布时间 / 按相关度），点击即切换。**注意：此操作仅影响当次请求的 `sort_by` 参数，不会写入配置文件。** 要永久生效仍需修改 `sort_mode` 配置项。
+以下字段原本在 `search_config.yaml` 中，现已迁移至 `instances/` 三层架构：
+
+| 原字段 | 现位置 | 说明 |
+|--------|--------|------|
+| `search_queries` | `instances/campaigns/{name}.yaml` | 搜索关键词组 |
+| `max_pages_per_query` | `instances/campaigns/{name}.yaml` → `overrides` 段 | 每组关键词翻页数 |
+| `max_total_results` | `instances/campaigns/{name}.yaml` → `overrides` 段 | JD 抓取上限 |
+| `matching.weight_profiles` | `instances/strategies/{name}.yaml` | 五维权重方案 |
+| `matching.weight_rules` | `instances/strategies/{name}.yaml` | 标题关键词分类规则 |
+| `matching.min_match_score` | `instances/strategies/{name}.yaml` | 最低达标分数 |
+| `matching.borderline_rescore` | `instances/strategies/{name}.yaml` | 及格线复评开关 |
+| `matching.borderline_range` | `instances/strategies/{name}.yaml` | 复评区间 |
+| `matching.top_n` | `instances/strategies/{name}.yaml` | 保留 Top N |
+
+详见 [§6 — `instances/` 三层配置组装](#6-instances--三层配置组装)。
 
 ---
 
@@ -349,13 +277,11 @@ customization:
 | `resume.base_rules` | 简历撰写的通用基础规则 | 所有简历生成模式 |
 | `resume.prompt_for_job` | 基于匹配岗位生成简历的指令 | 简历模式 2 |
 | `resume.prompt_for_jd_text` | 基于粘贴 JD 生成简历的指令 | 简历模式 3 |
-| `resume.prompt_for_role` | 基于岗位方向生成简历的指令 | 简历模式 4 |
-| `resume.prompt_for_general` | 生成通用简历的指令 | 简历模式 5 |
 | `resume.cover_letter_prompt` | Cover Letter 撰写指令 | 求职信生成 |
 | `resume.resume_review_prompt` | 英文简历自检（审查定稿） | 简历审查 |
-| `resume.aggregate_system_prompt` | 方向聚合分析 + 三级技能分类 | 简历模式 1（方向聚合） |
-| `resume.prompt_for_direction_data` | 基于聚合数据生成方向简历 | 简历模式 1 |
-| `resume.cl_for_direction_data` | 方向通用 Cover Letter | 简历模式 1 |
+| `resume.aggregate_system_prompt` | 方向聚合分析 + 三级技能分类 | 方向聚合（一键找工作） |
+| `resume.prompt_for_direction_data` | 基于聚合数据生成方向简历 | 方向聚合（一键找工作） |
+| `resume.cl_for_direction_data` | 方向通用 Cover Letter | 方向聚合（一键找工作） |
 | `resume.translate_resume_prompt` | 简历翻译（英→繁中/简中） | 所有模式翻译阶段 |
 | `resume.translate_cl_prompt` | Cover Letter 翻译 | 所有模式翻译阶段 |
 
@@ -366,7 +292,7 @@ customization:
 | 占位符 | 出现在 | 替换为什么 |
 |--------|-------|-----------|
 | `<profile_summary>` | job_match, aggregate_system_prompt | 候选人完整档案的 YAML 文本 |
-| `<weights_text>` | job_match | 5 维度权重说明（自动从 search_config 生成） |
+| `<weights_text>` | job_match | 5 维度权重说明（自动从 Campaign 配置的 weight_profile 生成） |
 | `<score_formula>` | job_match | 总分计算公式（自动生成） |
 | `<job_category>` | market_analysis | 用户指定的岗位类别（如 "Web3"） |
 | `<location>` | market_analysis.report | 搜索地点（如 "Hong Kong"） |
@@ -378,7 +304,6 @@ customization:
 | `<guide>` | resume.base_rules | 简历撰写指南（来自 resume_guide.yaml） |
 | `<template>` | resume.prompt_for_* | 简历模板配置（来自 resume_template.yaml） |
 | `<base_rules>` | resume.prompt_for_* | 渲染后的基础规则文本 |
-| `<role>` | resume.prompt_for_role | 岗位方向名称（如 "Solutions Engineer"） |
 | `<direction>` | prompt_for_direction_data, cl_for_direction_data | 方向名称（如 "payment"） |
 | `<target_lang>` | translate_resume_prompt, translate_cl_prompt | 目标语言（如 "繁體中文（香港用語）"） |
 
@@ -434,39 +359,39 @@ customization:
 
 ### 场景 1：换一个求职方向（如从后端开发转 Web3 产品）
 
-1. **`me.yaml`** → 修改 `job_intent.target_titles` 和 `target_industries`
-2. **`search_config.yaml`** → 修改 `search_queries` 关键词、调整 `filters`、修改 `weight_profiles` 权重
-3. （可选）`me.yaml` → 调整 `summary` 和 `highlights` 以突出新方向相关经验
+1. **用户画像** → 修改 `job_intent.target_titles` 和 `target_industries`
+2. **Campaign / Strategy** → 新建或修改 `instances/campaigns/{name}.yaml`（搜索词）和 `instances/strategies/{name}.yaml`（权重方案）
+3. （可选）用户画像 → 调整 `summary` 和 `highlights` 以突出新方向相关经验
 4. （可选）`prompts.yaml` → 在 `job_match.scoring_system_prompt` 中调整评分规则
 
 ### 场景 2：搜索结果太少
 
-1. `search_config.yaml` → 增加更多 `search_queries` 关键词组
-2. `search_config.yaml` → 调大 `max_pages_per_query`
-3. `search_config.yaml` → 降低 `matching.min_match_score`
+1. `instances/campaigns/{name}.yaml` → 增加更多 `search_queries` 关键词组
+2. `instances/campaigns/{name}.yaml` → 在 `overrides` 段调大 `max_pages_per_query`
+3. `instances/strategies/{name}.yaml` → 降低 `min_match_score`
 
 ### 场景 3：搜索结果噪音太多
 
-1. `search_config.yaml` → 用更精确的关键词（如 "Web3 Product Manager" 而非 "Web3"）
-2. `search_config.yaml` → 提高 `matching.min_match_score`
-3. `search_config.yaml` → 调整 `weight_profiles` 增加相关维度的权重
+1. `instances/campaigns/{name}.yaml` → 用更精确的关键词
+2. `instances/strategies/{name}.yaml` → 提高 `min_match_score`
+3. `instances/strategies/{name}.yaml` → 调整 `weight_profile` 增加相关维度的权重
 
 ### 场景 4：简历不够突出
 
-1. `me.yaml` → 优化 `work_experience.highlights`（用数据量化成果）
-2. `me.yaml` → 完善 `summary`（突出核心竞争力）
+1. 用户画像 → 优化 `work_experience.highlights`（用数据量化成果）
+2. 用户画像 → 完善 `summary`（突出核心竞争力）
 3. `resume_guide.yaml` → 调整 `content_rules.work_experience.good_examples` 给 LLM 更好的示范
 4. （可选）`prompts.yaml` → 在 `resume.base_rules` 中添加更具体的写作要求
 
 ### 场景 5：投不同城市
 
-1. `me.yaml` → 修改 `location` 和 `job_intent.location_preference`
-2. `search_config.yaml` → 修改每组 `search_queries` 的 `location`
+1. 用户画像 → 修改 `location` 和 `job_intent.location_preference`
+2. `instances/campaigns/{name}.yaml` → 修改每组 `search_queries` 的 `location`
 
 ### 场景 6：切换搜索结果排序
 
 1. **全局切换** → `search_config.yaml` 修改 `sort_mode` 为 `"relevance"`（按相关度）或 `"date"`（按发布时间）
-2. **单个搜索词** → 在对应的 `search_queries` 条目中加 `sort_by: "relevance"` 覆盖全局设置
+2. **单个搜索词** → 在对应 Campaign 的 `search_queries` 条目中加 `sort_by: "relevance"` 覆盖全局设置
 3. **临时切换** → Web UI 侧边栏排序切换按钮直接选择
 
 ---
@@ -544,36 +469,39 @@ python web_app.py
 
 ### 6.5 新旧体系对比
 
-| 维度 | 旧体系（profiles/） | 新体系（instances/） |
+| 维度 | 系统基础设施（profiles/） | 业务配置（instances/） |
 |------|-------------------|---------------------|
-| 用户画像 | `profiles/me.yaml`（单用户） | `instances/users/*.yaml`（多用户） |
-| 权重方案 | `search_config.yaml` 内嵌 5 种 | `instances/strategies/*.yaml`（独立文件） |
-| 搜索词 | `search_config.yaml` 内嵌注释切换 | `instances/campaigns/*.yaml`（显式声明） |
+| 用户画像 | `instances/users/{user}.yaml`（通过 `search_config.yaml` 的 `user` 字段选择） | 同左（同一套画像文件） |
+| 权重方案 | —（已迁移） | `instances/strategies/*.yaml`（独立文件，5 种预设） |
+| 搜索词 | —（已迁移） | `instances/campaigns/*.yaml`（显式声明） |
+| 数量控制 | —（已迁移） | `instances/campaigns/*.yaml` 的 `overrides` 段 |
+| LLM / 过滤 / 市场参数 | `search_config.yaml` | —（沿用 profiles/） |
 | 配置覆盖 | 直接修改 YAML | `overrides` 字段 + 深度合并 |
-| Web UI 支持 | ✅ 支持 | ✅ 支持（侧边栏下拉框） |
-| 适用场景 | 个人日常使用 | 批量实验、评估、多用户 |
+| Web UI 支持 | ✅ 侧边栏设置面板、LLM 切换、排序切换 | ✅ 侧边栏 Campaign 下拉框、画像下拉框 |
+| 适用场景 | 个人日常使用（不改动的系统参数） | 换方向、批量实验、多用户 |
 
 ---
 
 ## 配置文件之间的关系
 
-### 旧体系（profiles/）
+### 系统基础设施（profiles/）
 
 ```
 .env (API 密钥)
   └──→ config.py 初始化 LLM client
 
-me.yaml (你是谁)
+search_config.yaml (LLM / 过滤 / 市场参数 / 画像选择)
+  │
+  ├──→ job_search.py   读取 filters
+  ├──→ market_analysis.py  读取 market_analysis 段
+  ├──→ config.py       读取 llm 段初始化客户端
+  └──→ config.py       load_profile() 通过 user 字段定位画像
+
+instances/users/{user}.yaml (你是谁)
   │
   ├──→ job_match.py    读取完整档案 → 作为 LLM 评分的参考基准
   ├──→ resume_gen.py   读取全部字段 → 作为简历内容的唯一素材来源
   └──→ market_analysis.py  读取技能 → 用于差距分析对比
-
-search_config.yaml (搜什么、怎么筛、怎么评分)
-  │
-  ├──→ job_search.py   读取 search_queries + filters + 数量控制
-  ├──→ job_match.py    读取 matching（权重、及格线、复评）
-  └──→ market_analysis.py  读取 market_analysis 段
 
 resume_guide.yaml (简历怎么写)
   └──→ resume_gen.py   注入 LLM system prompt，指导内容写法
@@ -589,21 +517,21 @@ prompts.yaml (教 LLM 怎么判断)
   └──→ resume_gen.py           简历撰写 + Cover Letter
 ```
 
-### 新体系（instances/）— 三层组装
+### 三层组装体系（instances/）
 
 ```
 instances/users/{user}.yaml         # 用户画像
         │
-instances/strategies/{strategy}.yaml # 权重方案 + 关键词规则
+instances/strategies/{strategy}.yaml # 权重方案 + 匹配参数 + 关键词规则
         │
 instances/campaigns/{name}.yaml     # 搜索词 + overrides
         │
         ├──→ config_assembler.py  合并组装
         │         │
-        │         ├── base: profiles/search_config.yaml（llm / filters / 数量）
+        │         ├── base: profiles/search_config.yaml（llm / filters / 市场参数）
         │         ├── + profiles/prompts.yaml
         │         ├── + profiles/resume_template.yaml + resume_guide.yaml
         │         └── → 输出完整配置字典
         │
-        └──→ job_search / job_match / resume_gen 等模块接收 config 参数
+        └──→ search_jobs / match_jobs 接收 config 参数（通过 _CONFIG_AWARE_TOOLS 自动注入）
 ```
