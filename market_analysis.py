@@ -535,7 +535,7 @@ def _run_gap_analysis(analysis, profile):
                     _load_market_prompt("gap_analysis_prompt"),
                     technical_skills=skills_text, profile=profile_summary)},
                  {"role": "user", "content": "请进行差距分析。"}],
-                temperature=0,
+                temperature=0, thinking={"type": "disabled"},
             )
             result = parse_json_response(msg.content)
             if result and isinstance(result, dict):
@@ -568,7 +568,7 @@ def _generate_report_via_llm(job_category, location, sample_size, analysis, gap_
         msg = llm_call(
             [{"role": "system", "content": prompt},
              {"role": "user", "content": "请撰写完整的市场分析报告。"}],
-            temperature=0,
+            temperature=0, thinking={"type": "disabled"},
         )
         report = msg.content.strip()
         # 去除 LLM 可能添加的 markdown 代码块包裹

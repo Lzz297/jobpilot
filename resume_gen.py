@@ -364,7 +364,7 @@ def _review_resume(resume_md, file_label, resumes_dir, date_str):
             msg = llm_call(
                 [{"role": "system", "content": review_prompt},
                  {"role": "user", "content": resume_md}],
-                temperature=0,
+                temperature=0, thinking={"type": "disabled"},
             )
             review = parse_json_response(msg.content)
 
