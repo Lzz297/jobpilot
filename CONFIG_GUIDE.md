@@ -275,8 +275,8 @@ customization:
 | `market_analysis.report_prompt` | 教 LLM 怎么撰写市场分析报告 | 市场分析 → 报告撰写 |
 | `market_analysis.gap_analysis_prompt` | 教 LLM 怎么做候选人差距分析 | 市场分析 → 差距分析 |
 | `resume.base_rules` | 简历撰写的通用基础规则 | 所有简历生成模式 |
-| `resume.prompt_for_job` | 基于匹配岗位生成简历的指令 | 简历模式 2 |
-| `resume.prompt_for_jd_text` | 基于粘贴 JD 生成简历的指令 | 简历模式 3 |
+| `resume.prompt_for_job` | 基于匹配岗位生成简历的指令 | 匹配岗位 |
+| `resume.prompt_for_jd_text` | 基于粘贴 JD 生成简历的指令 | JD 文本 |
 | `resume.cover_letter_prompt` | Cover Letter 撰写指令 | 求职信生成 |
 | `resume.resume_review_prompt` | 英文简历自检（审查定稿） | 简历审查 |
 | `resume.aggregate_system_prompt` | 方向聚合分析 + 三级技能分类 | 方向聚合（一键找工作） |
@@ -432,7 +432,7 @@ campaigns/web3_hunt.yaml
   ├── strategy: web3    → 加载 instances/strategies/web3.yaml（含 weight_profile + weight_rules_keywords）
   │
   └── 组装逻辑（config_assembler.py）：
-       1. 加载 profiles/search_config.yaml 获取通用配置（llm / filters / 数量控制）
+       1. 加载 profiles/search_config.yaml 获取通用配置（llm / filters / 市场参数）
        2. 加载 profiles/prompts.yaml 获取 prompt 模板
        3. 加载 profiles/resume_template.yaml + resume_guide.yaml
        4. 从 strategy 构建 matching 段（weight_profiles + weight_rules）
