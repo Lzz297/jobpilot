@@ -82,23 +82,41 @@ def _aggregate_direction_requirements(matched_jobs, profile_text, search_cfg):
         system_prompt = render_prompt(template, profile_summary=profile_text)
 
         try:
-            msg = llm_call(
+            # 主路径：Instructor + Pydantic 结构化输出
+            from engine.contracts import DirectionAggregationResult
+            result = llm_call(
                 [{"role": "system", "content": system_prompt},
                  {"role": "user", "content": f"方向：{direction}\n\n以下是该方向 {len(jobs)} 个达标岗位的 JD：\n{jds_text}"}],
                 temperature=0, thinking={"type": "disabled"},
+                response_model=DirectionAggregationResult,
             )
-            parsed = parse_json_response(msg.content)
-            if parsed and isinstance(parsed, dict):
-                parsed["direction"] = direction
-                parsed["job_count"] = len(jobs)
-                results[direction] = parsed
-                dm = len(parsed.get("common_requirements", {}).get("direct_match", []))
-                ql = len(parsed.get("common_requirements", {}).get("quick_learnable", []))
-                emit(f"     ✅ {direction}: 直接匹配 {dm} 项，可补齐 {ql} 项")
-            else:
-                emit(f"     ⚠️ {direction} 聚合分析返回格式异常，跳过")
-        except Exception as e:
-            emit(f"     ❌ {direction} 聚合分析失败: {e}")
+            parsed = result.model_dump()
+            parsed["direction"] = direction
+            parsed["job_count"] = len(jobs)
+            results[direction] = parsed
+            dm = len(parsed.get("common_requirements", {}).get("direct_match", []))
+            ql = len(parsed.get("common_requirements", {}).get("quick_learnable", []))
+            emit(f"     ✅ {direction}: 直接匹配 {dm} 项，可补齐 {ql} 项")
+        except Exception:
+            # 回退：旧方式（parse_json_response）
+            try:
+                msg = llm_call(
+                    [{"role": "system", "content": system_prompt},
+                     {"role": "user", "content": f"方向：{direction}\n\n以下是该方向 {len(jobs)} 个达标岗位的 JD：\n{jds_text}"}],
+                    temperature=0, thinking={"type": "disabled"},
+                )
+                parsed = parse_json_response(msg.content)
+                if parsed and isinstance(parsed, dict):
+                    parsed["direction"] = direction
+                    parsed["job_count"] = len(jobs)
+                    results[direction] = parsed
+                    dm = len(parsed.get("common_requirements", {}).get("direct_match", []))
+                    ql = len(parsed.get("common_requirements", {}).get("quick_learnable", []))
+                    emit(f"     ✅ {direction}: 直接匹配 {dm} 项，可补齐 {ql} 项")
+                else:
+                    emit(f"     ⚠️ {direction} 聚合分析返回格式异常，跳过")
+            except Exception as e:
+                emit(f"     ❌ {direction} 聚合分析失败: {e}")
 
     return results
 
@@ -313,16 +331,15 @@ def _review_resume(resume_md, file_label, resumes_dir, date_str):
     emit("   🔍 正在审查英文简历质量...")
 
     try:
-        msg = llm_call(
+        # 主路径：Instructor + Pydantic 结构化输出
+        from engine.contracts import ResumeReviewResult
+        result = llm_call(
             [{"role": "system", "content": review_prompt},
              {"role": "user", "content": resume_md}],
-            temperature=0,
+            temperature=0, thinking={"type": "disabled"},
+            response_model=ResumeReviewResult,
         )
-        review = parse_json_response(msg.content)
-
-        if not review or not isinstance(review, dict):
-            emit("   ⚠️ 简历审查返回格式异常，跳过")
-            return None, ""
+        review = result.model_dump()
 
         safe_label = _make_safe_label(file_label)
         review_path = os.path.join(
@@ -341,9 +358,40 @@ def _review_resume(resume_md, file_label, resumes_dir, date_str):
 
         return review, summary
 
-    except Exception as e:
-        emit(f"   ⚠️ 简历审查失败: {e}")
-        return None, ""
+    except Exception:
+        # 回退：旧方式（parse_json_response）
+        try:
+            msg = llm_call(
+                [{"role": "system", "content": review_prompt},
+                 {"role": "user", "content": resume_md}],
+                temperature=0,
+            )
+            review = parse_json_response(msg.content)
+
+            if not review or not isinstance(review, dict):
+                emit("   ⚠️ 简历审查返回格式异常，跳过")
+                return None, ""
+
+            safe_label = _make_safe_label(file_label)
+            review_path = os.path.join(
+                resumes_dir, f"resume_review_{safe_label}_{date_str}.json")
+            with open(review_path, "w", encoding="utf-8") as f:
+                json.dump(review, f, ensure_ascii=False, indent=2)
+            track_file(review_path, "简历审查报告 JSON")
+
+            score = review.get("overall_score", "?")
+            top3 = review.get("top_3_improvements", [])
+            summary = f"\n📋 简历审查结果: 总评 {score}\n"
+            if top3:
+                summary += "   Top 3 改进建议:\n"
+                for i, tip in enumerate(top3, 1):
+                    summary += f"   {i}. {tip}\n"
+
+            return review, summary
+
+        except Exception as e:
+            emit(f"   ⚠️ 简历审查失败: {e}")
+            return None, ""
 
 _TRANSLATE_LANG_NAMES = {"hk": "繁體中文（香港用語）", "cn": "简体中文"}
 
