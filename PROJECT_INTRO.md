@@ -22,7 +22,7 @@
 |------|----------|------|
 | 编程语言 | Python 3.13 | 主开发语言 |
 | LLM | DeepSeek / Qwen / GLM（可配置切换） | 通过 OpenAI SDK 兼容接口调用，`config.py` 中的 `llm_call()` 为统一入口 |
-| LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 19 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出。支持 `thinking` 模式（DeepSeek V4）和 `response_model` 模式（Instructor + Pydantic 结构化输出） |
+| LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 24 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出。支持 `thinking` 模式（DeepSeek V4）和 `response_model` 模式（Instructor + Pydantic 结构化输出） |
 | 结构化输出 | Instructor（Pydantic schema 校验） | 市场分析 Phase B/C 和评估脚本 `score_single_jd()` 走 Instructor 模式，自动校验 LLM 输出结构并重试修正。匹配评分主路径 `_score_batch()` 使用 JSON 解析后 Pydantic 校验模式 |
 | 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
 | HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
@@ -55,7 +55,7 @@ D:\job-agent/
 ├── config_assembler.py       # [组装] Campaign 配置三层组装（user × strategy × campaign）
 │
 ├── engine/                   # [契约] Pydantic 数据模型（6 个文件）
-│   ├── contracts/            #     11 个 Pydantic 模型
+│   ├── contracts/            #     14 个 Pydantic 模型
 │   │   ├── match_result.py   #       MatchResult + Scores
 │   │   ├── market_result.py  #       MarketAnalysisResult + TechnicalSkill
 │   │   ├── gap_result.py     #       GapAnalysisResult + 4 个子模型
@@ -80,7 +80,7 @@ D:\job-agent/
 ├── profiles/                 # [配置文件目录] 系统基础设施配置
 │   ├── search_config.yaml    #     LLM 配置 + 过滤 + 市场参数 + user 字段（业务配置已迁移至 instances/）
 │   ├── search_config_fast.yaml #   快速测试用配置
-│   ├── prompts.yaml          #     17 个 LLM prompt 模板
+│   ├── prompts.yaml          #     15 个 LLM prompt 模板
 │   ├── resume_template.yaml  #     简历模板
 │   └── resume_guide.yaml     #     简历撰写指南
 │
@@ -141,7 +141,7 @@ D:\job-agent/
 │  │              config.py                   │      │
 │  │  ┌──────────────────────────────────┐   │      │
 │  │  │  llm_call()  统一 LLM 调用入口    │   │      │
-│  │  │  · 19 处调用点全部收敛到这里      │   │      │
+│  │  │  · 24 处调用点全部收敛到这里      │   │      │
 │  │  │  · 指数退避重试（429/超时/5xx）  │   │      │
 │  │  │  · 错误分类（不可重试直接抛出）   │   │      │
 │  │  │  · 3 Provider 运行时切换         │   │      │
@@ -212,7 +212,7 @@ llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=None
 - `temperature` 参数为 `None` 时不传给 API（使用默认值 1.0，用于简历生成等创造性任务）
 - `temperature=0` 时显式传递（用于匹配评分、市场分析等确定性任务）
 - `tools` 参数为 `None` 时不传（纯文本分析类调用不需要工具）
-- 所有 19 处调用点已收敛，新增任何 LLM 功能（如 token 统计、缓存、fallback）只需改这一处
+- 所有 24 处调用点已收敛，新增任何 LLM 功能（如 token 统计、缓存、fallback）只需改这一处
 
 ### 2.3 核心工作流
 
@@ -1350,7 +1350,7 @@ user: li_ming
 
 ### 4.3 profiles/prompts.yaml — LLM 提示词配置
 
-所有模块的 LLM 提示词均可通过此文件配置（共 17 个 prompt 模板）。**此文件是所有 prompt 的唯一来源**——任何 key 缺失时程序会抛出 `RuntimeError`，不允许静默回退。各模块通过 `_load_*_prompt()` helper 函数统一加载。
+所有模块的 LLM 提示词均可通过此文件配置（共 15 个 prompt 模板）。**此文件是所有 prompt 的唯一来源**——任何 key 缺失时程序会抛出 `RuntimeError`，不允许静默回退。各模块通过 `_load_*_prompt()` helper 函数统一加载。
 
 ```yaml
 agent:
@@ -1588,7 +1588,7 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 | 4 | **Playwright 而非 wkhtmltopdf 渲染 PDF** | Chromium CSS 支持最完整、原生 CJK 字体、复用爬虫的 Playwright 依赖 |
 | 5 | **简历英文先行 + 精确翻译** | 英文是通用求职语言；各语言独立生成会导致内容差异（面试时信息不一致）；翻译 prompt 严格控制结构一致性 |
 | 6 | **简历质量自检 + 自动重写** | LLM 生成的简历可能暴露候选人弱点（年限、英语水平）、缺少量化、ATS 不友好；审查 → 反馈 → 自动修正 |
-| 7 | **llm_call() 统一入口** | 消除 19 处分散调用点的维护负担；集中管理重试/退避/错误分类；任何新功能（缓存、fallback、token 统计）只需改一处 |
+| 7 | **llm_call() 统一入口** | 消除 24 处分散调用点的维护负担；集中管理重试/退避/错误分类；任何新功能（缓存、fallback、token 统计）只需改一处 |
 | 8 | **方向聚合跳过 default** | `default` 方向的岗位无法归类到具体方向，聚合分析无意义（JD 之间共性不足） |
 | 9 | **LLM 判断方向优先 + 标题关键词回退** | LLM 基于完整 JD 判断更准确；标题关键词回退作为兜底（LLM 输出不可靠时） |
 
@@ -1629,7 +1629,7 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 ## 十、项目亮点总结
 
 1. **双入口架构**：终端 CLI + Web UI（Flask + SSE），共用同一套 Agent 和工具系统
-2. **统一 LLM 调用层**：`llm_call()` 收敛 19 处调用点 + 内建指数退避重试 + 错误分类
+2. **统一 LLM 调用层**：`llm_call()` 收敛 24 处调用点 + 内建指数退避重试 + 错误分类
 3. **多 Provider 支持**：DeepSeek / Qwen / GLM 运行时动态切换，不重启、立即生效
 4. **全量抓取 + 精准评分**：三层漏斗不经过 LLM 预过滤，确保匹配评分基于完整 JD
 5. **数据驱动爬虫**：通用字段提取器 + 4 层解析回退 + GraphQL 模式支持，适应 JobsDB 页面结构变化
@@ -1639,5 +1639,5 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 9. **独立市场调研**：四阶段流程 + 11+ 维度分析 + 差距分析（含可执行学习路径）+ 批量分析
 10. **全流程文件追踪**：每轮对话后自动汇总生成的文件列表（路径 + 大小）
 11. **双模式 emit**：`threading.local()` 实现终端 print / Web SSE 自动切换
-12. **Prompt 全配置化**：17 个 prompt 模板通过 YAML 控制，`<key>` 模板引擎支持动态替换
+12. **Prompt 全配置化**：15 个 prompt 模板通过 YAML 控制，`<key>` 模板引擎支持动态替换
 13. **多层次降级**：详情页失败 → snippet 兜底；审查失败 → 跳过；报告生成失败 → JSON dump 保底；浏览器失效 → 自动重启
