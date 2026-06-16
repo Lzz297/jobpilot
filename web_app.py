@@ -525,9 +525,7 @@ def api_resume():
                 except Exception as e:
                     q.put({"type": "progress", "text": f"⚠️ Campaign 加载失败: {e}"})
 
-            if mode == "direction":
-                result = generate_resume(by_direction=True, output_langs=languages)
-            elif mode == "job":
+            if mode == "job":
                 idx = data.get("job_index", 1)
                 result = generate_resume(job_index=int(idx), output_langs=languages)
             elif mode == "jd":
