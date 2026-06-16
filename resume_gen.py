@@ -119,7 +119,9 @@ def _generate_for_direction_batch(profile, profile_text, template_text, base_rul
     if not matched_jobs:
         return "匹配结果为空，无法按方向生成简历"
 
-    search_cfg = {}  # 匹配配置已迁移到 Campaign，此处仅用于 weight_rules 回退
+    from config import get_campaign_config
+    campaign_config = get_campaign_config()
+    search_cfg = campaign_config if campaign_config else {}
 
     emit(f"\n{'='*50}")
     emit(f"📊 第一步：按方向聚合分析（{len(matched_jobs)} 个达标岗位）")
@@ -178,7 +180,7 @@ def _generate_for_direction_batch(profile, profile_text, template_text, base_rul
 #  主函数：统一入口
 # ============================================================
 
-def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direction=False, output_langs=None, config=None, profile=None):
+def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direction=False, output_langs=None, profile=None):
     """
     多模式简历生成。根据传入参数自动选择模式：
       - by_direction: 基于匹配数据按方向批量生成（需先 search + match）
@@ -188,8 +190,7 @@ def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direct
       - 均为空: 生成通用简历
 
     output_langs: 可选，指定输出语言子集，如 ["en", "hk"]。不传则输出全部三种。
-    config: 配置字典（不传则从文件加载，保持旧行为兼容）
-    profile: 用户画像字典（不传则从 me.yaml 加载）
+    profile: 用户画像字典（不传则从 instances/users/ 自动加载）
     """
     # ── 加载公共资源 ──
     if profile is None:

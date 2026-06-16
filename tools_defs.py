@@ -292,7 +292,6 @@ tool_map = {
 _CONFIG_AWARE_TOOLS = {
     "search_jobs",
     "match_jobs",
-    "generate_resume",
 }
 
 
@@ -316,8 +315,8 @@ def execute_tool(tool_call):
             if "config" in args:
                 emit(f"   ⚠️ [系统] LLM 传入了 config 参数，已被系统配置覆盖")
             args["config"] = cfg
-            # match_jobs 和 generate_resume 还需要 user_profile
-            if func_name in ("match_jobs", "generate_resume"):
+            # match_jobs 还需要 user_profile
+            if func_name == "match_jobs":
                 if "profile" not in args:
                     args["profile"] = cfg.get("user_profile")
 

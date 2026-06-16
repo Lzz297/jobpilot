@@ -187,7 +187,7 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
 
                 if not match_result.startswith("错误"):
                     q.put({"type": "status", "text": "Generating direction-based resumes..."})
-                    resume_result = generate_resume(by_direction=True, output_langs=languages, config=cfg, profile=cfg.get("user_profile") if cfg else None)
+                    resume_result = generate_resume(by_direction=True, output_langs=languages, profile=cfg.get("user_profile") if cfg else None)
                     q.put({"type": "progress", "text": resume_result})
                     reply = resume_result
                 else:
@@ -514,6 +514,17 @@ def api_resume():
     def _run():
         try:
             set_emit_target(q)
+
+            # ── 注入 campaign 配置（与 /api/pipeline 对齐）──
+            if session.get("campaign"):
+                try:
+                    from config_assembler import load_campaign
+                    from config import set_campaign_config
+                    cfg = load_campaign(session["campaign"])
+                    set_campaign_config(cfg)
+                except Exception as e:
+                    q.put({"type": "progress", "text": f"⚠️ Campaign 加载失败: {e}"})
+
             if mode == "direction":
                 result = generate_resume(by_direction=True, output_langs=languages)
             elif mode == "job":
