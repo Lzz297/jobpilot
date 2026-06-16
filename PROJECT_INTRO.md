@@ -313,7 +313,7 @@ set_campaign_config(cfg)   # 设置当前线程的 campaign 配置
 get_campaign_config()      # 获取当前线程的 campaign 配置（无则返回 None）
 ```
 
-CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模式通过 `/api/session/campaign` 端点按 session 注入。在 `execute_tool()` 中，系统层自动将 campaign 配置注入到 `search_jobs`、`match_jobs`、`generate_resume` 三个工具函数——LLM 无需感知 config 的存在。
+CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模式通过 `/api/session/campaign` 端点按 session 注入。在 `execute_tool()` 中，系统层自动将 campaign 配置注入到 `search_jobs`、`match_jobs` 两个工具函数——LLM 无需感知 config 的存在。
 
 ---
 
