@@ -13,7 +13,7 @@
 1. **职位搜索** — 从 JobsDB 批量抓取职位信息（Playwright 无头浏览器 + 4 层解析回退）
 2. **基础清洗** — 排除空标题 + 排除指定公司，不经过 LLM 预过滤
 3. **匹配评分** — 从技能、经验、职级、行业、加分项 5 个维度评分（LLM 动态权重 + 及格线复评）
-4. **简历生成** — 5 种模式 × 三语（英/繁中/简中）× 质量自检，每次产出 7 个文件
+4. **简历生成** — 3 种模式 × 三语（英/繁中/简中）× 质量自检，每次产出 7 个文件
 5. **市场调研** — 独立模块：指定岗位类别 → 全量抓取 → LLM 分析 11+ 个市场维度 → 差距分析 → 报告生成
 
 ### 1.2 技术栈
@@ -54,12 +54,14 @@ D:\job-agent/
 ├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
 ├── config_assembler.py       # [组装] Campaign 配置三层组装（user × strategy × campaign）
 │
-├── engine/                   # [契约] Pydantic 数据模型
-│   ├── contracts/            #     7 个 Pydantic 模型（4 个文件）
+├── engine/                   # [契约] Pydantic 数据模型（6 个文件）
+│   ├── contracts/            #     11 个 Pydantic 模型
 │   │   ├── match_result.py   #       MatchResult + Scores
 │   │   ├── market_result.py  #       MarketAnalysisResult + TechnicalSkill
 │   │   ├── gap_result.py     #       GapAnalysisResult + 4 个子模型
-│   │   └── resume.py         #       Resume + ResumeBullet
+│   │   ├── resume.py         #       Resume + ResumeBullet
+│   │   ├── direction_result.py #     DirectionAggregationResult + CommonRequirements
+│   │   └── review_result.py  #       ResumeReviewResult
 │
 ├── evaluation/               # [评估] Prompt 评估脚本 + 数据集
 │   ├── run_eval.py           #     匹配评分评估
@@ -349,7 +351,7 @@ CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模
 | `load_search_config` | tools_basic | 无 | — | 查看 `profiles/search_config.yaml` 内容（JSON 格式化，仅系统基础设施配置段） |
 | `search_jobs` | job_search | 无 | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
 | `match_jobs` | job_match | 无 | — | 五维动态权重匹配评分 + 及格线复评 |
-| `generate_resume` | resume_gen | 无（5 种模式，`by_direction` / `job_index` / `jd_text` / `role_direction` / 无参数） | 见 §3.9 | 多模式三语简历 + Cover Letter 生成 |
+| `generate_resume` | resume_gen | 无（3 种模式，`by_direction` / `job_index` / `jd_text`。均需显式指定，无参数时返回错误提示） | 见 §3.9 | 多模式三语简历 + Cover Letter 生成 |
 | `list_matched_jobs` | job_match | 无 | — | 查看最近一次匹配排名结果（含五维分数 + 复评信息） |
 | `fetch_job_detail` | tools_basic | `url` | — | 抓取单个岗位 URL 的完整 JD |
 | `analyze_market` | market_analysis | `job_category` | `location`（默认 `"Hong Kong"`）、`include_gap_analysis`（默认 `true`）、`classification`、`sort_by` | 单类市场调研（四阶段） |
@@ -369,7 +371,7 @@ def execute_tool(tool_call):
 
 无参数校验层——LLM 传的参数直接透传给工具函数。工具函数内部各自做错误处理。
 
-**Campaign 配置注入机制**：`execute_tool()` 在调用 `search_jobs`、`match_jobs`、`generate_resume` 三个工具时，自动从线程本地存储注入 Campaign 配置（通过 `_CONFIG_AWARE_TOOLS` 集合判断）。`match_jobs` 和 `generate_resume` 还会额外注入 `user_profile`。此机制让 LLM 无需感知 config 的存在——LLM 只需调用工具，系统层自动补齐配置。如果 LLM 已经传了 `config` 参数，系统会输出警告并覆盖。
+**Campaign 配置注入机制**：`execute_tool()` 在调用 `search_jobs`、`match_jobs` 两个工具时，自动从线程本地存储注入 Campaign 配置（通过 `_CONFIG_AWARE_TOOLS` 集合判断）。`match_jobs` 还会额外注入 `user_profile`。此机制让 LLM 无需感知 config 的存在——LLM 只需调用工具，系统层自动补齐配置。如果 LLM 已经传了 `config` 参数，系统会输出警告并覆盖。
 
 #### 3.3.3 去重机制
 
@@ -621,22 +623,20 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 ```json
 {
   "sid": "a1b2c3d4",
-  "mode": "direction",
+  "mode": "job",
   "languages": ["en", "hk"],
   "job_index": 1,
-  "jd_text": "...",
-  "role_direction": "Solutions Engineer"
+  "jd_text": "..."
 }
 ```
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `sid` | 是 | 会话 ID |
-| `mode` | 是 | `"direction"` / `"job"` / `"jd"` / `"role"` / `"general"` |
+| `mode` | 是 | `"job"` / `"jd"`。不支持的模式返回错误 |
 | `languages` | 否 | 语言子集，如 `["en"]`，默认 `["en","hk","cn"]` |
 | `job_index` | 否 | mode=`"job"` 时必填，匹配排名中的岗位编号（从 1 开始） |
 | `jd_text` | 否 | mode=`"jd"` 时必填，粘贴的完整 JD 文本 |
-| `role_direction` | 否 | mode=`"role"` 时必填，如 `"Solutions Engineer"` |
 
 **Response** (立即): `{"status": "started"}`
 
@@ -737,9 +737,9 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 - **Campaign 切换**：用户可通过侧边栏下拉框选择求职方向（campaign），切换后后续请求自动使用对应的搜索词和权重策略。未选择时自动使用第一个可用 campaign
 - **画像切换**：用户可通过侧边栏切换用户画像（`instances/users/` 下的不同画像文件），切换后立即生效，影响匹配评分和简历生成
 - **简历审查面板**：生成简历后自动展示 bullet 核查结果（checker 系统产出），支持逐条查看 7 种 flag（空源/悬空引用/占位符/数字缺失/数字冲突/约数超范围/强度升级），确认放行，逐条修正（`/api/resume/fix`，含 LLM 修补 → 验证 → 重检 → 重试流程）
-- **简历生成**：支持 5 种模式的简历生成触发方式（含基于粘贴 JD、基于岗位方向、基于通用画像等）
+- **简历生成**：支持「匹配岗位」和「JD 文本」两种直接触发方式；方向聚合由「一键找工作」全流程自动完成
 - **市场调研**：用户可输入岗位类别参数直接触发市场调研
-- **文件管理**：浏览所有历史 Run 和市场调研的输出文件，支持文件下载
+- **文件管理**：浏览所有历史 Run 和市场调研的输出文件，支持文件下载。默认折叠、按分组展开/折叠、全部展开/折叠
 - **运行历史**：查看历史 Run 列表（含时间、当前阶段、岗位数量），区分活跃 Run 和已完成 Run
 - **智能路由层**：`routeMessage()` 函数拦截用户输入，匹配已知指令（"帮我找工作""分析X市场""看看匹配结果"等）直接执行本地操作，无需经过 LLM 决策，其余自由对话才发给 LLM Agent。建议 chips 也通过路由层触发
 - **全局忙锁**：`setBusy()` / `guardBusy()` 控制并发，同一时间只允许一个 Agent 任务执行。busy 状态下 `.agent-trigger` 元素半透明（opacity:0.45）且不可点击，状态指示灯变为琥珀色旋转动画。并发请求返回 HTTP 429
@@ -970,24 +970,23 @@ skill × w1 + experience × w2 + level × w3 + industry × w4 + bonus × w5
 
 ### 3.10 resume_gen.py — 多模式简历生成
 
-**职责**：5 种生成模式 × 英文先行 × 三语翻译 × 质量自检 × bullet 事实核查。
+**职责**：3 种生成模式 × 英文先行 × 三语翻译 × 质量自检 × bullet 事实核查。
 
 **函数签名**：
 ```python
-def generate_resume(job_index=None, jd_text=None, role_direction=None,
-                    by_direction=False, output_langs=None, config=None, profile=None)
+def generate_resume(job_index=None, jd_text=None, by_direction=False, output_langs=None, profile=None)
 ```
-其中 `output_langs` 控制输出语言子集（如 `["en","hk"]`，默认 `["en","hk","cn"]`），Web API 通过 `languages` 字段透传。`config` 和 `profile` 供 Campaign 模式注入，留空则自动加载（`profile` 从 `instances/users/{user}.yaml` 加载，`config` 从 `profiles/search_config.yaml` 加载）。
+其中 `output_langs` 控制输出语言子集（如 `["en","hk"]`，默认 `["en","hk","cn"]`），Web API 通过 `languages` 字段透传。`profile` 供 Campaign 模式注入，留空则从 `instances/users/{user}.yaml` 自动加载。
 
-#### 5 种生成模式
+#### 3 种生成模式
 
 | 模式 | 参数 | 适用场景 |
 |------|------|----------|
 | 方向聚合 | `by_direction=true` | search+match 后批量投递，按方向（payment/web3/solutions/technical）聚合 JD 共性需求生成 |
 | 匹配岗位 | `job_index=N` | 从匹配排名中选某个高分岗位单独定制 |
 | JD 文本 | `jd_text="..."` | 在其他平台看到的岗位，粘贴完整 JD |
-| 岗位方向 | `role_direction="Solutions Engineer"` | 只有方向没有具体 JD，靠 LLM 对该角色的理解生成 |
-| 通用简历 | 不传参数 | 基于用户画像（`instances/users/{user}.yaml`）生成通用版，投递通用平台 |
+
+> **已删除的模式**：岗位方向（`role_direction`）和通用简历（无参数）因缺乏市场数据支撑已被移除。方向聚合仅通过 `/api/pipeline`（一键找工作）触发；Web UI 简历页提供「匹配岗位」和「JD 文本」两种模式。
 
 #### 方向聚合模式详细流程
 
@@ -1369,8 +1368,6 @@ resume:
   base_rules                              # 简历核心规则（<guide>）
   prompt_for_job                          # 匹配岗位模式（<template> <base_rules>）
   prompt_for_jd_text                      # JD 文本模式
-  prompt_for_role                         # 岗位方向模式（<role>）
-  prompt_for_general                      # 通用模式
   cover_letter_prompt                     # Cover Letter 生成
   resume_review_prompt                    # 简历审查（输入为简历 Markdown）
   aggregate_system_prompt                 # 方向聚合分析（<profile_summary>）
@@ -1520,17 +1517,9 @@ python web_app.py
 你: 为第1个生成简历
     → generate_resume(job_index=1) → 三语简历 + Cover Letter（7 个文件）
 
-# ── 基于方向生成简历 ──
-你: 生成 Solutions Engineer 方向的简历
-    → generate_resume(role_direction="Solutions Engineer") → 7 个文件
-
 # ── 基于粘贴的 JD ──
 你: [粘贴一段完整 JD] 根据这个生成简历
     → generate_resume(jd_text="...") → 7 个文件
-
-# ── 通用简历 ──
-你: 生成通用简历
-    → generate_resume() → 7 个文件
 
 # ── 单岗位查看 ──
 你: 查看这个岗位 https://hk.jobsdb.com/job/12345678
@@ -1645,7 +1634,7 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 4. **全量抓取 + 精准评分**：三层漏斗不经过 LLM 预过滤，确保匹配评分基于完整 JD
 5. **数据驱动爬虫**：通用字段提取器 + 4 层解析回退 + GraphQL 模式支持，适应 JobsDB 页面结构变化
 6. **动态权重匹配**：5 种权重方案 + LLM 自动判断方向 + 及格线复评取平均 + 置信度标注
-7. **5 种简历模式**：方向聚合（数据驱动批量投递）/ 匹配岗位 / JD 文本 / 岗位方向 / 通用
+7. **3 种简历模式**：方向聚合（数据驱动批量投递）/ 匹配岗位 / JD 文本
 8. **三语输出 + 质量闭环**：英文先行 → 审查评分 → 不合格自动重写 → 精确翻译，每次 7 个文件
 9. **独立市场调研**：四阶段流程 + 11+ 维度分析 + 差距分析（含可执行学习路径）+ 批量分析
 10. **全流程文件追踪**：每轮对话后自动汇总生成的文件列表（路径 + 大小）
