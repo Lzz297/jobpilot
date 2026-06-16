@@ -536,14 +536,9 @@ def api_resume():
                     q.put({"type": "error", "text": "JD 文本不能为空"})
                     return
                 result = generate_resume(jd_text=jd, output_langs=languages)
-            elif mode == "role":
-                role = data.get("role_direction", "").strip()
-                if not role:
-                    q.put({"type": "error", "text": "岗位方向不能为空"})
-                    return
-                result = generate_resume(role_direction=role, output_langs=languages)
             else:
-                result = generate_resume(output_langs=languages)
+                q.put({"type": "error", "text": f"不支持的简历生成模式: {mode}"})
+                return
 
             # 推送核查报告（review 事件在 done 之前）
             try:

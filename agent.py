@@ -26,8 +26,6 @@ def run_agent_loop():
     print("  [List] 「看看匹配结果」            → 查看多维度排名列表")
     print("  [Market] 「分析 Java 开发市场行情」    → 独立市场调研（技能/薪资/差距）")
     print("  [Resume] 「为第1个生成简历」          → 基于匹配岗位生成定制简历")
-    print("  [Resume] 「生成通用简历」            → 基于个人画像生成通用版")
-    print("  [Resume] 「生成 SE 方向的简历」       → 基于岗位方向生成")
     print("  [Resume]  直接粘贴 JD + 「生成简历」  → 基于任意 JD 生成")
     print("  [Profile] 「看看我的档案」            → 查看个人配置")
     print("  [Search] 「搜索 xxx」               → 自由搜索")

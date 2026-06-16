@@ -1305,8 +1305,6 @@ const RESUME_MODES = [
   {id:'direction', needsRun:true, icon:'layers', name:'方向聚合 (by_direction)', desc:'按方向聚合 JD 共性需求批量生成。可生成 payment、web3、technical（solutions 仅 1 个、default 跳过）。', cta:'基于该 Run 匹配结果生成'},
   {id:'job', needsRun:true, icon:'target', name:'匹配岗位 (job_index)', desc:'从该 Run 的匹配排名中选某个高分岗位单独定制。', input:'select'},
   {id:'jd', needsRun:false, icon:'clipboard-paste', name:'JD 文本 (jd_text)', desc:'其他平台看到的岗位，粘贴完整 JD。', input:'textarea'},
-  {id:'role', needsRun:false, icon:'compass', name:'岗位方向 (role_direction)', desc:'只有方向没有具体 JD，靠 LLM 对该角色的理解生成。', input:'text', placeholder:'如 Solutions Engineer'},
-  {id:'general', needsRun:false, icon:'file', name:'通用简历', desc:'基于 me.yaml 生成通用版，投递通用平台。', cta:'生成通用简历'},
 ];
 function langsOrdered(){ return ['en','hk','cn'].filter(l=>RS.langs.has(l)); }
 function toggleLang(k){ if(RS.langs.has(k)){ if(RS.langs.size===1){ toast('至少选择一种产出语言','warn'); return; } RS.langs.delete(k); } else RS.langs.add(k); renderLangChips(); }
@@ -1341,10 +1339,9 @@ function resumeTrigger(id){
   if(guardBusy()) return; if(!RS.langs.size){ toast('请至少选择一种产出语言','warn'); return; }
   let body = {sid:STATE.sid, mode:id, languages:langsOrdered()};
   if(id==='direction'){ /* ok */ }
-  else if(id==='general'){ /* ok */ }
   else if(id==='job'){ body.job_index = parseInt($('#rs-job').value)||1; }
   else if(id==='jd'){ body.jd_text = $('#rs-jd').value.trim(); if(!body.jd_text){ toast('请粘贴 JD 文本','warn'); return; } }
-  else if(id==='role'){ body.role_direction = $('#rs-role').value.trim(); if(!body.role_direction){ toast('请输入岗位方向','warn'); return; } }
+  else { toast('不支持的简历生成模式: '+id, 'warn'); return; }
 
   const panel = $('#resume-panel');
   panel.innerHTML = '<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">生成中…</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="rs-log"></div><div id="rs-result"></div></div>';

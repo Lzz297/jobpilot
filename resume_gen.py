@@ -1,12 +1,10 @@
 """
 resume_gen.py - 多模式简历生成（三语 PDF）
 
-支持 5 种输入模式：
+支持 3 种输入模式：
   1. by_direction — 基于匹配数据按方向批量生成（需先 search + match）
   2. job_index    — 基于匹配排名中的岗位（需先 search + match）
   3. jd_text      — 基于用户粘贴的任意 JD 文本
-  4. role_direction — 基于岗位方向/角色类型（如 "Solutions Engineer"）
-  5. 无参数       — 基于用户画像生成通用简历
 """
 import os
 import json
@@ -180,14 +178,12 @@ def _generate_for_direction_batch(profile, profile_text, template_text, base_rul
 #  主函数：统一入口
 # ============================================================
 
-def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direction=False, output_langs=None, profile=None):
+def generate_resume(job_index=None, jd_text=None, by_direction=False, output_langs=None, profile=None):
     """
     多模式简历生成。根据传入参数自动选择模式：
       - by_direction: 基于匹配数据按方向批量生成（需先 search + match）
       - job_index: 基于匹配排名中的岗位
       - jd_text: 基于用户粘贴的 JD 文本
-      - role_direction: 基于岗位方向（如 "Solutions Engineer"）
-      - 均为空: 生成通用简历
 
     output_langs: 可选，指定输出语言子集，如 ["en", "hk"]。不传则输出全部三种。
     profile: 用户画像字典（不传则从 instances/users/ 自动加载）
@@ -221,12 +217,8 @@ def generate_resume(job_index=None, jd_text=None, role_direction=None, by_direct
     elif jd_text:
         return _generate_for_jd_text(
             jd_text, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
-    elif role_direction:
-        return _generate_for_role(
-            role_direction, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
     else:
-        return _generate_general(
-            profile, profile_text, template_text, base_rules, resume_prompts, output_langs=output_langs)
+        return "请指定简历生成模式：by_direction=true / job_index=N / jd_text=\"...\""
 
 # ============================================================
 #  模式 1：基于匹配岗位
@@ -290,41 +282,6 @@ def _generate_for_jd_text(jd_text, profile_text, template_text, base_rules, resu
 # ============================================================
 #  模式 3：基于岗位方向
 # ============================================================
-
-def _generate_for_role(role_direction, profile_text, template_text, base_rules, resume_prompts, output_langs=None):
-    """基于岗位方向/角色类型生成针对性简历"""
-    emit(f"   📝 模式: 岗位方向 | 正在生成「{role_direction}」方向的简历...")
-
-    system_content = render_prompt(
-        _load_resume_prompt("prompt_for_role"),
-        role=role_direction, template=template_text, base_rules=base_rules)
-    user_content = f"候选人完整档案：\n{profile_text}\n\n请生成一份面向「{role_direction}」方向的简历。"
-
-    return _call_llm_and_save(
-        system_content, user_content, role_direction,
-        mode_label="岗位方向", job_label=f"{role_direction} 方向",
-        cl_prompt=_load_resume_prompt("cover_letter_prompt"), output_langs=output_langs)
-
-# ============================================================
-#  模式 4：通用简历
-# ============================================================
-
-def _generate_general(profile, profile_text, template_text, base_rules, resume_prompts, output_langs=None):
-    """基于用户画像生成通用简历"""
-    intent = profile.get("job_intent", {})
-    directions = ", ".join(intent.get("target_titles", [])[:3])
-
-    emit(f"   📝 模式: 通用简历 | 正在生成通用版简历...")
-
-    system_content = render_prompt(
-        _load_resume_prompt("prompt_for_general"),
-        template=template_text, base_rules=base_rules)
-    user_content = f"候选人完整档案：\n{profile_text}\n\n请生成一份通用简历，定位方向参考：{directions}。"
-
-    return _call_llm_and_save(
-        system_content, user_content, "general",
-        mode_label="通用", job_label="通用简历",
-        cl_prompt=_load_resume_prompt("cover_letter_prompt"), output_langs=output_langs)
 
 # ============================================================
 #  公共：调用 LLM + 保存文件

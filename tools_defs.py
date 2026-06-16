@@ -131,7 +131,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "generate_resume",
-            "description": "多模式简历生成（MD → PDF）。支持5种模式：(1) 传 by_direction=true 基于匹配数据按方向批量生成（需先 search + match，最推荐的批量投递模式）；(2) 传 job_index 基于匹配岗位生成；(3) 传 jd_text 基于用户粘贴的JD生成；(4) 传 role_direction 基于岗位方向生成（如'Solutions Engineer'）；(5) 不传任何参数生成通用简历。参数都是可选的，根据用户意图选择一种传入。",
+            "description": "多模式简历生成（MD → PDF）。支持3种模式：(1) 传 by_direction=true 基于匹配数据按方向批量生成（需先 search + match）；(2) 传 job_index 基于匹配岗位生成；(3) 传 jd_text 基于用户粘贴的JD生成。参数都是可选的，根据用户意图选择一种传入。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -146,10 +146,6 @@ tools = [
                     "jd_text": {
                         "type": "string",
                         "description": "用户粘贴的完整职位描述(JD)文本，用于直接基于该JD生成定制简历"
-                    },
-                    "role_direction": {
-                        "type": "string",
-                        "description": "岗位方向或角色类型，如 'Solutions Engineer'、'Backend Developer'，用于生成面向该方向的简历"
                     }
                 },
                 "required": []
