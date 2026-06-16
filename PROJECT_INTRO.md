@@ -23,7 +23,7 @@
 | 编程语言 | Python 3.13 | 主开发语言 |
 | LLM | DeepSeek / Qwen / GLM（可配置切换） | 通过 OpenAI SDK 兼容接口调用，`config.py` 中的 `llm_call()` 为统一入口 |
 | LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 19 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出。支持 `thinking` 模式（DeepSeek V4）和 `response_model` 模式（Instructor + Pydantic 结构化输出） |
-| 结构化输出 | Instructor（Pydantic schema 校验） | 匹配评分、市场分析 Phase B/C 走 Instructor 模式，自动校验 LLM 输出结构并重试修正 |
+| 结构化输出 | Instructor（Pydantic schema 校验） | 市场分析 Phase B/C 和评估脚本 `score_single_jd()` 走 Instructor 模式，自动校验 LLM 输出结构并重试修正。匹配评分主路径 `_score_batch()` 使用 JSON 解析后 Pydantic 校验模式 |
 | 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
 | HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
 | PDF 渲染 | Playwright/Chromium | Markdown → HTML → PDF，两个独立浏览器实例（爬虫 + 渲染器各一个） |
@@ -75,9 +75,9 @@ D:\job-agent/
 ├── prompts/                  # [示例] Prompt 模板示例
 │   └── examples/job_match/   #     各方向的评分 prompt 示例
 │
-├── profiles/                 # [配置文件目录]
-│   ├── me.yaml               #     用户个人画像
-│   ├── search_config.yaml    #     搜索策略 + LLM 配置 + 匹配权重 + 市场调研参数
+├── profiles/                 # [配置文件目录] 系统基础设施配置
+│   ├── search_config.yaml    #     LLM 配置 + 过滤 + 市场参数 + user 字段（业务配置已迁移至 instances/）
+│   ├── search_config_fast.yaml #   快速测试用配置
 │   ├── prompts.yaml          #     17 个 LLM prompt 模板
 │   ├── resume_template.yaml  #     简历模板
 │   └── resume_guide.yaml     #     简历撰写指南
@@ -169,7 +169,7 @@ D:\job-agent/
 
 | 触发方式 | 入口 | 特点 |
 |---------|------|------|
-| `python agent.py` | 终端 CLI | 交互式对话，LLM 决定工具调用顺序 |
+| `python agent.py --campaign <name>` | 终端 CLI | 交互式对话，LLM 决定工具调用顺序。必须指定 Campaign |
 | `python web_app.py` → Web 按钮 | `/api/pipeline` | 直接调用 search→match→resume 三步函数，不经过 LLM 决策，更快 |
 | `python web_app.py` → Web 对话框 | `/api/chat` | 同 CLI 模式，LLM Agent 决策，通过 SSE 推送进度 |
 
@@ -198,7 +198,7 @@ llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=None
 
 | 错误类型 | 行为 |
 |----------|------|
-| 429 Rate Limit | 指数退避重试（1s / 2s / 上限 30s），最多 2 次 |
+| 429 Rate Limit | 指数退避重试（wait = min(2^attempt, 30)，即 1s → 2s），最多 `max_retries` 次（默认 2 次） |
 | 超时 (APITimeoutError) | 同上 |
 | 连接中断 (APIConnectionError) | 同上 |
 | 5xx 服务端错误 | 同上 |
@@ -345,8 +345,8 @@ CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模
 | `read_file` | tools_basic | `filename` | — | 读取 `output/` 中的文件 |
 | `list_files` | tools_basic | 无 | — | 列出当前 run + market 目录中的所有文件 |
 | `web_search` | tools_basic | `query` | `max_results`（默认 5） | DuckDuckGo 联网搜索 |
-| `load_user_profile` | tools_basic | 无 | — | 查看 `profiles/me.yaml` 内容（JSON 格式化） |
-| `load_search_config` | tools_basic | 无 | — | 查看 `profiles/search_config.yaml` 内容（JSON 格式化） |
+| `load_user_profile` | tools_basic | 无 | — | 查看用户画像 `instances/users/{user}.yaml` 内容（JSON 格式化，通过 `search_config.yaml` 的 `user` 字段定位） |
+| `load_search_config` | tools_basic | 无 | — | 查看 `profiles/search_config.yaml` 内容（JSON 格式化，仅系统基础设施配置段） |
 | `search_jobs` | job_search | 无 | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
 | `match_jobs` | job_match | 无 | — | 五维动态权重匹配评分 + 及格线复评 |
 | `generate_resume` | resume_gen | 无（5 种模式，`by_direction` / `job_index` / `jd_text` / `role_direction` / 无参数） | 见 §3.9 | 多模式三语简历 + Cover Letter 生成 |
@@ -357,7 +357,7 @@ CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模
 
 > **大小写敏感**：`analyze_market` 和 `batch_analyze_market` 的 `job_category` / `category` 参数**严格保留用户输入的原始大小写**，代码不会做任何修改。`classification` 参数同理。例如用户说「分析 Web3 市场行情」→ `job_category="Web3"`（不是 `"web3"`）。
 
-#### 3.3.2 执行分发
+#### 3.3.2 执行分发 + Campaign 配置注入
 
 ```python
 def execute_tool(tool_call):
@@ -368,6 +368,8 @@ def execute_tool(tool_call):
 ```
 
 无参数校验层——LLM 传的参数直接透传给工具函数。工具函数内部各自做错误处理。
+
+**Campaign 配置注入机制**：`execute_tool()` 在调用 `search_jobs`、`match_jobs`、`generate_resume` 三个工具时，自动从线程本地存储注入 Campaign 配置（通过 `_CONFIG_AWARE_TOOLS` 集合判断）。`match_jobs` 和 `generate_resume` 还会额外注入 `user_profile`。此机制让 LLM 无需感知 config 的存在——LLM 只需调用工具，系统层自动补齐配置。如果 LLM 已经传了 `config` 参数，系统会输出警告并覆盖。
 
 #### 3.3.3 去重机制
 
@@ -438,7 +440,7 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 `progress` / `tool_call` / `review` / `done` / `error` 事件。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 `progress` / `tool_call` / `review` / `done` / `error` 事件。`review` 事件（简历核查报告）在 `done` 之前推送。
 ---
 
 ##### `POST /api/pipeline`
@@ -449,7 +451,8 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 {
   "sid": "a1b2c3d4",
   "action": "search_match",
-  "sort_by": "date"
+  "sort_by": "date",
+  "languages": ["en", "hk"]
 }
 ```
 
@@ -458,10 +461,11 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 | `sid` | 是 | 会话 ID |
 | `action` | 是 | 固定 `"search_match"` |
 | `sort_by` | 否 | `"date"`（按发布时间）或 `"relevance"`（按相关度）。不传从配置读取 |
+| `languages` | 否 | 简历输出语言子集，如 `["en","hk"]`，默认 `["en","hk","cn"]` |
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。其中 `review` 事件（Checker 核查报告）在 `done` 之前自动推送。
 
 ---
 
@@ -548,7 +552,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response**:
 ```json
-[{"name": "web3_hunt", "user": "li_ming", "strategy": "web3", "queries": 3, "sort_mode": "date"}]
+[{"name": "web3_hunt", "user": "li_ming", "strategy": "web3", "queries": 3, "keywords": ["Web3", "Blockchain Developer", "Smart Contract"], "sort_mode": "date"}]
 ```
 
 ##### `POST /api/session/campaign`
@@ -560,6 +564,28 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 ```
 
 **Response**: `{"status": "ok", "campaign": "web3_hunt"}`
+
+##### `GET /api/users`
+列出 `instances/users/` 下所有可用的用户画像。
+
+**Response**:
+```json
+[{"name": "li_ming", "user_name": "请替换为真实姓名"}]
+```
+
+##### `POST /api/config/user`
+运行时切换用户画像（更新 `search_config.yaml` 的 `user` 字段，即时生效）。
+
+**Request**:
+```json
+{"user": "li_ming"}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `user` | 是 | 用户画像文件名（不含 `.yaml` 后缀），需在 `instances/users/` 下存在 |
+
+**Response**: `{"status": "ok", "user": "li_ming"}`
 
 ##### `GET /download/<path>`
 文件下载。路径相对于 `output/` 目录。如 `/download/run_xxx/resumes/resume_web3_20260417_en.pdf`。
@@ -614,7 +640,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。`review` 事件（Checker 核查报告）在 `done` 之前自动推送。
 
 ##### `POST /api/resume/fix`
 定点修正单条 resume bullet（配合 checker 系统使用），返回修正后的完整 Markdown。
@@ -684,6 +710,8 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **URL 参数**: `name` — `"me"` 或 `"search_config"`
 
+> **⚠️ 路径说明**：`name="me"` 实际读写 `instances/users/{user}.yaml`（通过 `search_config.yaml` 的 `user` 字段定位），而非 `profiles/me.yaml`。`name="search_config"` 读写 `profiles/search_config.yaml`。
+
 **Response**: `{"name": "me", "content": {...}}`
 
 ##### `PUT /api/config/yaml/<name>`
@@ -692,6 +720,8 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 **Request**: `{"content": {...}}` — 完整的配置对象
 
 **Response**: `{"status": "ok", "name": "me"}`
+
+> **⚠️**：`name="me"` 写入路径为 `instances/users/{user}.yaml`，`name="search_config"` 写入路径为 `profiles/search_config.yaml`。
 
 ---
 
@@ -704,8 +734,9 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 - **实时进度反馈**：通过 SSE（Server-Sent Events）协议向界面推送执行进度，包括当前操作日志、工具调用状态、阶段完成通知和错误信息
 - **多 Provider 切换**：用户可在 DeepSeek / Qwen / GLM 之间实时切换 LLM，切换立即生效
 - **排序切换**：用户可切换搜索排序方式（按发布时间最新在前 / 按相关度），影响 `search_jobs` 和 `analyze_market` 的行为
-- **Campaign 切换**：用户可通过侧边栏下拉框选择求职方向（campaign），切换后后续请求自动使用对应的搜索词和权重策略。选择"默认"恢复 `profiles/` 配置
-- **简历审查面板**：生成简历后自动展示 bullet 核查结果（checker 系统产出），支持逐条查看标记（数字矛盾/强度升级/占位符）、确认放行、一键修正
+- **Campaign 切换**：用户可通过侧边栏下拉框选择求职方向（campaign），切换后后续请求自动使用对应的搜索词和权重策略。未选择时自动使用第一个可用 campaign
+- **画像切换**：用户可通过侧边栏切换用户画像（`instances/users/` 下的不同画像文件），切换后立即生效，影响匹配评分和简历生成
+- **简历审查面板**：生成简历后自动展示 bullet 核查结果（checker 系统产出），支持逐条查看 7 种 flag（空源/悬空引用/占位符/数字缺失/数字冲突/约数超范围/强度升级），确认放行，逐条修正（`/api/resume/fix`，含 LLM 修补 → 验证 → 重检 → 重试流程）
 - **简历生成**：支持 5 种模式的简历生成触发方式（含基于粘贴 JD、基于岗位方向、基于通用画像等）
 - **市场调研**：用户可输入岗位类别参数直接触发市场调研
 - **文件管理**：浏览所有历史 Run 和市场调研的输出文件，支持文件下载
@@ -727,10 +758,10 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 | `get_current_time()` | `2026年06月04日 14:30:00 星期四` | 中文格式 |
 | `write_file(filename, content)` | 写入 `output/` 目录，自动创建子目录，自动 `track_file()` |
 | `read_file(filename)` | 全文返回 | 限定在 `output/` 目录内 |
-| `list_files()` | 分层列出当前 run + market 目录文件 | 无 run 时自动找最近一次 run |
+| `list_files()` | 分层列出当前 run + market 目录文件（含递归子目录） | 无 run 时自动找最近一次 run |
 | `web_search(query)` | 标题 + 摘要 + 链接 | DuckDuckGo，默认 5 条，region=`wt-wt` |
-| `load_user_profile()` | `me.yaml` 转 JSON | 对 LLM 更友好的结构化格式 |
-| `load_search_config()` | `search_config.yaml` 转 JSON | 同上 |
+| `load_user_profile()` | 用户画像（`instances/users/{user}.yaml`）转 JSON | 对 LLM 更友好的结构化格式 |
+| `load_search_config()` | `search_config.yaml` 转 JSON | 同上（仅系统基础设施配置段） |
 | `fetch_job_detail(url)` | 标题/公司/地点/薪资/完整 JD | 调用 `scraper.fetch_job_detail()` |
 
 ---
@@ -847,7 +878,7 @@ _FIELD_SPECS = {
 
 ### 3.9 job_match.py — LLM 五维匹配评分
 
-**职责**：读取 `raw_jobs.json` + `me.yaml`，用 LLM 从 5 个维度评分。
+**职责**：读取 `raw_jobs.json` + 用户画像（从 `instances/users/{user}.yaml` 加载），用 LLM 从 5 个维度评分。
 
 #### 五维评分体系 + 动态权重
 
@@ -870,6 +901,12 @@ _FIELD_SPECS = {
        检查顺序：payment → solutions → web3 → technical → default
        （更具体的类别在前，防止误匹配到通用关键词）
 ```
+
+**Few-shot 示例注入**：评分 prompt 中会注入方向相关的 few-shot 示例，帮助 LLM 更准确地判断岗位方向。示例来源为 `prompts/examples/job_match/` 目录，始终加载 `common.yaml` 的通用示例，并根据当前 campaign 的 strategy 加载对应的 `{strategy}.yaml` 示例（如 `web3.yaml`）。实现函数为 `_load_examples(strategy)`。
+
+**Instructor 模式说明**：匹配评分主路径 `_score_batch()` 使用 LLM 返回 JSON 文本 + `parse_json_response()` 解析模式；评估脚本 `score_single_jd()` 使用 Instructor + Pydantic（`response_model=MatchResult`）进行结构化输出校验和自动重试修正。
+
+**权重方案可用性**：Campaign 模式下，`weight_profiles` 仅包含当前 strategy 的权重方案 + default 默认权重。其他方向类别（如使用 `web3` strategy 时的 `payment`/`solutions`/`technical`）的岗位将使用 default 权重计算总分。所有 5 种策略文件位于 `instances/strategies/`，不同 campaign 可通过切换 strategy 来使用不同的权重方案。
 
 #### 完整评分流程
 
@@ -940,7 +977,7 @@ skill × w1 + experience × w2 + level × w3 + industry × w4 + bonus × w5
 def generate_resume(job_index=None, jd_text=None, role_direction=None,
                     by_direction=False, output_langs=None, config=None, profile=None)
 ```
-其中 `output_langs` 控制输出语言子集（如 `["en","hk"]`，默认 `["en","hk","cn"]`），Web API 通过 `languages` 字段透传。`config` 和 `profile` 供 Campaign 模式注入，留空则从 `profiles/` 自动加载。
+其中 `output_langs` 控制输出语言子集（如 `["en","hk"]`，默认 `["en","hk","cn"]`），Web API 通过 `languages` 字段透传。`config` 和 `profile` 供 Campaign 模式注入，留空则自动加载（`profile` 从 `instances/users/{user}.yaml` 加载，`config` 从 `profiles/search_config.yaml` 加载）。
 
 #### 5 种生成模式
 
@@ -950,7 +987,7 @@ def generate_resume(job_index=None, jd_text=None, role_direction=None,
 | 匹配岗位 | `job_index=N` | 从匹配排名中选某个高分岗位单独定制 |
 | JD 文本 | `jd_text="..."` | 在其他平台看到的岗位，粘贴完整 JD |
 | 岗位方向 | `role_direction="Solutions Engineer"` | 只有方向没有具体 JD，靠 LLM 对该角色的理解生成 |
-| 通用简历 | 不传参数 | 基于 me.yaml 生成通用版，投递通用平台 |
+| 通用简历 | 不传参数 | 基于用户画像（`instances/users/{user}.yaml`）生成通用版，投递通用平台 |
 
 #### 方向聚合模式详细流程
 
@@ -1019,15 +1056,32 @@ resume_review_{label}_{date}.json     # 审查报告
 }
 ```
 
-**第二层：Bullet 事实核查（`checker.py`）**。对 LLM 生成的每条 bullet 与 `me.yaml` 源条目进行逐条比对，检测三类问题：
+**第二层：Bullet 事实核查（`checker.py`）**。对 LLM 生成的每条 bullet 与用户画像源条目进行逐条比对（通过 `source_ids` 溯源），检测以下 7 种问题：
 
-| 检测类型 | 说明 | 示例 |
+| flag 类型 | 说明 | 示例 |
 |----------|------|------|
-| 数字矛盾 | bullet 中的数字与源数据不一致 | bullet 写"处理 5,000+ 笔交易"，源数据是 10,000+ |
-| 强度升级 | bullet 动词强度超出源数据支撑 | 源数据是"参与"项目，bullet 写成"主导"项目 |
-| 占位符残留 | bullet 中含有未替换的占位符 | `[请在此填写具体数据]`、`[TODO]` |
+| `empty_source` | bullet 未声明任何 source_ids | 无溯源引用 |
+| `dangling_reference` | source_ids 在当前画像中找不到对应条目 | 引用了不存在的 id |
+| `placeholder_present` | bullet 中含有未替换的占位符 | `[请在此填写具体数据]`、`[TODO]`、`【待补充】` |
+| `number_not_found` | bullet 中有数字，但源数据中没有任何对应数字 | bullet 有"5,000 笔"但源数据无数字 |
+| `number_conflict` | bullet 中的精确数字与源数据不一致 | bullet 写"处理 5,000+ 笔交易"，源数据是 10,000+ |
+| `approx_out_of_range` | bullet 中的约数与源数据偏差超过 5% | bullet 写"约 50%"，源数据约 80% |
+| `strength_upgrade` | bullet 动词强度超出源数据支撑 | 源数据是"参与"项目（强度1），bullet 写成"主导"项目（强度3） |
 
-核查结果通过 SSE `review` 事件推送至前端，用户可通过 `/api/resume/fix` 端点逐条修正。
+核查通过 `check_bullet(source_ids, profile, bullet_text)` 函数完成，返回 flags 列表。核查结果通过 SSE `review` 事件推送至前端。
+
+**Bullet 定点修正（`fix_single_bullet()`）**：用户通过 `/api/resume/fix` 端点修正单条 bullet 时，系统执行以下流程：
+
+```
+1. 解析简历 Markdown 中所有 bullet（含 source_ids 标记）
+2. 构造修补 prompt：只修改目标 bullet，其他内容不变
+3. LLM 修补 → 验证 bullet 数量不变 → 验证非目标 bullet 未被改动
+4. 重新调用 check_bullet() 核查修补后的 bullet
+5. 若仍有问题 → 将 checker 结果反馈给 LLM → 再重试一次
+6. 返回修正后的完整 Markdown + 核查结果
+```
+
+所有修补失败时回退到原始简历，确保不会引入错误。
 
 #### 输出文件（方向聚合模式）
 
@@ -1100,13 +1154,15 @@ render_report(markdown_text, md_filepath)  # → PDF 文件路径或 None（使�
 
 ```
 Phase A: 数据采集
-  scan_jobsdb_listings(job_category, ...) → 翻 max_pages 页
-  fetch_multiple_details() → 全量抓取完整 JD（上限 max_fetch_jd，默认 100）
+  scan_jobsdb_listings(job_category, ...) → 翻 max_pages 页（YAML 默认 4，代码级 fallback 3）
+  fetch_multiple_details() → 全量抓取完整 JD（上限 max_fetch_jd，YAML 默认 100，代码级 fallback 40）
   无效 JD 用列表页 snippet 兜底
            │
            ▼
 Phase B: LLM 市场分析（分批评分 + 多批自动聚合）
-  每批 batch_size 条 JD（默认 5）发给 LLM
+  每批 batch_size 条 JD（YAML 默认 5，代码级 fallback 10）发给 LLM
+  单条 JD 截断至 jd_max_chars 字符（YAML 默认 6000，代码级 fallback 2000）
+  > 以上参数均从 `search_config.yaml` 的 `market_analysis` 段读取。代码级 fallback 仅在 YAML 配置缺失时生效。
   LLM 提取以下 11 个维度：
    1. technical_skills      — 技术技能（排名、分类、工具、说明）
    2. soft_skills           — 软技能/业务能力
@@ -1222,7 +1278,9 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 ## 四、配置文件说明
 
-### 4.1 profiles/me.yaml — 用户画像
+### 4.1 instances/users/{user}.yaml — 用户画像
+
+> **⚠️ 路径变更**：用户画像已从 `profiles/me.yaml` 迁移至 `instances/users/{user}.yaml`。通过 `search_config.yaml` 的 `user` 字段指定当前使用的画像文件名（不含 `.yaml` 后缀）。例如 `user: "li_ming"` → 加载 `instances/users/li_ming.yaml`。
 
 ```yaml
 基本信息:
@@ -1252,31 +1310,44 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 教育背景 / 项目经历 / 证书 / 自我评价
 ```
 
-### 4.2 profiles/search_config.yaml — 搜索策略 + LLM + 匹配 + 市场
+### 4.2 profiles/search_config.yaml — 系统基础设施配置
 
-详见文件内注释（254 行）。完整配置项汇总：
+> **⚠️ 职责分离**：`search_config.yaml` 现仅保留系统基础设施配置（LLM、过滤、市场参数、用户选择）。**业务配置**（搜索关键词 `search_queries`、匹配权重 `matching`、翻页数 `max_pages_per_query`、JD上限 `max_total_results`）已迁移至 `instances/campaigns/` 和 `instances/strategies/`。详见 `config_assembler.py` 的三层组装逻辑。
+
+当前文件内容（约 13 行）：
+
+```yaml
+filters:
+  exclude_companies: []
+llm:
+  model: deepseek-v4-pro
+  provider: deepseek
+market_analysis:
+  batch_size: 5
+  jd_max_chars: 6000
+  max_fetch_jd: 100
+  max_pages: 4
+sort_mode: date
+user: li_ming
+```
+
+完整配置项汇总：
 
 | 配置段 | 配置项 | 默认值 | 说明 |
 |--------|--------|--------|------|
-| `llm` | `provider` | `"glm"` | `deepseek` / `qwen` / `glm` |
-| `llm` | `model` | `"glm-5.1"` | 模型名称 |
+| `user` | — | `"li_ming"` | **当前使用的用户画像文件名**（不含 `.yaml` 后缀），对应 `instances/users/{user}.yaml`。`load_profile()` 和 `/api/config/yaml/me` 均通过此字段定位画像 |
+| `llm` | `provider` | `"deepseek"` | `deepseek` / `qwen` / `glm` |
+| `llm` | `model` | `"deepseek-v4-pro"` | 模型名称 |
 | `llm` | `base_url` | （可选） | 自定义 API 端点 |
 | `llm` | `api_key_env` | （可选） | 自定义环境变量名 |
 | — | `sort_mode` | `"date"` | 全局排序：`"date"`（最新在前）/ `"relevance"`（相关度） |
-| — | `search_queries` | — | 搜索关键词组数组，每项含 `keywords` / `location` / `classification`(可选) / `direction` / `sort_by`(可选) |
 | `filters` | `exclude_companies` | `[]` | 排除的公司名列表（大小写不敏感） |
-| — | `max_pages_per_query` | `3` | 每组关键词翻页数 |
-| — | `max_total_results` | `200` | 最终抓取 JD 上限 |
-| `matching` | `min_match_score` | `45` | 最低达标分数 |
-| `matching` | `top_n` | `999` | 保留 Top N |
-| `matching` | `borderline_rescore` | `true` | 及格线复评开关 |
-| `matching` | `borderline_range` | `8` | 复评区间（min_score ± 8） |
-| `matching` | `weight_profiles` | 5 种方案 | 见 §3.9 权重表 |
-| `matching` | `weight_rules` | 4 类关键词 | 标题关键词 → 权重方案映射（检查顺序：payment → solutions → web3 → technical） |
-| `market_analysis` | `max_pages` | `4` | 列表页翻页数 |
-| `market_analysis` | `max_fetch_jd` | `100` | 最多抓取 JD 数 |
-| `market_analysis` | `batch_size` | `5` | LLM 每批分析条数 |
-| `market_analysis` | `jd_max_chars` | `6000` | 单条 JD 截断长度 |
+| `market_analysis` | `max_pages` | `4` | 市场调研列表页翻页数（代码级 fallback: 3） |
+| `market_analysis` | `max_fetch_jd` | `100` | 市场调研最多抓取 JD 数（代码级 fallback: 40） |
+| `market_analysis` | `batch_size` | `5` | 市场调研 LLM 每批分析条数（代码级 fallback: 10） |
+| `market_analysis` | `jd_max_chars` | `6000` | 市场调研单条 JD 截断长度（代码级 fallback: 2000） |
+
+> **已迁移到 `instances/` 的配置项**：`search_queries`、`max_pages_per_query`、`max_total_results` 现位于 `instances/campaigns/{name}.yaml`；`matching` 段（`weight_profiles`、`weight_rules`、`min_match_score`、`borderline_rescore`、`borderline_range`、`top_n`）现位于 `instances/strategies/{name}.yaml`。这些业务配置通过 Campaign 三层组装机制合并，不再从 `search_config.yaml` 读取。
 
 ### 4.3 profiles/prompts.yaml — LLM 提示词配置
 
@@ -1416,19 +1487,22 @@ playwright install chromium
 
 # 3. 配置 API Key
 # 在 search_config.yaml 中选择 provider，在 .env 中设置对应 Key
-echo "GLM_API_KEY=your_key_here" > .env
+echo "DEEPSEEK_API_KEY=your_key_here" > .env
 
 # 4. 编辑个人画像
-# 修改 profiles/me.yaml 填入真实信息
+# 修改 instances/users/{user}.yaml 填入真实信息（文件名需与 search_config.yaml 中 user 字段一致）
 ```
 
 ### 6.2 启动
 
 ```bash
-# 终端模式
-python agent.py
+# 终端模式（必须指定 campaign）
+python agent.py --campaign web3_hunt
 
-# Web UI 模式
+# 查看可用的 campaign
+# python agent.py（不带参数时会列出所有可用 campaign）
+
+# Web UI 模式（无需 campaign 参数，在侧边栏下拉框选择）
 python web_app.py
 # 浏览器访问 http://127.0.0.1:5000
 ```
