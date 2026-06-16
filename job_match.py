@@ -122,21 +122,38 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         jobs_text += f"链接: {job.get('url', '')}\n"
 
     try:
-        msg = llm_call(
+        # 主路径：Instructor + Pydantic 结构化输出
+        from engine.contracts import MatchResult
+        results = llm_call(
             [{"role": "system", "content": system_prompt},
              {"role": "user", "content": jobs_text}],
             temperature=0, thinking={"type": "disabled"},
+            response_model=list[MatchResult],
         )
-        result_text = msg.content
-        scored = parse_json_response(result_text)
-        if scored and isinstance(scored, list):
+        scored = [m.model_dump() for m in results]
+        if scored:
             return scored
         else:
             emit(f"   ⚠️ {batch_label}返回格式异常，跳过")
             return []
-    except Exception as e:
-        emit(f"   ❌ {batch_label}分析失败: {e}")
-        return []
+    except Exception:
+        # 回退：旧方式（parse_json_response）
+        try:
+            msg = llm_call(
+                [{"role": "system", "content": system_prompt},
+                 {"role": "user", "content": jobs_text}],
+                temperature=0, thinking={"type": "disabled"},
+            )
+            result_text = msg.content
+            scored = parse_json_response(result_text)
+            if scored and isinstance(scored, list):
+                return scored
+            else:
+                emit(f"   ⚠️ {batch_label}返回格式异常，跳过")
+                return []
+        except Exception as e:
+            emit(f"   ❌ {batch_label}分析失败: {e}")
+            return []
 
 
 # ============================================================
@@ -553,7 +570,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
             "direction": str,
             "scores": {"skill", "experience", "level", "industry", "bonus"},
             "total_score": int,
-            "reasoning": str,
+            "reason": str,
             "input_tokens": int,
             "output_tokens": int
         }
@@ -617,7 +634,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
             "industry": parsed_result.scores.industry,
             "bonus": parsed_result.scores.bonus,
         }
-        reasoning = parsed_result.reasoning
+        reason = parsed_result.reason
         # 提取 token 用量
         if hasattr(parsed_result, '_usage'):
             usage = parsed_result._usage
@@ -647,7 +664,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
                 "direction": classify_job(jd_title, weight_rules),
                 "scores": {},
                 "total_score": 0,
-                "reasoning": f"LLM 返回格式异常: {result_text[:200]}",
+                "reason": f"LLM 返回格式异常: {result_text[:200]}",
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "error": "parse_failed",
@@ -657,7 +674,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         valid_directions = {"payment", "solutions", "web3", "technical", "default"}
         direction = llm_dir if llm_dir in valid_directions else classify_job(jd_title, weight_rules)
         scores = parsed.get("scores", {})
-        reasoning = parsed.get("reason", "")
+        reason = parsed.get("reason", "")
         tokens_in = 0
         tokens_out = 0
 
@@ -669,7 +686,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         "direction": direction,
         "scores": scores,
         "total_score": total_score,
-        "reasoning": reasoning,
+        "reason": reason,
         "input_tokens": tokens_in,
         "output_tokens": tokens_out,
     }

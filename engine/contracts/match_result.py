@@ -12,9 +12,8 @@ class Scores(BaseModel):
 
 class MatchResult(BaseModel):
     model_config = ConfigDict(extra='allow')
-    reasoning: str = Field(
-        alias="reason",
-        description="匹配推理过程。prompt 中 LLM 返回字段名为 reason，Pydantic 通过 alias 自动映射为 reasoning"
+    reason: str = Field(
+        description="匹配推理过程"
     )
     direction: str = Field(
         description="岗位赛道标签：web3 / payment / solutions / technical / default"

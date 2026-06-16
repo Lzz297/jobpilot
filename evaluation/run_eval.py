@@ -169,7 +169,7 @@ def main():
                 "direction": "default",
                 "scores": {},
                 "total_score": 0,
-                "reasoning": f"评分异常: {e}",
+                "reason": f"评分异常: {e}",
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "error": str(e),
@@ -191,7 +191,7 @@ def main():
             "direction_correct": predicted_dir == expected_dir,
             "scores": result.get("scores", {}),
             "total_score": result.get("total_score", 0),
-            "reasoning": result.get("reasoning", ""),
+            "reason": result.get("reason", ""),
             "input_tokens": result.get("input_tokens", 0),
             "output_tokens": result.get("output_tokens", 0),
         })
