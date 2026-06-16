@@ -23,7 +23,7 @@
 | 编程语言 | Python 3.13 | 主开发语言 |
 | LLM | DeepSeek / Qwen / GLM（可配置切换） | 通过 OpenAI SDK 兼容接口调用，`config.py` 中的 `llm_call()` 为统一入口 |
 | LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 24 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出。支持 `thinking` 模式（DeepSeek V4）和 `response_model` 模式（Instructor + Pydantic 结构化输出） |
-| 结构化输出 | Instructor（Pydantic schema 校验） | 市场分析 Phase B/C 和评估脚本 `score_single_jd()` 走 Instructor 模式，自动校验 LLM 输出结构并重试修正。匹配评分主路径 `_score_batch()` 使用 JSON 解析后 Pydantic 校验模式 |
+| 结构化输出 | Instructor（Pydantic schema 校验） | 所有需要结构化输出的 LLM 调用点（8 个主路径）均已走 Instructor + Pydantic 模式：匹配评分（`_score_batch` + `score_single_jd`）、市场分析 Phase B/C、方向聚合分析、简历审查。LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式 |
 | 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
 | HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
 | PDF 渲染 | Playwright/Chromium | Markdown → HTML → PDF，两个独立浏览器实例（爬虫 + 渲染器各一个） |
@@ -48,7 +48,7 @@ D:\job-agent/
 ├── scraper.py                # [爬虫] JobsDB 页面抓取（~1031 行），4 层列表解析 + 3 层详情解析
 ├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
 ├── job_match.py              # [匹配] LLM 五维评分 + 动态权重 + 及格线复评 + 方向分类
-├── resume_gen.py             # [简历] 5 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
+├── resume_gen.py             # [简历] 3 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
 ├── checker.py                # [核查] 简历 bullet 事实核查 — 检测数字矛盾、强度升级、占位符
 ├── pdf_renderer.py           # [渲染] Markdown → HTML → PDF（独立 Playwright 实例）
 ├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
@@ -904,7 +904,7 @@ _FIELD_SPECS = {
 
 **Few-shot 示例注入**：评分 prompt 中会注入方向相关的 few-shot 示例，帮助 LLM 更准确地判断岗位方向。示例来源为 `prompts/examples/job_match/` 目录，始终加载 `common.yaml` 的通用示例，并根据当前 campaign 的 strategy 加载对应的 `{strategy}.yaml` 示例（如 `web3.yaml`）。实现函数为 `_load_examples(strategy)`。
 
-**Instructor 模式说明**：匹配评分主路径 `_score_batch()` 使用 LLM 返回 JSON 文本 + `parse_json_response()` 解析模式；评估脚本 `score_single_jd()` 使用 Instructor + Pydantic（`response_model=MatchResult`）进行结构化输出校验和自动重试修正。
+**Instructor 模式说明**：匹配评分主路径 `_score_batch()` 和评估脚本 `score_single_jd()` 均使用 Instructor + Pydantic（`response_model=list[MatchResult]` / `response_model=MatchResult`），LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式。方向聚合分析和简历审查同样走此模式。
 
 **权重方案可用性**：Campaign 模式下，`weight_profiles` 仅包含当前 strategy 的权重方案 + default 默认权重。其他方向类别（如使用 `web3` strategy 时的 `payment`/`solutions`/`technical`）的岗位将使用 default 权重计算总分。所有 5 种策略文件位于 `instances/strategies/`，不同 campaign 可通过切换 strategy 来使用不同的权重方案。
 
