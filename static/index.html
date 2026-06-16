@@ -309,7 +309,11 @@
           </div>
 
           <div id="files-market" class="hidden">
-            <p class="text-xs text-slate-400 mb-3">目录：<code class="bg-slate-100 px-1 rounded">output/market/</code> · 每次市场调研产出 5 个文件</p>
+            <div class="flex items-center gap-2 mb-4 flex-wrap">
+              <p class="text-xs text-slate-400">目录：<code class="bg-slate-100 px-1 rounded">output/market/</code> · 每次市场调研产出 5 个文件</p>
+              <button onclick="expandAllCats()" class="text-xs text-slate-500 border border-slate-200 rounded-lg px-2 py-2 hover:text-indigo-600">全部展开</button>
+              <button onclick="collapseAllCats()" class="text-xs text-slate-500 border border-slate-200 rounded-lg px-2 py-2 hover:text-indigo-600">全部折叠</button>
+            </div>
             <div id="files-market-list" class="space-y-3"></div>
           </div>
         </div>
@@ -1019,7 +1023,7 @@ async function renderRuns(){
 
 /* ===================== FILES VIEW ===================== */
 let FILE_TAB='jobs', JOB_SRC=null;
-const COLLAPSED=new Set();
+const EXPANDED=new Set();
 
 /* ===================== FILE TIME FILTER ===================== */
 const FILE_FILTER = {range:'all', from:'', to:''};
@@ -1064,9 +1068,9 @@ function fileRowFull(name,path,desc,size){
 function fileChipMini(path,label){
   return `<a href="/download/${path}" target="_blank" class="inline-flex items-center gap-1 text-[11px] bg-white border border-slate-200 hover:border-indigo-300 rounded px-2 py-1 text-slate-600"><i data-lucide="download" class="w-3 h-3"></i>${label}</a>`;
 }
-function toggleCat(k){ if(COLLAPSED.has(k)) COLLAPSED.delete(k); else COLLAPSED.add(k); renderFiles(); }
-function expandAllCats(){ COLLAPSED.clear(); renderFiles(); }
-function collapseAllCats(){ document.querySelectorAll('[data-cat-key]').forEach(el=>COLLAPSED.add(el.dataset.catKey)); renderFiles(); }
+function toggleCat(k){ if(EXPANDED.has(k)) EXPANDED.delete(k); else EXPANDED.add(k); renderFiles(); }
+function expandAllCats(){ const list = FILE_TAB==='jobs' ? $('#files-jobs-list') : $('#files-market-list'); list.querySelectorAll('[data-cat-key]').forEach(el=>EXPANDED.add(el.dataset.catKey)); renderFiles(); }
+function collapseAllCats(){ const list = FILE_TAB==='jobs' ? $('#files-jobs-list') : $('#files-market-list'); list.querySelectorAll('[data-cat-key]').forEach(el=>EXPANDED.delete(el.dataset.catKey)); renderFiles(); }
 
 const FILE_LABELS = {
   'scan_listings.json':'第一层扫描的全量职位列表（过滤前）',
@@ -1087,7 +1091,7 @@ const FILE_CATS_DEF = {
 const CAT_COLORS = {blue:'text-blue-600 bg-blue-50',amber:'text-amber-600 bg-amber-50',emerald:'text-emerald-600 bg-emerald-50',indigo:'text-indigo-600 bg-indigo-50'};
 
 function catSection(key,cat,count,inner){
-  const open=!COLLAPSED.has(key);
+  const open=EXPANDED.has(key);
   return `<div class="border border-slate-200 rounded-xl overflow-hidden bg-white" data-cat-key="${key}"><button onclick="toggleCat('${key}')" class="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-left"><div class="w-7 h-7 rounded-lg flex items-center justify-center ${CAT_COLORS[cat.color]}"><i data-lucide="${cat.icon}" class="w-4 h-4"></i></div><span class="font-semibold text-sm text-slate-700">${cat.label}</span><span class="text-[11px] bg-slate-100 text-slate-500 rounded-full px-2 py-0.5">${count}</span><i data-lucide="chevron-${open?'down':'right'}" class="w-4 h-4 text-slate-400 ml-auto"></i></button><div class="${open?'':'hidden'} px-3 pb-3 space-y-1.5">${inner}</div></div>`;
 }
 
@@ -1211,7 +1215,7 @@ async function renderMarketFiles(){
   });
 
   list.innerHTML = Object.entries(groups).sort((a,b)=>b[0].localeCompare(a[0])).map(([ts,g])=>{
-    const k='mkt_'+ts; const open=!COLLAPSED.has(k);
+    const k='mkt_'+ts; const open=EXPANDED.has(k);
     let inner = '';
 
     if(g.report.length){
