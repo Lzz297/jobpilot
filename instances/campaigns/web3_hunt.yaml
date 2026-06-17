@@ -1,7 +1,6 @@
 # instances/campaigns/web3_hunt.yaml
 # Web3 岗位搜索
 
-user: "li_ming"
 strategy: "web3"
 search_queries:
   - keywords: "Web3"

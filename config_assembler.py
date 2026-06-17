@@ -62,10 +62,12 @@ def load_campaign(campaign_name: str) -> dict:
     if not campaign:
         raise FileNotFoundError(f"Campaign 文件不存在: {campaign_path}")
 
-    user_name = campaign.get("user", "")
+    # ── 4. 加载系统配置（search_config.yaml 中的系统基础设施部分）──
+    search_cfg = _load_yaml(os.path.join(PROFILES_DIR, "search_config.yaml"))
+    # user 从 profiles/.current_user 读取
+    from config import get_current_user
+    user_name = get_current_user()
     strategy_name = campaign.get("strategy", "")
-    if not user_name:
-        raise ValueError(f"Campaign '{campaign_name}' 缺少 user 字段")
     if not strategy_name:
         raise ValueError(f"Campaign '{campaign_name}' 缺少 strategy 字段")
 
@@ -90,8 +92,7 @@ def load_campaign(campaign_name: str) -> dict:
     if wp:
         _validate_weight_profile(strategy_name, wp)
 
-    # ── 4. 加载通用配置（search_config.yaml 中的系统基础设施部分）──
-    search_cfg = _load_yaml(os.path.join(PROFILES_DIR, "search_config.yaml"))
+    # ── 4. 构建 base_config（复用已加载的 search_cfg）──
     base_config = {
         "llm": search_cfg.get("llm", {}),
         "filters": search_cfg.get("filters", {}),

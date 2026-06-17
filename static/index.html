@@ -387,7 +387,7 @@
 
 <script>
 /* ===================== STATE ===================== */
-const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, sid:null };
+const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, sid:null, settingsTab:'profile' };
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
 const DIR_META = {
   payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
@@ -951,7 +951,7 @@ async function viewCurrentCampaign(){
     const current = data ? data.find(c => c.name === campaignName) : null;
     if(!current){ toast('未找到当前方向配置','err'); return; }
     let html = `<div class="space-y-3"><h3 class="font-semibold text-sm">当前方向：${current.name} · ${current.strategy}</h3>`;
-    html += `<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">用户</span><div class="text-slate-700 font-medium">${current.user}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">策略</span><div class="text-slate-700 font-medium">${current.strategy}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">排序</span><div class="text-slate-700 font-medium">${current.sort_mode}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">搜索词</span><div class="text-slate-700 font-medium">${current.queries} 组</div></div></div>`;
+    html += `<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">用户</span><div class="text-slate-700 font-medium">${STATE.user || '未选择'}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">策略</span><div class="text-slate-700 font-medium">${current.strategy}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">排序</span><div class="text-slate-700 font-medium">${current.sort_mode}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">搜索词</span><div class="text-slate-700 font-medium">${current.queries} 组</div></div></div>`;
     const kws = (current.keywords||[]).join('、') || '（无）';
     html += `<div class="bg-slate-50 rounded-lg px-3 py-2 text-xs"><span class="text-slate-400">具体关键词</span><div class="text-slate-700 font-medium mt-1">${kws}</div></div></div>`;
     showModal('当前 Campaign 配置', html);
@@ -992,6 +992,10 @@ document.getElementById('user-select').addEventListener('change', async function
   try {
     await apiPost('/api/config/user', {user:user});
     STATE.user = user;
+    // 如果设置面板已打开且当前在「个人画像」tab，则自动刷新
+    if (document.getElementById('view-settings')?.style.display !== 'none' && STATE.settingsTab === 'profile') {
+        renderSettings();
+    }
     toast(`已切换画像：${user}`,'ok');
   } catch(e){
     toast('切换失败: '+e.message,'err');
@@ -1457,9 +1461,9 @@ async function renderSettings(){
     const exp = (me.work_experience||[]).map(e=>`${e.company||''} | ${e.title||''} | ${e.period||''}\n`+(e.highlights||[]).map(h=>'· '+h).join('\n')).join('\n\n');
     $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入当前用户画像</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
       ${card('基本信息',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('姓名','p-name',me.name)}${field('英文名','p-name-en',me.name_en)}${field('所在地','p-loc',me.location)}${field('电话','p-phone',me.phone)}${field('邮箱','p-email',me.email)}${field('LinkedIn','p-linkedin',me.linkedin)}${field('GitHub','p-github',me.github)}</div>`)}
-      ${card('求职意向',`<div class="space-y-3">${areaField('目标岗位（每行一个）','p-titles',(intent.target_titles||[]).join('\n'),4)}<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('薪资期望','p-salary',intent.salary_expectation||'')}${field('到岗时间','p-avail',intent.notice_period||intent.availability||'')}</div>${field('目标行业','p-industry',(intent.target_industries||[]).join(', '))}</div>`)}
+      ${card('求职意向',`<div class="space-y-3">${areaField('目标岗位（每行一个）','p-titles',(intent.target_titles||[]).join('\n'),4)}<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('薪资期望','p-salary',intent.salary_expectation||'')}${field('到岗时间','p-avail',intent.notice_period||intent.availability||'')}</div><div class="text-xs text-amber-600">⚠️ 薪资期望在此页面保存时不生效，请直接编辑 YAML 配置文件。</div>${field('目标行业','p-industry',(intent.target_industries||[]).join(', '))}</div>`)}
       ${card('战略定位',areaField('核心画像','p-core',me.strategic_positioning||'',3))}
-      ${card('专业技能',`<div class="space-y-3">${field('数据库','p-db',skillVal(skills,'databases_and_data'))}${field('API 集成','p-api',skillVal(skills,'api_and_integration'))}${field('编程语言','p-lang',skillVal(skills,'programming_languages'))}${field('框架','p-fw',skillVal(skills,'frameworks'))}${field('区块链','p-chain',skillVal(skills,'blockchain'))}${field('DevOps','p-devops',skillVal(skills,'devops_and_tools'))}${field('AI 工具','p-ai',skillVal(skills,'ai_tools'))}${field('业务能力','p-biz',skillVal(skills,'business_skills'))}${field('语言能力','p-spoken',skillVal(skills,'languages'))}</div>`)}
+      ${card('专业技能',`<div class="space-y-3">${field('数据库','p-db',skillVal(skills,'databases_and_data'))}${field('API 集成','p-api',skillVal(skills,'api_and_integration'))}${field('编程语言','p-lang',skillVal(skills,'programming_languages'))}${field('框架','p-fw',skillVal(skills,'frameworks'))}${field('区块链','p-chain',skillVal(skills,'blockchain'))}${field('DevOps','p-devops',skillVal(skills,'devops_and_tools'))}${field('AI 工具','p-ai',skillVal(skills,'ai_tools'))}${field('业务能力','p-biz',skillVal(skills,'business_skills'))}${field('语言能力','p-spoken',skillVal(skills,'languages'))}</div><div class="text-xs text-amber-600 mt-2">⚠️ 技能和薪资字段在 Web 端暂不可编辑，请直接编辑 YAML 配置文件以修改此内容。</div>`)}
       ${card('自我评价',areaField('p-self',me.summary||'',3))}
       <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
   }
@@ -1509,25 +1513,21 @@ function addClsRow(v){ const box=$('#cfg-cls'); if(!box) return; const row=docum
 async function saveYaml(name){
   if(name==='me'){
     const orig = await loadYaml('me') || {};
-    const skills = {};
-    const skillKeys = {databases_and_data:'p-db',api_and_integration:'p-api',programming_languages:'p-lang',frameworks:'p-fw',blockchain:'p-chain',devops_and_tools:'p-devops',ai_tools:'p-ai',business_skills:'p-biz',languages:'p-spoken'};
-    for(const [key, elId] of Object.entries(skillKeys)){
-      const el = $(`#${elId}`); if(el) skills[key] = el.value.split(',').map(s=>s.trim()).filter(Boolean);
-    }
     const newMe = {
       ...orig,
       name: $('#p-name').value, name_en: $('#p-name-en')?.value||orig.name_en||'',
       phone: $('#p-phone').value, email: $('#p-email').value,
       linkedin: $('#p-linkedin').value, github: $('#p-github').value,
       location: $('#p-loc').value,
-      job_intent: {...(orig.job_intent||{}), target_titles:$('#p-titles').value.split('\n').map(s=>s.trim()).filter(Boolean), salary_expectation:$('#p-salary').value, notice_period:$('#p-avail').value, target_industries:$('#p-industry').value.split(',').map(s=>s.trim()).filter(Boolean)},
+      job_intent: {...(orig.job_intent||{}), target_titles:$('#p-titles').value.split('\n').map(s=>s.trim()).filter(Boolean), salary_expectation: orig.job_intent?.salary_expectation, notice_period:$('#p-avail').value, target_industries:$('#p-industry').value.split(',').map(s=>s.trim()).filter(Boolean)},
       strategic_positioning: $('#p-core').value,
-      skills: skills,
       summary: $('#p-self').value,
     };
     const res = await api('PUT', '/api/config/yaml/me', {content:newMe});
-    if(res && !res.error) toast('已保存用户画像','ok');
-    else toast('保存失败: '+(res?.error||'未知错误'),'err');
+    if(res && !res.error) {
+      toast('已保存用户画像','ok');
+      await loadUserList(); // 刷新侧边栏下拉框
+    } else toast('保存失败: '+(res?.error||'未知错误'),'err');
   }
 }
 
@@ -1537,7 +1537,6 @@ async function saveConfigYaml(){
   const newCfg = {
     llm: cfg.llm || {provider:STATE.model, model:MODELS[STATE.model]},
     sort_mode: $('#c-sort').value.trim()||'date',
-    user: cfg.user || 'li_ming',
     filters: {exclude_companies: $('#c-exclude').value.split('\n').map(s=>s.trim()).filter(Boolean)},
     market_job_categories: [...document.querySelectorAll('#cfg-cats .cat-in')].map(i=>i.value.trim()).filter(Boolean),
     market_classifications: [...document.querySelectorAll('#cfg-cls .cls-in')].map(i=>i.value.trim()).filter(Boolean),
@@ -1690,6 +1689,7 @@ function setModalMode(m){ /* handled by friendly/raw buttons above */ }
 
 /* ===================== SETTINGS TABS ===================== */
 function setTab(t){
+  STATE.settingsTab = t;
   $('#set-profile').classList.toggle('hidden',t!=='profile');
   $('#set-config').classList.toggle('hidden',t!=='config');
   $('#set-tab-profile').className='px-4 py-1.5 '+(t==='profile'?'bg-indigo-600 text-white':'bg-white text-slate-500');

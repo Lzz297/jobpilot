@@ -238,25 +238,35 @@ def get_model_info():
     }
 
 
+def get_current_user():
+    """
+    读取当前活跃的画像名。
+    唯一来源：profiles/.current_user 文件。
+    文件不存在或内容为空时抛出 RuntimeError。
+    """
+    import os
+    user_file = os.path.join(os.path.dirname(__file__), "profiles", ".current_user")
+    if not os.path.exists(user_file):
+        raise RuntimeError(
+            f"未找到当前用户配置文件: {user_file}"
+        )
+    with open(user_file, "r", encoding="utf-8") as f:
+        user_name = f.read().strip()
+    if not user_name:
+        raise RuntimeError(f"{user_file} 内容为空，请写入当前画像名称")
+    return user_name
+
+
 def load_profile():
     """
     加载用户画像。唯一来源：instances/users/{user}.yaml。
 
-    从 search_config.yaml 读取 user 字段（默认 "li_ming"），
+    从 profiles/.current_user 读取当前画像名，
     拼接 instances/users/{user}.yaml 路径并加载。
     文件不存在或加载失败时抛出 RuntimeError。
     """
     import os
-    cfg, err = load_yaml("search_config.yaml")
-    if err or not cfg:
-        raise RuntimeError(f"无法加载 search_config.yaml: {err}")
-
-    user_name = cfg.get("user")
-    if not user_name:
-        raise RuntimeError(
-            "profiles/search_config.yaml 中未配置 user 字段，"
-            "请在 llm: 段之前新增 user: \"your_name\""
-        )
+    user_name = get_current_user()
 
     user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
     filepath = os.path.join(user_dir, f"{user_name}.yaml")
@@ -264,7 +274,7 @@ def load_profile():
     if not os.path.exists(filepath):
         raise RuntimeError(
             f"用户画像文件不存在: {filepath}"
-            f"（search_config.yaml 中 user 字段为 \"{user_name}\"）"
+            f"（profiles/.current_user 内容为 \"{user_name}\"）"
         )
 
     data, err = load_yaml(f"{user_name}.yaml", directory=user_dir)

@@ -25,4 +25,5 @@ output/
 .DS_Store
 Thumbs.db
 *.tmp
+*.bak
 *.log

@@ -8,5 +8,6 @@ market_analysis:
   jd_max_chars: 6000
   max_fetch_jd: 100
   max_pages: 4
+market_classifications: []
+market_job_categories: []
 sort_mode: date
-user: li_ming

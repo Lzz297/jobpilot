@@ -34,6 +34,16 @@ from market_analysis import analyze_market, batch_analyze_market
 
 app = Flask(__name__, static_folder="static")
 
+# ── 当前画像名（profiles/.current_user）──
+def _get_current_user():
+    """读取 profiles/.current_user 获取当前画像名。"""
+    import os
+    user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles", ".current_user")
+    if not os.path.exists(user_file):
+        return None
+    with open(user_file, "r", encoding="utf-8") as f:
+        return f.read().strip() or None
+
 # ── Session 管理 ──
 _sessions = {}       # sid → {messages, queue, busy, last_done}
 _sessions_lock = threading.Lock()
@@ -706,8 +716,9 @@ def api_market_batch():
 def get_yaml_config(name):
     """读取配置文件，返回 JSON 格式内容。me 从 instances/users/ 读取。"""
     if name == "me":
-        cfg, _ = config.load_yaml("search_config.yaml")
-        user_name = (cfg or {}).get("user", "li_ming")
+        user_name = _get_current_user()
+        if not user_name:
+            return jsonify({"error": "未设置当前画像，请在侧边栏选择画像"}), 400
         user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
         filepath = os.path.join(user_dir, f"{user_name}.yaml")
         if not os.path.exists(filepath):
@@ -736,19 +747,32 @@ def put_yaml_config(name):
         return jsonify({"error": "content 必须是 JSON 对象"}), 400
 
     if name == "me":
-        cfg, _ = config.load_yaml("search_config.yaml")
-        user_name = (cfg or {}).get("user", "li_ming")
+        user_name = _get_current_user()
+        if not user_name:
+            return jsonify({"error": "未设置当前画像，请在侧边栏选择画像"}), 400
         user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
         os.makedirs(user_dir, exist_ok=True)
         filepath = os.path.join(user_dir, f"{user_name}.yaml")
-        with open(filepath, "w", encoding="utf-8") as f:
+        import shutil
+        tmp_path = filepath + ".tmp"
+        bak_path = filepath + ".bak"
+        if os.path.exists(filepath):
+            shutil.copy2(filepath, bak_path)
+        with open(tmp_path, "w", encoding="utf-8") as f:
             yaml.dump(new_content, f, allow_unicode=True, default_flow_style=False)
+        os.replace(tmp_path, filepath)
         return jsonify({"status": "ok", "name": name})
     elif name == "search_config":
         filepath = os.path.join(config.PROFILES_DIR, f"{name}.yaml")
         try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(yaml.dump(new_content, allow_unicode=True, default_flow_style=False))
+            import shutil
+            tmp_path = filepath + ".tmp"
+            bak_path = filepath + ".bak"
+            if os.path.exists(filepath):
+                shutil.copy2(filepath, bak_path)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                yaml.dump(new_content, f, allow_unicode=True, default_flow_style=False)
+            os.replace(tmp_path, filepath)
         except Exception as e:
             return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
         return jsonify({"status": "ok", "name": name})
@@ -794,7 +818,6 @@ def list_campaigns():
                     sq = data.get("search_queries", [])
                     result.append({
                         "name": name,
-                        "user": data.get("user", ""),
                         "strategy": data.get("strategy", ""),
                         "queries": len(sq),
                         "keywords": [q.get("keywords", "") for q in sq if q.get("keywords")],
@@ -854,7 +877,7 @@ def list_users():
 
 @app.route("/api/config/user", methods=["POST"])
 def set_config_user():
-    """更新 search_config.yaml 的 user 字段。"""
+    """更新 profiles/.current_user 文件。"""
     data = request.json or {}
     new_user = data.get("user", "").strip()
     if not new_user:
@@ -864,13 +887,9 @@ def set_config_user():
     if not os.path.isfile(os.path.join(user_dir, f"{new_user}.yaml")):
         return jsonify({"error": f"画像文件不存在: {new_user}.yaml"}), 400
 
-    filepath = os.path.join(config.PROFILES_DIR, "search_config.yaml")
-    with open(filepath, "r", encoding="utf-8") as f:
-        text = f.read()
-    import re
-    text = re.sub(r'^(user:\s*)\S+', rf'\g<1>"{new_user}"', text, count=1, flags=re.MULTILINE)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(text)
+    user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles", ".current_user")
+    with open(user_file, "w", encoding="utf-8") as f:
+        f.write(new_user)
 
     return jsonify({"status": "ok", "user": new_user})
 

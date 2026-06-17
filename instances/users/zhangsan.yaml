@@ -1,0 +1,221 @@
+# 测试用户 — 张三
+# Python 后端 / AI 应用开发方向
+
+name: 张三
+name_en: Zhang San
+email: zhangsan@example.com
+phone: +852-9876-5432
+linkedin: ''
+github: ''
+location: Hong Kong
+hk_permanent_resident: true
+
+job_intent:
+  job_type: full-time
+  location_preference:
+    - Hong Kong
+    - Shenzhen
+  notice_period: 一个月
+  salary_expectation:
+    currency: HKD
+    min: 30000
+    max: 45000
+    note: 当前月薪 32K HKD。优先考虑 AI 应用方向，对纯 CRUD 后端岗位兴趣不大。
+  target_industries:
+    - AI / LLM 应用
+    - 金融科技 (Fintech)
+    - B2B SaaS
+    - 电商 / 物流科技
+  target_titles:
+    - Python Backend Engineer
+    - AI Application Engineer
+    - Full-Stack Developer (Python + React)
+    - Backend Engineer (Fintech)
+    - Platform Engineer
+
+strategic_positioning: |
+  候选人的最佳定位是 "Python 后端 + AI 应用开发" 的复合型工程师：
+  - 3 年 Python 后端开发经验，熟悉 FastAPI / Django
+  - 有 LLM 应用落地经验（RAG、Agent、Prompt Engineering）
+  - 前端有 React 基础，能独立完成全栈项目
+  - 英语读写流畅，听说可应付基础会议
+
+skills:
+  programming_languages:
+    - name: Python
+      level: 精通
+      years: 3
+      detail: 主力语言，熟悉异步编程、类型注解、性能优化
+    - name: JavaScript / TypeScript
+      level: 掌握
+      years: 1.5
+      detail: React 前端开发，能独立完成管理后台类页面
+    - name: Java
+      level: 了解
+      years: 0.5
+      detail: 大学学过，工作中未使用
+  frameworks:
+    - name: FastAPI
+      level: 精通
+      detail: 搭建过 3 个生产级 API 服务
+    - name: Django
+      level: 熟练
+      detail: 早期项目使用，ORM 和 Admin 用得较多
+    - name: React
+      level: 掌握
+      detail: 独立完成公司内部管理后台前端
+  databases_and_data:
+    - name: PostgreSQL
+      level: 熟练
+      years: 3
+      detail: 日常使用，熟悉复杂查询、索引优化、JSON 字段
+    - name: Redis
+      level: 熟练
+      years: 2
+      detail: 缓存、消息队列（Redis Stream）、分布式锁
+    - name: MongoDB
+      level: 掌握
+      years: 1
+      detail: AI 项目中的向量存储和文档检索
+  devops_and_tools:
+    - name: Docker
+      level: 日常使用
+      detail: 开发环境容器化，Docker Compose 编排
+    - name: Git / GitHub Actions
+      level: 日常使用
+      detail: CI/CD 流水线配置
+    - name: AWS
+      level: 基础
+      detail: EC2、S3、RDS 的基本使用
+  ai_tools:
+    - name: LangChain / LlamaIndex
+      level: 项目实现
+      detail: RAG 检索增强生成、Agent 工具调用链
+    - name: OpenAI API / Claude API
+      level: 熟练
+      detail: 多个项目中使用过 GPT-4、Claude 的 API
+    - name: Vector DB (Pinecone / Chroma)
+      level: 掌握
+      detail: 语义搜索和文档检索场景使用
+  api_and_integration:
+    - name: RESTful API 设计与对接
+      level: 熟练
+      detail: FastAPI 构建 REST API，Swagger 自动文档
+    - name: Webhook / 回调机制
+      level: 掌握
+      detail: 支付回调、第三方服务回调处理
+  business_skills:
+    - AI 产品需求分析与方案设计
+    - 技术文档撰写（中英文）
+    - 跨团队协作（产品 / 前端 / 数据）
+  languages:
+    - name: 普通话
+      level: 母语
+    - name: 英文
+      level: 商务可用
+      note: 阅读和写作流畅，听说可应付日常会议
+
+work_experience:
+  - company: 某 Fintech 公司
+    company_en: A Hong Kong Fintech Startup
+    company_size: 30
+    location: Hong Kong
+    title: Python Backend Engineer
+    period: 2024.03 - 2026.06
+    tech_stack:
+      - Python / FastAPI
+      - PostgreSQL / Redis
+      - Docker / AWS
+      - LangChain / OpenAI API
+    overview: |
+      公司产品为面向中小企业的智能财税 SaaS 平台。负责后端核心模块开发
+      和 AI 功能（发票 OCR、智能分类）的从零到一落地。
+    highlights:
+      - 负责平台核心模块（账单管理、自动对账、报表生成）的后端设计与开发
+      - 从零搭建基于 LangChain + GPT-4 的发票智能识别 pipeline，准确率 92%
+      - 设计 PostgreSQL 复杂查询优化方案，报表生成从 12 秒降到 1.5 秒
+    core_modules:
+      invoice_ai:
+        module_name: 发票 AI 识别模块
+        description: OCR + LLM 结构化提取 → 自动分类 → 入账
+        resume_bullet_candidates:
+          - id: inv_001
+            text: Built AI-powered invoice recognition pipeline using LangChain and GPT-4, achieving 92% extraction accuracy across Chinese and English invoices, reducing manual data entry by 70%
+          - id: inv_002
+            text: Designed multi-stage validation system combining OCR pre-processing, LLM structured extraction, and business rule cross-checking to ensure financial data accuracy
+      billing_engine:
+        module_name: 账单与对账引擎
+        description: 多租户账单生成 → 自动对账 → 异常告警
+        resume_bullet_candidates:
+          - id: bil_001
+            text: Architected multi-tenant billing engine processing 5,000+ monthly invoices with automated reconciliation against bank statements via Redis Stream
+          - id: bil_002
+            text: Optimized complex SQL queries for financial reporting, reducing report generation time from 12s to 1.5s through strategic indexing and query restructuring
+    key_achievements:
+      - id: ai_invoice_launch
+        category: 产品创新
+        title: AI 发票识别从零到上线
+        resume_bullet: Led end-to-end development of AI invoice recognition system — from prototype to production, reducing manual data entry by 70% and processing 3,000+ invoices monthly
+        story: |
+          独立调研 LangChain + GPT-4 方案，两周完成 PoC，一个月内上线。
+          上线后商户反馈良好，成为产品差异化卖点之一。
+        interview_keywords:
+          - LangChain
+          - Prompt Engineering
+          - RAG
+          - OCR pipeline
+      - id: db_optimization
+        category: 性能优化
+        title: 报表查询性能优化
+        resume_bullet: Diagnosed and resolved critical performance bottleneck in financial reporting — redesigned query patterns and index strategy, achieving 8x speed improvement
+        story: |
+          商户月底集中生成报表导致数据库 CPU 飙升。通过慢查询分析、
+          联合索引重构、物化视图方案将核心报表从 12 秒优化到 1.5 秒。
+
+education:
+  - degree: 硕士 / Master's
+    major: 计算机科学 / Computer Science
+    period: 2021.09 - 2023.06
+    school: 香港中文大学
+    school_en: The Chinese University of Hong Kong
+  - degree: 本科 / Bachelor's
+    major: 软件工程 / Software Engineering
+    period: 2017.09 - 2021.06
+    school: 深圳大学
+    school_en: Shenzhen University
+
+projects:
+  - name: AI 知识库问答系统
+    name_cn: AI 知识库问答系统
+    role: 独立开发
+    for_resume: true
+    description: |
+      RAG 架构的企业内部知识库问答系统。支持 PDF/Word/网页多格式文档导入，
+      Chroma 向量存储 + GPT-4 生成答案，带引用溯源。
+    tech_stack:
+      - Python / FastAPI
+      - LangChain
+      - Chroma
+      - React
+    resume_bullets:
+      - id: prj_001
+        text: Independently built RAG-based enterprise knowledge base Q&A system supporting multi-format document ingestion (PDF, Word, web pages) with source attribution
+      - id: prj_002
+        text: Designed hybrid search strategy combining semantic search (Chroma) with keyword-based BM25 retrieval, improving answer relevance by 35%
+
+certifications: []
+
+summary: |
+  Python 后端工程师，3 年经验，专注于 AI 应用落地和 Fintech 后端开发。
+
+  核心竞争力：
+  1. Python 后端扎实 — FastAPI/Django 均有生产级项目经验，熟悉异步编程和性能优化
+  2. AI 应用落地能力 — 独立完成 LangChain + RAG 项目，有 LLM API 调用的实战经验
+  3. 全栈能力 — React 前端基础，能独立交付从前端到后端的完整功能
+  4. 英语商务可用 — 阅读写作流畅，可应付英文会议（听说中等）
+
+  真实短板（供系统内部评估）：
+  - 没有大厂经验，缺乏大规模分布式系统实战
+  - 前端能力仅限于管理后台类页面，复杂 UI 需要前端配合
+  - 机器学习理论基础薄弱（调 API 没问题，从零训模型不会）
+  - Java 能力仅限于阅读和简单修改
