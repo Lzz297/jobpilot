@@ -182,7 +182,22 @@ groups:
             label: 面试关键词
             type: array
             widget: tags
-    # 深层嵌套字段 core_modules 暂不开放编辑；story 字段因文本过大不纳入子表格
+  # ── 核心模块（core_modules）──
+  - key: core_modules
+    label: 核心模块
+    type: map
+    widget: module_map
+    item_schema:
+      columns:
+        - key: id
+          label: ID
+          type: string
+          widget: input
+        - key: text
+          label: 简历描述
+          type: string
+          widget: textarea
+    # technical_details 折叠只读；新增/删除模块请手动编辑 YAML
 
   # ── 教育背景 ──
   - key: education

@@ -1628,6 +1628,39 @@ function categoriesField(fieldDef, data) {
   return html;
 }
 
+function moduleMapField(fieldDef, data) {
+  const prefix = fieldDef.key;
+  let html = '<div class="space-y-4">';
+  if (data && typeof data === 'object') {
+    Object.entries(data).forEach(([moduleName, moduleData]) => {
+      const label = moduleName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      html += `<div class="border border-slate-200 rounded-lg p-3">
+        <details open class="group">
+          <summary class="cursor-pointer text-sm font-medium text-slate-700 mb-2 select-none">${label}</summary>
+          <div class="space-y-3 mt-2">
+            ${field('模块名称', `${prefix}.${moduleName}.module_name`, (moduleData && moduleData.module_name) || '', 'text', '', '')}
+            ${areaField('模块描述', `${prefix}.${moduleName}.description`, (moduleData && moduleData.description) || '', 3, '')}
+            <div>
+              <label class="text-xs font-medium text-slate-500">简历要点候选</label>
+              ${tableField(
+                { key: `${prefix}.${moduleName}.resume_bullet_candidates`, columns: fieldDef.item_schema.columns },
+                (moduleData && moduleData.resume_bullet_candidates) || []
+              )}
+            </div>
+            <details class="text-xs text-slate-500">
+              <summary class="cursor-pointer select-none">查看详细技术文档</summary>
+              <pre class="mt-1 bg-slate-50 p-2 rounded text-xs whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml((moduleData && moduleData.technical_details) || '无')}</pre>
+            </details>
+          </div>
+        </details>
+      </div>`;
+    });
+  }
+  html += '<div class="text-xs text-slate-400 mt-2">新增/删除模块请手动编辑 YAML 文件。</div>';
+  html += '</div>';
+  return html;
+}
+
 /* ===================== SCHEMA RENDER ENGINE ===================== */
 function renderWidget(fieldDef, value) {
   const key = fieldDef.key;
@@ -1642,6 +1675,7 @@ function renderWidget(fieldDef, value) {
     case 'tags': return tagsField(key, value || []);
     case 'list': return listField(key, value || []);
     case 'categories': return categoriesField(fieldDef, value);
+    case 'module_map': return moduleMapField(fieldDef, value);
     case 'chips': return chipsField(key, value || []);
     default: return `<div class="text-red-500 text-sm">未知控件: ${fieldDef.widget}</div>`;
   }
@@ -1650,6 +1684,8 @@ function renderWidget(fieldDef, value) {
 function renderSchemaForm(schema, data) {
   let html = '';
   (schema.groups || []).forEach(group => {
+    // core_modules 由 renderSettings 单独渲染（嵌套在 work_experience[0] 下，非顶层字段）
+    if (group.key === 'core_modules') return;
     // array/map 类型：统一走 renderWidget 分发（由 widget 字段路由到 tableField / categoriesField / chipsField）
     if (group.type === 'array' || group.type === 'map') {
       const groupData = data ? (data[group.key] || (group.type === 'map' ? {} : [])) : (group.type === 'map' ? {} : []);
@@ -1683,8 +1719,20 @@ async function renderSettings(){
     const schemaRes = await apiGet('/api/schema/user_field');
     if (schemaRes) {
       const formHtml = renderSchemaForm(schemaRes, me);
+      // 额外渲染 core_modules 编辑区（嵌套在 work_experience[0] 下）
+      let coreModulesHtml = '';
+      if (me.work_experience && me.work_experience.length > 0 && me.work_experience[0].core_modules) {
+        const coreFieldDef = (schemaRes.groups || []).find(g => g.key === 'core_modules');
+        if (coreFieldDef) {
+          coreModulesHtml = card('核心模块', moduleMapField(
+            { ...coreFieldDef, key: 'work_experience.0.core_modules' },
+            me.work_experience[0].core_modules
+          ));
+        }
+      }
       $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">根据 Schema 动态渲染</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
         ${formHtml}
+        ${coreModulesHtml}
         <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
     } else {
       $('#set-profile').innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">无法加载 Schema 配置</div>';
