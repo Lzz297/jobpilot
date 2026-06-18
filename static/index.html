@@ -418,16 +418,21 @@ function getValueByPath(obj, path) {
   return path.split('.').reduce((o, k) => (o || {})[k], obj);
 }
 
-// 深度合并
+// 深度合并（递归处理数组逐行合并）
 function deepMerge(target, source) {
   const output = { ...target };
   if (isObject(target) && isObject(source)) {
     Object.keys(source).forEach(key => {
-      if (isObject(source[key])) {
-        if (!(key in target)) Object.assign(output, { [key]: source[key] });
-        else output[key] = deepMerge(target[key], source[key]);
+      if (Array.isArray(target[key]) && Array.isArray(source[key])) {
+        // 数组逐行深度合并
+        output[key] = source[key].map((item, i) => {
+          const origItem = target[key][i] || {};
+          return deepMerge(origItem, item);
+        });
+      } else if (isObject(target[key]) && isObject(source[key])) {
+        output[key] = deepMerge(target[key], source[key]);
       } else {
-        Object.assign(output, { [key]: source[key] });
+        output[key] = source[key];
       }
     });
   }
@@ -1542,11 +1547,13 @@ function objectField(fieldDef, data) {
 function tableField(fieldDef, dataArray) {
   const key = fieldDef.key;
   const columns = fieldDef.columns;
+  const totalCols = columns.length + 1; // +1 for delete button
   let html = `<div class="overflow-x-auto"><table class="w-full text-sm" data-table="${key}">
     <thead><tr>${columns.map(col => `<th class="text-left py-1.5 text-xs font-medium text-slate-500">${col.label}</th>`).join('')}<th class="w-8"></th></tr></thead>
     <tbody>`;
   (dataArray || []).forEach((row, rowIdx) => {
-    html += `<tr>`;
+    // 先渲染主行
+    html += `<tr class="main-row">`;
     columns.forEach(col => {
       const cellValue = row ? (row[col.key] || '') : '';
       const cellId = `${key}.${rowIdx}.${col.key}`;
@@ -1556,6 +1563,11 @@ function tableField(fieldDef, dataArray) {
         html += `<td class="pr-2 py-1">${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}</td>`;
       } else if (col.widget === 'textarea') {
         html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
+      } else if (col.widget === 'subtable') {
+        // 子表格：在主单元格内渲染
+        const subTableData = Array.isArray(cellValue) ? cellValue : [];
+        const subTableDef = { key: cellId, columns: col.columns || [] };
+        html += `<td class="pr-2 py-1">${tableField(subTableDef, subTableData)}</td>`;
       } else {
         html += `<td class="pr-2 py-1"><input data-key="${cellId}" value="${escapeHtml(cellValue)}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       }
@@ -1582,6 +1594,9 @@ function addTableRow(btn, tableKey, columns) {
       rowHtml += `<td class="pr-2 py-1">${listField(cellId, [])}</td>`;
     } else if (col.widget === 'textarea') {
       rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
+    } else if (col.widget === 'subtable') {
+      const subTableDef = { key: cellId, columns: col.columns || [] };
+      rowHtml += `<td class="pr-2 py-1">${tableField(subTableDef, [])}</td>`;
     } else {
       rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     }
@@ -1731,18 +1746,7 @@ async function saveYaml(name){
       const orig = await loadYaml('me') || {};
       // Schema 驱动：从表单收集数据，深度合并到原始对象
       const collected = collectFormData();
-      let newMe = deepMerge(orig, collected);
-
-      // 对表格编辑的数组字段逐行深度合并，保留 orig 中非编辑列（如 key_achievements、core_modules、school_en 等）
-      const arrayFields = ['work_experience', 'education', 'projects'];
-      arrayFields.forEach(field => {
-        if (Array.isArray(orig[field]) && Array.isArray(collected[field])) {
-          newMe[field] = collected[field].map((row, i) => {
-            const origRow = orig[field][i] || {};
-            return deepMerge(origRow, row);
-          });
-        }
-      });
+      const newMe = deepMerge(orig, collected);  // deepMerge 已递归处理数组逐行合并
 
       const res = await api('PUT', '/api/config/yaml/me', {content: newMe});
       if(res && !res.error) {
@@ -1862,46 +1866,62 @@ function collectFormData() {
     }
   });
 
-  // 处理 table 数据
+  // 处理 table 数据（支持深层路径如 key_achievements.0.title）
   container.querySelectorAll('[data-table]').forEach(table => {
     const tableKey = table.getAttribute('data-table');
     const rows = [];
     table.querySelectorAll('tbody tr').forEach(row => {
       const rowData = {};
-      row.querySelectorAll('[data-key]').forEach(cell => {
+      const cells = row.querySelectorAll('[data-key]');
+      cells.forEach(cell => {
         const cellKey = cell.getAttribute('data-key');
-        const parts = cellKey.split('.');
-        if (parts.length >= 3) {
-          const colKey = parts[parts.length - 1];
+        // cellKey 格式: {tableKey}.{rowIdx}.{相对路径}
+        const prefix = tableKey + '.';
+        if (!cellKey.startsWith(prefix)) return;
+        const relPath = cellKey.substring(prefix.length);
+        const dotIdx = relPath.indexOf('.');
+        if (dotIdx === -1) {
+          // 一级字段（如 company）
           let val;
           if (cell.type === 'checkbox') val = cell.checked;
           else val = cell.value;
-          rowData[colKey] = val;
+          rowData[relPath] = val;
+        } else {
+          // 多级字段（如 key_achievements.0.title）
+          const colRelPath = relPath.substring(dotIdx + 1);
+          let val;
+          if (cell.type === 'checkbox') val = cell.checked;
+          else val = cell.value;
+          setValueByPath(rowData, colRelPath, val);
         }
       });
       // 行内 tags
       row.querySelectorAll('[data-key] .tag-item span:first-child').forEach(span => {
-        const div = span.closest('[data-key]');
-        if (div) {
-          const cellKey = div.getAttribute('data-key');
-          const parts = cellKey.split('.');
-          if (parts.length >= 3) {
-            const colKey = parts[parts.length - 1];
-            rowData[colKey] = Array.from(div.querySelectorAll('.tag-item span:first-child')).map(s => s.textContent.trim()).filter(Boolean);
-          }
-        }
+        const containerDiv = span.closest('[data-key]');
+        if (!containerDiv) return;
+        const cellKey = containerDiv.getAttribute('data-key');
+        const prefix = tableKey + '.';
+        if (!cellKey.startsWith(prefix)) return;
+        const relPath = cellKey.substring(prefix.length);
+        const dotIdx = relPath.indexOf('.');
+        const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
+        const tags = Array.from(containerDiv.querySelectorAll('.tag-item span:first-child')).map(s => s.textContent.trim()).filter(Boolean);
+        if (dotIdx === -1) { rowData[colRelPath] = tags; }
+        else { setValueByPath(rowData, colRelPath, tags); }
       });
       // 行内 list
       row.querySelectorAll('[data-key] input.list-item').forEach(input => {
-        const div = input.closest('[data-key]');
-        if (div) {
-          const cellKey = div.getAttribute('data-key');
-          const parts = cellKey.split('.');
-          if (parts.length >= 3) {
-            const colKey = parts[parts.length - 1];
-            rowData[colKey] = Array.from(div.querySelectorAll('input.list-item')).map(i => i.value.trim()).filter(Boolean);
-          }
-        }
+        const containerDiv = input.closest('[data-key]');
+        if (!containerDiv) return;
+        const cellKey = containerDiv.getAttribute('data-key');
+        const prefix = tableKey + '.';
+        if (!cellKey.startsWith(prefix)) return;
+        const relPath = cellKey.substring(prefix.length);
+        const dotIdx = relPath.indexOf('.');
+        const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
+        const items = Array.from(containerDiv.querySelectorAll('input.list-item')).map(i => i.value.trim()).filter(Boolean);
+        if (dotIdx === -1) { rowData[colRelPath] = items; }
+        else { setValueByPath(rowData, colRelPath, items); }
       });
       if (Object.keys(rowData).length > 0) rows.push(rowData);
     });

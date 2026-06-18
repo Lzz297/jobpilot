@@ -204,7 +204,19 @@ groups:
         label: 描述
         type: string
         widget: textarea
-    # resume_bullets 暂不开放编辑
+      - key: resume_bullets
+        label: 简历要点
+        type: array
+        widget: subtable
+        columns:
+          - key: id
+            label: ID
+            type: string
+            widget: input
+          - key: text
+            label: 文本
+            type: string
+            widget: textarea
 
   # ── 证书 ──
   - key: certifications
