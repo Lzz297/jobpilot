@@ -383,12 +383,6 @@
         </div>
         <button onclick="closeModal()" class="text-slate-400 hover:text-slate-700"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
-      <div id="modal-tabs" class="px-5 pt-3 shrink-0">
-        <div class="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
-          <button id="mm-friendly" onclick="setModalMode('friendly')" class="px-3 py-1.5">友好视图</button>
-          <button id="mm-raw" onclick="setModalMode('raw')" class="px-3 py-1.5">原始 YAML</button>
-        </div>
-      </div>
       <div id="modal-body" class="flex-1 overflow-auto px-5 py-4"></div>
       <div class="flex justify-end gap-2 px-5 py-3 border-t border-slate-100 bg-slate-50 shrink-0">
         <button onclick="closeModal()" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-lg px-3 py-1.5">关闭</button>
@@ -452,6 +446,13 @@ function getValueByPath(obj, path) {
 
 // 深度合并（递归处理数组逐行合并）
 function deepMerge(target, source) {
+  // 原始值或仅一方为对象：直接返回 source（标量覆盖、数组逐行已在调用方处理）
+  if (!isObject(target) || !isObject(source)) {
+    if (Array.isArray(target) && Array.isArray(source)) {
+      return source.map((item, i) => deepMerge(target[i] || {}, item));
+    }
+    return source;
+  }
   const output = { ...target };
   if (isObject(target) && isObject(source)) {
     Object.keys(source).forEach(key => {
@@ -1044,9 +1045,6 @@ function showModal(title, bodyHtml){
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-sub').textContent = '';
   document.getElementById('modal-icon').innerHTML = `<i data-lucide="target" class="w-4 h-4 text-indigo-600"></i>`;
-  document.getElementById('mm-friendly').classList.add('hidden');
-  document.getElementById('mm-raw').classList.add('hidden');
-  document.getElementById('modal-tabs').classList.add('hidden');
   document.getElementById('modal-body').innerHTML = bodyHtml;
   document.getElementById('modal-edit').classList.add('hidden');
   refreshIcons();
@@ -1529,6 +1527,27 @@ function areaField(label,id,val,rows=3,hint=''){
 }
 function card(title,body){ return `<div class="bg-white border border-slate-200 rounded-xl p-4 mb-3"><div class="text-sm font-semibold text-slate-700 mb-3">${title}</div>${body}</div>`; }
 
+/* ===================== LABEL MAP ===================== */
+const LABEL_MAP = {
+  ai_tools: 'AI 工具',
+  api_and_integration: 'API 与集成',
+  databases_and_data: '数据库与数据',
+  devops_and_tools: 'DevOps 与工具',
+  business_skills: '业务能力',
+  programming_languages: '编程语言',
+  blockchain: '区块链',
+  frameworks: '框架',
+  languages: '语言能力',
+  deposit_monitoring: '充值监听',
+  fund_sweeping: '归集调度',
+  withdrawal_processing: '提款处理',
+  merchant_integration: '商户对接',
+};
+
+function formatLabel(key) {
+  return LABEL_MAP[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 /* ===================== SCHEMA WIDGETS ===================== */
 function toggleField(id, value) {
   const checked = value === true || value === 'true' || value === 1;
@@ -1655,7 +1674,7 @@ function categoriesField(fieldDef, data) {
   let html = '<div class="space-y-4">';
   if (data && typeof data === 'object') {
     Object.entries(data).forEach(([category, items]) => {
-      const label = category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const label = formatLabel(category);
       html += `<div class="border border-slate-200 rounded-lg p-3">
         <div class="text-sm font-medium text-slate-700 mb-2">${label}</div>`;
       if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object') {
@@ -1677,10 +1696,13 @@ function moduleMapField(fieldDef, data) {
   let html = '<div class="space-y-4">';
   if (data && typeof data === 'object') {
     Object.entries(data).forEach(([moduleName, moduleData]) => {
-      const label = moduleName.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      const label = formatLabel(moduleName);
       html += `<div class="border border-slate-200 rounded-lg p-3">
         <details open class="group">
-          <summary class="cursor-pointer text-sm font-medium text-slate-700 mb-2 select-none">${label}</summary>
+          <summary class="cursor-pointer text-sm font-medium text-slate-700 mb-2 select-none flex items-center justify-between">
+            <span>${label}</span>
+            <button type="button" onclick="event.preventDefault(); event.stopPropagation(); if(confirm('确定要删除模块「${label}」吗？此操作不可恢复。')){ const card=this.closest('.border-slate-200'); card.querySelectorAll('[data-key]').forEach(el=>{el.value='';el.disabled=true;}); const hidden=document.createElement('input');hidden.type='hidden';hidden.setAttribute('data-delete-module','${moduleName}');card.appendChild(hidden);card.style.opacity='0.3';this.disabled=true;this.textContent='已标记删除';}" class="text-red-400 hover:text-red-600 text-xs font-normal shrink-0 ml-2">&times; 删除</button>
+          </summary>
           <div class="space-y-3 mt-2">
             ${field('模块名称', `${prefix}.${moduleName}.module_name`, (moduleData && moduleData.module_name) || '', 'text', '', '')}
             ${areaField('模块描述', `${prefix}.${moduleName}.description`, (moduleData && moduleData.description) || '', 3, '')}
@@ -1701,9 +1723,51 @@ function moduleMapField(fieldDef, data) {
       </div>`;
     });
   }
-  html += '<div class="text-xs text-slate-400 mt-2">新增/删除模块请手动编辑 YAML 文件。</div>';
+  const safeId = prefix.replace(/\./g, '_');
+  html += `<div class="border-t border-slate-100 pt-3 mt-3">
+    <div class="flex gap-2 items-center">
+      <input id="new-module-name-${safeId}" placeholder="新模块英文标识（如 payment_gateway）" class="flex-1 border border-slate-200 rounded px-3 py-1.5 text-sm">
+      <button type="button" onclick="addCoreModule('${prefix}')" class="shrink-0 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg px-3 py-1.5 font-medium">+ 新增模块</button>
+    </div>
+    <div class="text-xs text-slate-400 mt-1">英文标识将作为模块唯一标识，建议使用 snake_case 命名。</div>
+  </div>`;
   html += '</div>';
   return html;
+}
+
+function addCoreModule(prefix) {
+  const safeId = prefix.replace(/\./g, '_');
+  const input = document.getElementById('new-module-name-' + safeId);
+  if (!input) return;
+  const moduleName = input.value.trim();
+  if (!moduleName) { toast('请输入模块英文标识', 'warn'); return; }
+  if (!/^[a-z][a-z0-9_]*$/.test(moduleName)) { toast('模块标识只能包含小写字母、数字和下划线，且以字母开头', 'warn'); return; }
+  const existing = document.querySelector('[data-key=\"' + prefix + '.' + moduleName + '.module_name\"]');
+  if (existing) { toast('模块「' + moduleName + '」已存在', 'warn'); return; }
+  const label = formatLabel(moduleName);
+  const subCols = [{key:'id',label:'ID',widget:'input'},{key:'text',label:'简历描述',widget:'textarea'}];
+  const newHtml = `<div class="border border-slate-200 rounded-lg p-3 mt-2" style="animation: fadeIn .25s ease">
+    <details open class="group">
+      <summary class="cursor-pointer text-sm font-medium text-slate-700 mb-2 select-none flex items-center justify-between">
+        <span>${escapeHtml(label)}</span>
+        <button type="button" onclick="event.preventDefault(); event.stopPropagation(); if(confirm('确定要删除模块「${escapeHtml(label)}」吗？')){ const card=this.closest('.border-slate-200'); card.querySelectorAll('[data-key]').forEach(el=>{el.value='';el.disabled=true;}); const hidden=document.createElement('input');hidden.type='hidden';hidden.setAttribute('data-delete-module','${moduleName}');card.appendChild(hidden);card.style.opacity='0.3';this.disabled=true;this.textContent='已标记删除';}" class="text-red-400 hover:text-red-600 text-xs font-normal shrink-0 ml-2">&times; 删除</button>
+      </summary>
+      <div class="space-y-3 mt-2">
+        ${field('模块名称', prefix + '.' + moduleName + '.module_name', '', 'text', '', '')}
+        ${areaField('模块描述', prefix + '.' + moduleName + '.description', '', 3, '')}
+        <div><label class="text-xs font-medium text-slate-500">简历要点候选</label>
+        ${tableField({ key: prefix + '.' + moduleName + '.resume_bullet_candidates', columns: subCols }, [])}
+        </div>
+        <details class="text-xs text-slate-500"><summary class="cursor-pointer select-none">查看详细技术文档</summary><pre class="mt-1 bg-slate-50 p-2 rounded text-xs whitespace-pre-wrap max-h-64 overflow-y-auto">无</pre></details>
+        ${modalTextField(prefix + '.' + moduleName + '.technical_details', '技术文档', '')}
+      </div>
+    </details>
+  </div>`;
+  const addBtn = document.getElementById('new-module-name-' + safeId).closest('.border-t');
+  if (addBtn) { addBtn.insertAdjacentHTML('beforebegin', newHtml); }
+  input.value = '';
+  toast('模块「' + label + '」已添加', 'ok');
+  refreshIcons();
 }
 
 /* ===================== SCHEMA RENDER ENGINE ===================== */
@@ -1780,7 +1844,7 @@ async function renderSettings(){
           ));
         }
       }
-      $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">根据 Schema 动态渲染</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
+      $('#set-profile').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">根据 Schema 动态渲染</span></div>
         ${formHtml}
         ${coreModulesHtml}
         <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
@@ -1796,7 +1860,7 @@ async function renderSettings(){
     const presets = cfg.market_presets || {};
 
     // ── 找工作配置面板 ──
-    $('#set-job').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">权重方案和搜索词通过侧边栏「求职方向」管理。</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML</button></div>
+    $('#set-job').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">权重方案和搜索词通过侧边栏「求职方向」管理。</span></div>
       ${card('基础设置',`
         ${field('全局默认排序','c-sort',cfg.sort_mode||'date','text','date / relevance')}
         ${areaField('排除公司（每行一个）','c-exclude',(cfg.filters?.exclude_companies||[]).join('\n'),4,'大小写不敏感，在基础清洗阶段直接排除')}
@@ -1817,7 +1881,7 @@ async function renderSettings(){
     (presets.classifications||[]).forEach(v=>{ clsHtml+=`<div class="flex gap-1 mb-1"><input class="cls-in w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" value="${escapeHtml(v)}"><button onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button></div>`; });
     clsHtml += `</div><button onclick="addDynamicRow('cfg-cls','cls-in')" class="text-xs text-indigo-600 mt-1">+ 添加行业</button>`;
 
-    $('#set-market').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">预设分类和抓取参数独立于找工作流程。</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML</button></div>
+    $('#set-market').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">预设分类和抓取参数独立于找工作流程。</span></div>
       ${card('预设分类',`
         <div class="space-y-3">
           <div><label class="block text-xs font-medium text-slate-500 mb-1">岗位类别（在市场调研页可一键填入）</label>${catsHtml}</div>
@@ -1842,9 +1906,65 @@ async function saveYaml(name){
   if(name==='me'){
     try {
       const orig = await loadYaml('me') || {};
+
+      // 清理 orig 中可能被污染的数组字段（字符索引 dict → 字符串）
+      const arrayFieldsToClean = {
+        'job_intent.target_titles': true,
+        'job_intent.target_industries': true,
+        'job_intent.location_preference': true,
+      };
+      for (const objPath of Object.keys(arrayFieldsToClean)) {
+        const parts = objPath.split('.');
+        let obj = orig;
+        let valid = true;
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!obj || typeof obj !== 'object') { valid = false; break; }
+          obj = obj[parts[i]];
+        }
+        const lastKey = parts[parts.length - 1];
+        if (valid && obj && Array.isArray(obj[lastKey]) && obj[lastKey].length > 0
+            && typeof obj[lastKey][0] === 'object' && obj[lastKey][0] !== null
+            && '0' in obj[lastKey][0]) {
+          obj[lastKey] = obj[lastKey].map(dict => Object.values(dict).join(''));
+        }
+      }
+      // 清理 salary_expectation.note
+      if (orig.job_intent && orig.job_intent.salary_expectation
+          && Array.isArray(orig.job_intent.salary_expectation.note)
+          && orig.job_intent.salary_expectation.note.length > 0
+          && typeof orig.job_intent.salary_expectation.note[0] === 'object'
+          && '0' in orig.job_intent.salary_expectation.note[0]) {
+        orig.job_intent.salary_expectation.note = orig.job_intent.salary_expectation.note
+          .map(dict => Object.values(dict).join('')).join('\n');
+      }
+
       // Schema 驱动：从表单收集数据，深度合并到原始对象
-      const collected = collectFormData();
+      let collected = collectFormData();
+
+      // 扁平化纯 UI 分组：将 basic_info.name→name，避免 Schema group key 注入 YAML
+      const FLAT_GROUPS = ['basic_info', 'hk_status', 'strategic_positioning', 'summary'];
+      const flatCollected = {};
+      Object.assign(flatCollected, collected);
+      FLAT_GROUPS.forEach(groupKey => {
+        if (collected[groupKey] && typeof collected[groupKey] === 'object') {
+          const groupData = collected[groupKey];
+          Object.keys(groupData).forEach(subKey => {
+            flatCollected[subKey] = groupData[subKey];
+          });
+          delete flatCollected[groupKey];
+        }
+      });
+      collected = flatCollected;
+
       const newMe = deepMerge(orig, collected);  // deepMerge 已递归处理数组逐行合并
+
+      // 处理 core_modules 删除标记
+      document.querySelectorAll('[data-delete-module]').forEach(el => {
+        const moduleName = el.getAttribute('data-delete-module');
+        if (newMe.work_experience && newMe.work_experience[0] && newMe.work_experience[0].core_modules) {
+          delete newMe.work_experience[0].core_modules[moduleName];
+        }
+      });
 
       const res = await api('PUT', '/api/config/yaml/me', {content: newMe});
       if(res && !res.error) {
@@ -1938,8 +2058,15 @@ function collectFormData() {
       value = el.checked;
     } else if (el.tagName === 'SELECT') {
       value = el.value;
+    } else if (el.tagName === 'TEXTAREA') {
+      // textarea 控件（如 target_titles、location_preference）原类型为数组，按换行 split
+      value = el.value.split('\n').map(s => s.trim()).filter(Boolean);
     } else {
       value = el.value;
+      // input 控件中逗号分隔的数组字段（如 target_industries），按逗号 split
+      if (typeof value === 'string' && value.includes(',')) {
+        value = value.split(',').map(s => s.trim()).filter(Boolean);
+      }
     }
     setValueByPath(result, key, value);
   });
@@ -2078,93 +2205,15 @@ function addDynamicRow(containerId, inputClass){
   container.appendChild(div);
 }
 
-/* ===================== YAML BUILDERS ===================== */
-function buildMeYamlText(data){
-  const intent = data.job_intent || {};
-  const skills = data.skills || {};
-  const exp = data.work_experience || [];
-  const tl = (intent.target_titles||[]).map(t=>`    - ${t}`).join('\n');
-  const sk = Object.entries(skills).map(([k,vs])=>`  ${k}: [${(Array.isArray(vs)?vs:[]).join(', ')}]`).join('\n');
-  const expYaml = exp.map(e=>`  - company: ${e.company||''}\n    title: ${e.title||''}\n    period: ${e.period||''}\n    highlights:\n${(e.highlights||[]).map(h=>`      - ${h}`).join('\n')}`).join('\n');
-  return `# 用户画像
-basic_info:
-  name: ${data.name||''}
-  name_en: ${data.name_en||''}
-  location: ${data.location||''}
-  phone: "${data.phone||''}"
-  email: ${data.email||''}
-  linkedin: ${data.linkedin||''}
-  github: ${data.github||''}
-
-job_intention:
-  target_titles:
-${tl}
-  salary_expectation: "${intent.salary_expectation||''}"
-  notice_period: "${intent.notice_period||''}"
-  target_industries: [${(intent.target_industries||[]).join(', ')}]
-
-strategic_positioning: >
-  ${data.strategic_positioning||''}
-
-skills:
-${sk}
-
-work_experience:
-${expYaml}
-
-summary: >
-  ${data.summary||''}`;
-}
-function buildConfigYamlText(data){
-  const presets = data.market_presets || {};
-  const cats = (presets.job_categories||[]).map(c=>`  - ${c}`).join('\n');
-  const cls = (presets.classifications||[]).map(c=>`  - ${c}`).join('\n');
-  const s = data.search || {};
-  const ma = data.market_analysis || {};
-  return `# profiles/search_config.yaml
-llm:
-  provider: ${(data.llm||{}).provider||'glm'}
-  model: ${(data.llm||{}).model||''}
-
-sort_mode: ${data.sort_mode||'date'}
-
-search:
-  max_pages: ${s.max_pages||3}
-  max_total_results: ${s.max_total_results||200}
-  jd_max_chars: ${s.jd_max_chars||4000}
-
-resume_gen:
-  jd_max_chars: ${(data.resume_gen||{}).jd_max_chars||3000}
-
-filters:
-  exclude_companies: [${(data.filters||{}).exclude_companies||[]}]
-
-market_presets:
-  job_categories:
-${cats}
-  classifications:
-${cls}
-
-market_analysis:
-  max_pages: ${ma.max_pages||4}
-  max_fetch_jd: ${ma.max_fetch_jd||100}
-  batch_size: ${ma.batch_size||5}
-  jd_max_chars: ${ma.jd_max_chars||6000}`;
-}
-
 /* ===================== YAML MODAL ===================== */
 async function openYamlModal(which){
   const data = await loadYaml(which);
   if(!data){ toast('无法加载配置','err'); return; }
   $('#modal-overlay').classList.remove('hidden');
-  $('#modal-tabs').classList.remove('hidden');
   $('#modal-title').textContent = which==='me'?'个人画像':'搜索与匹配配置';
-  $('#modal-sub').textContent = which==='me' ? 'instances/users/{user}.yaml' : 'profiles/search_config.yaml';
+  $('#modal-sub').textContent = '';
   $('#modal-icon').innerHTML = `<i data-lucide="${which==='me'?'user-round':'sliders-horizontal'}" class="w-4 h-4 text-indigo-600"></i>`;
-  const friendlyBtn = $('#mm-friendly'); const rawBtn = $('#mm-raw'); const body = $('#modal-body');
-
-  // Raw YAML: build YAML string from JSON data, then syntax-highlight
-  const rawText = which==='me' ? buildMeYamlText(data) : buildConfigYamlText(data);
+  const body = $('#modal-body');
 
   // Friendly view
   let friendlyHtml = '';
@@ -2175,7 +2224,13 @@ async function openYamlModal(which){
     const header = `<div class="flex items-center gap-3.5 pb-4 mb-5 border-b border-slate-100"><div class="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0">${escapeHtml((data.name||'?').slice(0,1))}</div><div class="min-w-0"><div class="font-bold text-slate-800 text-lg leading-tight">${escapeHtml(data.name||'')}</div><div class="text-xs text-indigo-600 mt-0.5">${escapeHtml((data.strategic_positioning||'').split('，')[0])}</div></div></div>`;
     const contact = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="user-round" class="w-3.5 h-3.5"></i> 联系方式</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${[['map-pin',data.location],['phone',data.phone],['mail',data.email],['linkedin',data.linkedin],['github',data.github]].map(([ic,v])=>`<div class="flex items-center gap-2 text-sm text-slate-600"><i data-lucide="${ic}" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i><span class="truncate">${escapeHtml(v||'')}</span></div>`).join('')}</div></section>`;
     const titlesHtml = (intent.target_titles||[]).map((t,i)=>`<div class="flex items-center gap-2 text-sm text-slate-700"><span class="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] flex items-center justify-center font-medium shrink-0">${i+1}</span> ${escapeHtml(t)}</div>`).join('');
-    const intentSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> 求职意向</div><div class="space-y-1.5 mb-3">${titlesHtml}</div><div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${[['薪资期望',intent.salary_expectation],['到岗时间',intent.notice_period],['目标行业',(intent.target_industries||[]).join('、')]].map(([k,v])=>`<div class="bg-slate-50 rounded-lg px-3 py-2"><div class="text-[10px] text-slate-400">${k}</div><div class="text-sm text-slate-700 font-medium mt-0.5">${escapeHtml(v||'—')}</div></div>`).join('')}</div></section>`;
+    const salaryDisplay = intent.salary_expectation && typeof intent.salary_expectation === 'object'
+      ? `${intent.salary_expectation.min || '?'}-${intent.salary_expectation.max || '?'} ${intent.salary_expectation.currency || ''}`
+      : (intent.salary_expectation || '');
+    const industriesDisplay = (intent.target_industries||[]).map(item =>
+      typeof item === 'object' && item !== null ? (item.title || item.name || Object.values(item).join('')) : item
+    ).join('、');
+    const intentSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> 求职意向</div><div class="space-y-1.5 mb-3">${titlesHtml}</div><div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${[['薪资期望',salaryDisplay],['到岗时间',intent.notice_period],['目标行业',industriesDisplay]].map(([k,v])=>`<div class="bg-slate-50 rounded-lg px-3 py-2"><div class="text-[10px] text-slate-400">${k}</div><div class="text-sm text-slate-700 font-medium mt-0.5">${escapeHtml(v||'—')}</div></div>`).join('')}</div></section>`;
     const pos = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="compass" class="w-3.5 h-3.5"></i> 战略定位</div><div class="bg-indigo-50 border-l-2 border-indigo-400 rounded-r-lg px-3 py-2.5 text-sm text-slate-700 leading-relaxed">${escapeHtml(data.strategic_positioning||'')}</div></section>`;
     const skillsSec = (() => {
       const skillEntries = Object.entries(data.skills||{});
@@ -2183,7 +2238,7 @@ async function openYamlModal(which){
       let shtml = '<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="cpu" class="w-3.5 h-3.5"></i> 专业技能</div>';
       skillEntries.forEach(([key, arr]) => {
         if (!Array.isArray(arr) || arr.length === 0) return;
-        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const label = formatLabel(key);
         shtml += '<div class="mb-2"><span class="text-xs font-medium text-slate-500">'+label+'</span><div class="text-sm text-slate-600 mt-0.5">';
         if (typeof arr[0] === 'object' && arr[0] !== null) {
           shtml += arr.map(item => (item.name||item.skill||'')).join(' · ');
@@ -2217,15 +2272,8 @@ async function openYamlModal(which){
   }
 
   body.innerHTML = friendlyHtml;
-  friendlyBtn.className='px-3 py-1.5 bg-indigo-600 text-white';
-  rawBtn.className='px-3 py-1.5 bg-white text-slate-500';
-
-  friendlyBtn.onclick = ()=>{ friendlyBtn.className='px-3 py-1.5 bg-indigo-600 text-white'; rawBtn.className='px-3 py-1.5 bg-white text-slate-500'; body.innerHTML = friendlyHtml; refreshIcons(); };
-  rawBtn.onclick = ()=>{ rawBtn.className='px-3 py-1.5 bg-indigo-600 text-white'; friendlyBtn.className='px-3 py-1.5 bg-white text-slate-500'; body.innerHTML = `<pre class="yaml-pre text-xs leading-relaxed bg-slate-900 text-slate-200 rounded-lg p-4 m-0 whitespace-pre overflow-x-auto">${escapeHtml(rawText)}</pre>`; };
-  $('#modal-edit').onclick = ()=>{ closeModal(); switchView('settings'); setTab(which==='me'?'profile':'config'); };
   refreshIcons();
 }
-function setModalMode(m){ /* handled by friendly/raw buttons above */ }
 
 /* ===================== SETTINGS TABS ===================== */
 function setTab(t){
@@ -2266,7 +2314,7 @@ async function renderSchemaEditor(){
         html += '<div class=\"text-xs text-slate-400 mb-1\">列定义：</div>';
         group.columns.forEach((col, ci) => {
           html += `<div class=\"flex items-center gap-2 ml-2 mb-1 text-xs\">
-            <span class=\"font-mono text-slate-500 w-20\">${escapeHtml(col.key)}</span>
+            <span class=\"font-mono text-slate-500 w-28\" title=\"${escapeHtml(col.key)}\">${escapeHtml(col.key)}</span>
             <input value=\"${escapeHtml(col.label || '')}\" data-schema-col-label=\"${gi}.${ci}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"列标签\">
             <span class=\"text-slate-400\">widget: ${col.widget || 'input'}</span>
           </div>`;
@@ -2275,7 +2323,7 @@ async function renderSchemaEditor(){
           html += '<div class=\"text-xs text-slate-400 mt-1 ml-2\">子表格列：</div>';
           group.columns[0].columns.forEach((subCol, si) => {
             html += `<div class=\"flex items-center gap-2 ml-4 mb-1 text-xs\">
-              <span class=\"font-mono text-slate-500 w-20\">${escapeHtml(subCol.key)}</span>
+              <span class=\"font-mono text-slate-500 w-28\" title=\"${escapeHtml(subCol.key)}\">${escapeHtml(subCol.key)}</span>
               <input value=\"${escapeHtml(subCol.label || '')}\" data-schema-subcol-label=\"${gi}.${si}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子列表格列标签\">
             </div>`;
           });
@@ -2284,7 +2332,7 @@ async function renderSchemaEditor(){
     } else if(group.fields) {
       group.fields.forEach((field, fi) => {
         html += `<div class=\"flex items-center gap-2 ml-2 mb-2 text-xs\">
-          <span class=\"font-mono text-slate-500 w-24\">${escapeHtml(field.key)}</span>
+          <span class=\"font-mono text-slate-500 w-32\" title=\"${escapeHtml(field.key)}\">${escapeHtml(field.key)}</span>
           <input value=\"${escapeHtml(field.label || '')}\" data-schema-field-label=\"${gi}.${fi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"字段标签\">
           <span class=\"text-slate-400\">type: ${field.type || 'string'}</span>
           <span class=\"text-slate-400\">widget: ${field.widget || 'input'}</span>
@@ -2292,7 +2340,7 @@ async function renderSchemaEditor(){
         if(field.fields) {
           field.fields.forEach((subField, sfi) => {
             html += `<div class=\"flex items-center gap-2 ml-6 mb-1 text-xs\">
-              <span class=\"font-mono text-slate-500 w-20\">${escapeHtml(subField.key)}</span>
+              <span class=\"font-mono text-slate-500 w-28\" title=\"${escapeHtml(subField.key)}\">${escapeHtml(subField.key)}</span>
               <input value=\"${escapeHtml(subField.label || '')}\" data-schema-subfield-label=\"${gi}.${fi}.${sfi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子字段标签\">
             </div>`;
           });
@@ -2348,7 +2396,10 @@ async function saveSchema(){
     });
     const res = await api('PUT', '/api/schema/user_field', schemaRes);
     if(res && !res.error){
-      toast('Schema 已保存，刷新页面后生效', 'ok');
+      toast('Schema 已保存，即时生效', 'ok');
+      // 局部重渲染，避免整页刷新
+      try { await renderSettings(); } catch(e) {}
+      try { await renderSchemaEditor(); } catch(e) {}
     } else {
       toast('保存失败: ' + (res?.error || '未知错误'), 'err');
     }
