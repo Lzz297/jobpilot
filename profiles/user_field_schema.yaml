@@ -157,7 +157,32 @@ groups:
         label: 工作亮点
         type: array
         widget: list
-    # 深层嵌套暂不开放编辑 (key_achievements, core_modules 等)
+      - key: key_achievements
+        label: 关键成就
+        type: array
+        widget: subtable
+        columns:
+          - key: id
+            label: ID
+            type: string
+            widget: input
+          - key: category
+            label: 类别
+            type: string
+            widget: input
+          - key: title
+            label: 标题
+            type: string
+            widget: input
+          - key: resume_bullet
+            label: 简历描述
+            type: string
+            widget: textarea
+          - key: interview_keywords
+            label: 面试关键词
+            type: array
+            widget: tags
+    # 深层嵌套字段 core_modules 暂不开放编辑；story 字段因文本过大不纳入子表格
 
   # ── 教育背景 ──
   - key: education

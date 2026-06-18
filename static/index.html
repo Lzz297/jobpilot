@@ -1866,28 +1866,29 @@ function collectFormData() {
     }
   });
 
-  // 处理 table 数据（支持深层路径如 key_achievements.0.title）
+  // 处理 table 数据（过滤子表格避免双重收集，消除空槽防止索引错位）
   container.querySelectorAll('[data-table]').forEach(table => {
     const tableKey = table.getAttribute('data-table');
     const rows = [];
-    table.querySelectorAll('tbody tr').forEach(row => {
+    // 只遍历本表的直接 tr（:scope > tbody > tr），不穿透子表格
+    table.querySelectorAll(':scope > tbody > tr').forEach(row => {
       const rowData = {};
-      const cells = row.querySelectorAll('[data-key]');
-      cells.forEach(cell => {
+      // 🔧 过滤：只收集 data-key 元素中最近 data-table 祖先就是当前表格的元素（排除子表格穿透）
+      const ownCells = Array.from(row.querySelectorAll('[data-key]')).filter(cell => {
+        return cell.closest('table[data-table]') === table;
+      });
+      ownCells.forEach(cell => {
         const cellKey = cell.getAttribute('data-key');
-        // cellKey 格式: {tableKey}.{rowIdx}.{相对路径}
         const prefix = tableKey + '.';
         if (!cellKey.startsWith(prefix)) return;
         const relPath = cellKey.substring(prefix.length);
         const dotIdx = relPath.indexOf('.');
         if (dotIdx === -1) {
-          // 一级字段（如 company）
           let val;
           if (cell.type === 'checkbox') val = cell.checked;
           else val = cell.value;
           rowData[relPath] = val;
         } else {
-          // 多级字段（如 key_achievements.0.title）
           const colRelPath = relPath.substring(dotIdx + 1);
           let val;
           if (cell.type === 'checkbox') val = cell.checked;
@@ -1895,10 +1896,11 @@ function collectFormData() {
           setValueByPath(rowData, colRelPath, val);
         }
       });
-      // 行内 tags
-      row.querySelectorAll('[data-key] .tag-item span:first-child').forEach(span => {
+      // 行内 tags（同样过滤子表格）
+      Array.from(row.querySelectorAll('[data-key] .tag-item span:first-child')).forEach(span => {
         const containerDiv = span.closest('[data-key]');
         if (!containerDiv) return;
+        if (containerDiv.closest('table[data-table]') !== table) return;
         const cellKey = containerDiv.getAttribute('data-key');
         const prefix = tableKey + '.';
         if (!cellKey.startsWith(prefix)) return;
@@ -1909,10 +1911,11 @@ function collectFormData() {
         if (dotIdx === -1) { rowData[colRelPath] = tags; }
         else { setValueByPath(rowData, colRelPath, tags); }
       });
-      // 行内 list
-      row.querySelectorAll('[data-key] input.list-item').forEach(input => {
+      // 行内 list（过滤）
+      Array.from(row.querySelectorAll('[data-key] input.list-item')).forEach(input => {
         const containerDiv = input.closest('[data-key]');
         if (!containerDiv) return;
+        if (containerDiv.closest('table[data-table]') !== table) return;
         const cellKey = containerDiv.getAttribute('data-key');
         const prefix = tableKey + '.';
         if (!cellKey.startsWith(prefix)) return;
@@ -1925,7 +1928,13 @@ function collectFormData() {
       });
       if (Object.keys(rowData).length > 0) rows.push(rowData);
     });
-    if (rows.length > 0) setValueByPath(result, tableKey, rows);
+    // 🔧 记录结果：紧凑化数组消除空槽；有 tbody 则显式设置（含空数组，表示用户清空了表格）
+    const compacted = rows.filter(() => true);
+    if (table.querySelector('tbody')) {
+      setValueByPath(result, tableKey, compacted);
+    } else if (compacted.length > 0) {
+      setValueByPath(result, tableKey, compacted);
+    }
   });
 
   return result;
