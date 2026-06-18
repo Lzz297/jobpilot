@@ -182,6 +182,10 @@ groups:
             label: 面试关键词
             type: array
             widget: tags
+          - key: story
+            label: 详细故事
+            type: string
+            widget: modal_text
   # ── 核心模块（core_modules）──
   - key: core_modules
     label: 核心模块

@@ -117,6 +117,36 @@
 
     <div class="flex-1 overflow-hidden relative">
 
+      <!-- ===== LOGIN ===== -->
+      <section id="view-login" class="view h-full overflow-y-auto">
+        <div class="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+          <div class="max-w-md w-full space-y-8">
+            <div>
+              <div class="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center mx-auto">
+                <i data-lucide="compass" class="w-9 h-9 text-white"></i></div>
+              <h2 class="mt-6 text-center text-3xl font-extrabold text-slate-900">JobPilot</h2>
+              <p class="mt-2 text-center text-sm text-slate-600">请登录以继续</p>
+            </div>
+            <form id="login-form" class="mt-8 space-y-6" onsubmit="doLogin(event)">
+              <div class="rounded-md shadow-sm -space-y-px">
+                <div>
+                  <label for="login-username" class="sr-only">用户名</label>
+                  <input id="login-username" type="text" required autocomplete="username" class="appearance-none rounded-none relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" placeholder="用户名">
+                </div>
+                <div>
+                  <label for="login-password" class="sr-only">密码</label>
+                  <input id="login-password" type="password" required autocomplete="current-password" class="appearance-none rounded-none relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" placeholder="密码">
+                </div>
+              </div>
+              <div>
+                <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">登录</button>
+              </div>
+            </form>
+            <p id="login-error" class="text-sm text-red-500 text-center hidden"></p>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== WORKSPACE ===== -->
       <section id="view-workspace" class="view h-full flex flex-col">
         <div class="px-6 pt-5 pb-3 shrink-0 border-b border-slate-200 bg-white">
@@ -328,10 +358,12 @@
             <button id="set-tab-profile" onclick="setTab('profile')" class="px-4 py-1.5 bg-indigo-600 text-white">个人画像</button>
             <button id="set-tab-job" onclick="setTab('job')" class="px-4 py-1.5 bg-white text-slate-500">找工作配置</button>
             <button id="set-tab-market" onclick="setTab('market')" class="px-4 py-1.5 bg-white text-slate-500">市场调研配置</button>
+            <button id="set-tab-schema" onclick="setTab('schema')" class="px-4 py-1.5 bg-white text-slate-500 hidden">字段配置</button>
           </div>
           <div id="set-profile"></div>
           <div id="set-job" class="hidden"></div>
           <div id="set-market" class="hidden"></div>
+          <div id="set-schema" class="hidden"></div>
         </div>
       </section>
 
@@ -389,7 +421,7 @@
 
 <script>
 /* ===================== STATE ===================== */
-const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, sid:null, settingsTab:'profile' };
+const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, userRole:'user', sid:null, settingsTab:'profile' };
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
 const DIR_META = {
   payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
@@ -1563,11 +1595,17 @@ function tableField(fieldDef, dataArray) {
         html += `<td class="pr-2 py-1">${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}</td>`;
       } else if (col.widget === 'textarea') {
         html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
+      } else if (col.widget === 'select') {
+        html += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></td>`;
+      } else if (col.widget === 'number') {
+        html += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" min="${col.min||0}" step="${col.step||0.5}" value="${cellValue||''}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       } else if (col.widget === 'subtable') {
         // 子表格：在主单元格内渲染
         const subTableData = Array.isArray(cellValue) ? cellValue : [];
         const subTableDef = { key: cellId, columns: col.columns || [] };
         html += `<td class="pr-2 py-1">${tableField(subTableDef, subTableData)}</td>`;
+      } else if (col.widget === 'modal_text') {
+        html += `<td class="pr-2 py-1">${modalTextField(cellId, col.label, cellValue)}</td>`;
       } else {
         html += `<td class="pr-2 py-1"><input data-key="${cellId}" value="${escapeHtml(cellValue)}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       }
@@ -1594,9 +1632,15 @@ function addTableRow(btn, tableKey, columns) {
       rowHtml += `<td class="pr-2 py-1">${listField(cellId, [])}</td>`;
     } else if (col.widget === 'textarea') {
       rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
+    } else if (col.widget === 'select') {
+      rowHtml += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></td>`;
+    } else if (col.widget === 'number') {
+      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" min="${col.min||0}" step="${col.step||0.5}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     } else if (col.widget === 'subtable') {
       const subTableDef = { key: cellId, columns: col.columns || [] };
       rowHtml += `<td class="pr-2 py-1">${tableField(subTableDef, [])}</td>`;
+    } else if (col.widget === 'modal_text') {
+      rowHtml += `<td class="pr-2 py-1">${modalTextField(cellId, col.label, '')}</td>`;
     } else {
       rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     }
@@ -1651,6 +1695,7 @@ function moduleMapField(fieldDef, data) {
               <summary class="cursor-pointer select-none">查看详细技术文档</summary>
               <pre class="mt-1 bg-slate-50 p-2 rounded text-xs whitespace-pre-wrap max-h-64 overflow-y-auto">${escapeHtml((moduleData && moduleData.technical_details) || '无')}</pre>
             </details>
+            <div class="mt-1">${modalTextField(`${prefix}.${moduleName}.technical_details`, '技术文档', (moduleData && moduleData.technical_details) || '')}</div>
           </div>
         </details>
       </div>`;
@@ -1719,6 +1764,11 @@ async function renderSettings(){
     const schemaRes = await apiGet('/api/schema/user_field');
     if (schemaRes) {
       const formHtml = renderSchemaForm(schemaRes, me);
+      // 管理员可见：显示字段配置 Tab
+      const schemaTabBtn = document.getElementById('set-tab-schema');
+      if (schemaTabBtn) {
+        schemaTabBtn.classList.toggle('hidden', STATE.userRole !== 'admin');
+      }
       // 额外渲染 core_modules 编辑区（嵌套在 work_experience[0] 下）
       let coreModulesHtml = '';
       if (me.work_experience && me.work_experience.length > 0 && me.work_experience[0].core_modules) {
@@ -1988,6 +2038,37 @@ function collectFormData() {
   return result;
 }
 
+/* ===================== MODAL TEXT EDITOR ===================== */
+function modalTextField(id, label, currentValue) {
+  const escaped = escapeHtml(currentValue || '');
+  const short = escaped.length > 100 ? escaped.substring(0, 100) + '...' : escaped;
+  return `<div class="flex items-center gap-2">
+    <span class="text-xs text-slate-500 flex-1 truncate">${short || '(空)'}</span>
+    <button type="button" onclick="openTextModal('${id}', '${escapeHtml(label)}', this)" class="text-xs text-indigo-600 hover:text-indigo-800 shrink-0">编辑</button>
+    <textarea id="${id}" data-key="${id}" class="hidden">${escaped}</textarea>
+  </div>`;
+}
+
+function openTextModal(id, label, btn) {
+  const textarea = document.getElementById(id);
+  if(!textarea) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
+  overlay.addEventListener('click', e => { if(e.target === overlay) overlay.remove(); });
+  overlay.innerHTML = `<div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 p-6" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold text-slate-800">编辑：${escapeHtml(label)}</h3>
+      <button type="button" onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+    </div>
+    <textarea id="modal-textarea-${id}" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none" rows="15">${escapeHtml(textarea.value)}</textarea>
+    <div class="flex justify-end gap-2 mt-4">
+      <button type="button" onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">取消</button>
+      <button type="button" onclick="document.getElementById('${id}').value = document.getElementById('modal-textarea-${id}').value; this.closest('.fixed').remove();" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">确定</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
 function addDynamicRow(containerId, inputClass){
   const container = document.getElementById(containerId);
   if(!container) return;
@@ -2152,16 +2233,174 @@ function setTab(t){
   $('#set-profile').classList.toggle('hidden',t!=='profile');
   $('#set-job').classList.toggle('hidden',t!=='job');
   $('#set-market').classList.toggle('hidden',t!=='market');
-  ['profile','job','market'].forEach(tab => {
+  $('#set-schema').classList.toggle('hidden',t!=='schema');
+  ['profile','job','market','schema'].forEach(tab => {
     const btn = document.getElementById('set-tab-'+tab);
     if(btn) btn.className = 'px-4 py-1.5 ' + (t===tab?'bg-indigo-600 text-white':'bg-white text-slate-500');
   });
+  if(t==='schema') renderSchemaEditor();
   refreshIcons();
 }
 
+/* ===================== SCHEMA EDITOR ===================== */
+async function renderSchemaEditor(){
+  const schemaRes = await apiGet('/api/schema/user_field');
+  if(!schemaRes || !schemaRes.groups) {
+    $('#set-schema').innerHTML = '<div class=\"text-sm text-slate-400 py-8 text-center\">无法加载 Schema</div>';
+    return;
+  }
+  let html = '<div class=\"space-y-4\">';
+  html += '<div class=\"flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3\"><span class=\"text-xs text-amber-700\">修改字段定义后需刷新页面生效。key 和 type 不可修改。</span></div>';
+
+  schemaRes.groups.forEach((group, gi) => {
+    html += `<div class=\"bg-white border border-slate-200 rounded-xl p-4 mb-3\">
+      <div class=\"flex items-center gap-2 mb-3\">
+        <span class=\"text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded\">key: ${escapeHtml(group.key)}</span>
+        <input value=\"${escapeHtml(group.label || '')}\" data-schema-group-label=\"${gi}\" class=\"text-sm font-semibold text-slate-700 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 outline-none px-1\" placeholder=\"分组标签\">
+        <span class=\"text-xs text-slate-400\">type: ${group.type || 'fields'}</span>
+      </div>`;
+
+    if(group.type === 'array' || group.type === 'map') {
+      html += `<div class=\"text-xs text-slate-500 mb-2\">widget: ${group.widget || 'table'}</div>`;
+      if(group.columns) {
+        html += '<div class=\"text-xs text-slate-400 mb-1\">列定义：</div>';
+        group.columns.forEach((col, ci) => {
+          html += `<div class=\"flex items-center gap-2 ml-2 mb-1 text-xs\">
+            <span class=\"font-mono text-slate-500 w-20\">${escapeHtml(col.key)}</span>
+            <input value=\"${escapeHtml(col.label || '')}\" data-schema-col-label=\"${gi}.${ci}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"列标签\">
+            <span class=\"text-slate-400\">widget: ${col.widget || 'input'}</span>
+          </div>`;
+        });
+        if(group.columns && group.columns.length > 0 && group.columns[0].columns) {
+          html += '<div class=\"text-xs text-slate-400 mt-1 ml-2\">子表格列：</div>';
+          group.columns[0].columns.forEach((subCol, si) => {
+            html += `<div class=\"flex items-center gap-2 ml-4 mb-1 text-xs\">
+              <span class=\"font-mono text-slate-500 w-20\">${escapeHtml(subCol.key)}</span>
+              <input value=\"${escapeHtml(subCol.label || '')}\" data-schema-subcol-label=\"${gi}.${si}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子列表格列标签\">
+            </div>`;
+          });
+        }
+      }
+    } else if(group.fields) {
+      group.fields.forEach((field, fi) => {
+        html += `<div class=\"flex items-center gap-2 ml-2 mb-2 text-xs\">
+          <span class=\"font-mono text-slate-500 w-24\">${escapeHtml(field.key)}</span>
+          <input value=\"${escapeHtml(field.label || '')}\" data-schema-field-label=\"${gi}.${fi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"字段标签\">
+          <span class=\"text-slate-400\">type: ${field.type || 'string'}</span>
+          <span class=\"text-slate-400\">widget: ${field.widget || 'input'}</span>
+        </div>`;
+        if(field.fields) {
+          field.fields.forEach((subField, sfi) => {
+            html += `<div class=\"flex items-center gap-2 ml-6 mb-1 text-xs\">
+              <span class=\"font-mono text-slate-500 w-20\">${escapeHtml(subField.key)}</span>
+              <input value=\"${escapeHtml(subField.label || '')}\" data-schema-subfield-label=\"${gi}.${fi}.${sfi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子字段标签\">
+            </div>`;
+          });
+        }
+      });
+    }
+    html += '</div>';
+  });
+
+  html += '<button onclick=\"saveSchema()\" class=\"agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2\"><i data-lucide=\"save\" class=\"w-4 h-4\"></i> 保存字段配置</button>';
+  html += '</div>';
+  $('#set-schema').innerHTML = html;
+}
+
+async function saveSchema(){
+  try {
+    const schemaRes = await apiGet('/api/schema/user_field');
+    if(!schemaRes || !schemaRes.groups) {
+      toast('无法加载当前 Schema', 'err');
+      return;
+    }
+    document.querySelectorAll('[data-schema-group-label]').forEach(input => {
+      const gi = parseInt(input.dataset.schemaGroupLabel);
+      if(schemaRes.groups[gi]) schemaRes.groups[gi].label = input.value.trim() || schemaRes.groups[gi].label;
+    });
+    document.querySelectorAll('[data-schema-field-label]').forEach(input => {
+      const [gi, fi] = input.dataset.schemaFieldLabel.split('.').map(Number);
+      const group = schemaRes.groups[gi];
+      if(group && group.fields && group.fields[fi]) {
+        group.fields[fi].label = input.value.trim() || group.fields[fi].label;
+      }
+    });
+    document.querySelectorAll('[data-schema-col-label]').forEach(input => {
+      const [gi, ci] = input.dataset.schemaColLabel.split('.').map(Number);
+      const group = schemaRes.groups[gi];
+      if(group && group.columns && group.columns[ci]) {
+        group.columns[ci].label = input.value.trim() || group.columns[ci].label;
+      }
+    });
+    document.querySelectorAll('[data-schema-subfield-label]').forEach(input => {
+      const [gi, fi, sfi] = input.dataset.schemaSubfieldLabel.split('.').map(Number);
+      const group = schemaRes.groups[gi];
+      if(group && group.fields && group.fields[fi] && group.fields[fi].fields && group.fields[fi].fields[sfi]) {
+        group.fields[fi].fields[sfi].label = input.value.trim() || group.fields[fi].fields[sfi].label;
+      }
+    });
+    document.querySelectorAll('[data-schema-subcol-label]').forEach(input => {
+      const [gi, si] = input.dataset.schemaSubcolLabel.split('.').map(Number);
+      const group = schemaRes.groups[gi];
+      if(group && group.columns && group.columns.length > 0 && group.columns[0].columns && group.columns[0].columns[si]) {
+        group.columns[0].columns[si].label = input.value.trim() || group.columns[0].columns[si].label;
+      }
+    });
+    const res = await api('PUT', '/api/schema/user_field', schemaRes);
+    if(res && !res.error){
+      toast('Schema 已保存，刷新页面后生效', 'ok');
+    } else {
+      toast('保存失败: ' + (res?.error || '未知错误'), 'err');
+    }
+  } catch(e) {
+    toast('保存失败: ' + (e.message || '未知错误'), 'err');
+  }
+}
+
+
+/* ===================== LOGIN ===================== */
+async function doLogin(e){
+  e.preventDefault();
+  const username = document.getElementById('login-username').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  if(!username || !password){
+    errorEl.textContent = '请输入用户名和密码';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+  try {
+    const res = await apiPost('/api/auth/login', {username, password});
+    if(res && res.status === 'ok'){
+      location.reload();
+    } else {
+      errorEl.textContent = res?.error || '登录失败';
+      errorEl.classList.remove('hidden');
+    }
+  } catch(e){
+    errorEl.textContent = '网络错误，请检查后端是否运行';
+    errorEl.classList.remove('hidden');
+  }
+}
 
 /* ===================== INIT ===================== */
 (async function init(){
+  // 检查登录状态
+  try {
+    const statusRes = await apiGet('/api/auth/status');
+    if(!statusRes || !statusRes.username){
+      document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
+      document.getElementById('view-login').classList.remove('hidden');
+      return;
+    }
+    STATE.user = statusRes.username;
+    STATE.userRole = statusRes.role;
+  } catch(e){
+    document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
+    document.getElementById('view-login').classList.remove('hidden');
+    return;
+  }
+
   await initSession();
   if(STATE.sid){
     await loadModelConfig();

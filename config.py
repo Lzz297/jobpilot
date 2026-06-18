@@ -44,6 +44,35 @@ def _db_fetch_all(query, params=()):
     except Exception:
         return []
 
+# ── 密码哈希工具 ──
+
+from werkzeug.security import generate_password_hash, check_password_hash
+
+def set_user_password(username, password):
+    """设置或更新用户密码。返回 True 成功，False 用户不存在。"""
+    try:
+        pw_hash = generate_password_hash(password)
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET password_hash = ? WHERE username = ?", (pw_hash, username))
+        if cursor.rowcount == 0:
+            conn.close()
+            return False
+        conn.commit()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
+def verify_user_password(username, password):
+    """验证用户密码。返回 (True, user_dict) 或 (False, None)。"""
+    row = _db_fetch_one("SELECT * FROM users WHERE username = ? AND is_active = 1", (username,))
+    if not row or not row["password_hash"]:
+        return False, None
+    if check_password_hash(row["password_hash"], password):
+        return True, dict(row)
+    return False, None
+
 # ── 常量 ──
 PROFILES_DIR = "profiles"
 OUTPUT_DIR = "output"

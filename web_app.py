@@ -12,7 +12,7 @@ import atexit
 import time
 import yaml
 
-from flask import Flask, request, jsonify, Response, send_from_directory
+from flask import Flask, request, jsonify, Response, send_from_directory, session
 
 import config
 from config import (
@@ -34,6 +34,51 @@ from market_analysis import analyze_market, batch_analyze_market
 # ============================================================
 
 app = Flask(__name__, static_folder="static")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
+
+# ── 用户认证 ──
+
+from config import verify_user_password
+from functools import wraps
+
+def login_required(f):
+    """装饰器：检查用户是否已登录。未登录返回 401。"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user" not in session:
+            return jsonify({"error": "请先登录"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    """用户登录。验证用户名密码，成功后设置 session。"""
+    data = request.json or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+    if not username or not password:
+        return jsonify({"error": "用户名和密码不能为空"}), 400
+    ok, user = verify_user_password(username, password)
+    if not ok:
+        return jsonify({"error": "用户名或密码错误"}), 401
+    session.clear()
+    session["user"] = username
+    session["role"] = user["role"]
+    session["user_id"] = user["id"]
+    return jsonify({"status": "ok", "username": username, "role": user["role"]})
+
+@app.route("/api/auth/logout", methods=["POST"])
+def logout():
+    """登出。清除 session。"""
+    session.clear()
+    return jsonify({"status": "ok"})
+
+@app.route("/api/auth/status", methods=["GET"])
+def auth_status():
+    """检查登录状态。"""
+    if "user" in session:
+        return jsonify({"username": session["user"], "role": session["role"]})
+    return jsonify({"username": None, "role": None})
 
 # ── 当前画像名（优先 SQLite，回退 .current_user）──
 def _get_current_user():
@@ -263,6 +308,7 @@ def create_session():
 
 
 @app.route("/api/pipeline", methods=["POST"])
+@login_required
 def pipeline():
     """直接执行流水线，不经过 LLM。"""
     data = request.get_json()
@@ -303,6 +349,7 @@ def pipeline():
 
 
 @app.route("/api/chat", methods=["POST"])
+@login_required
 def chat():
     data = request.get_json()
     sid = data.get("sid", "")
@@ -510,6 +557,7 @@ def run_matches(run_id):
 # ── 简历生成 API ──
 
 @app.route("/api/resume", methods=["POST"])
+@login_required
 def api_resume():
     """直接调用简历生成。参数由前端表单提供，SSE 流返回进度。"""
     data = request.json or {}
@@ -584,6 +632,7 @@ def api_resume():
 
 
 @app.route("/api/resume/fix", methods=["POST"])
+@login_required
 def fix_resume_bullet():
     """定点修正单条 resume bullet，返回修正后的完整 Markdown。"""
     data = request.json or {}
@@ -632,6 +681,7 @@ def fix_resume_bullet():
 # ── 市场调研 API ──
 
 @app.route("/api/market", methods=["POST"])
+@login_required
 def api_market():
     """直接调用市场调研。SSE 流返回进度。"""
     data = request.json or {}
@@ -678,6 +728,7 @@ def api_market():
 
 
 @app.route("/api/market/batch", methods=["POST"])
+@login_required
 def api_market_batch():
     """批量市场调研。SSE 流返回进度。"""
     data = request.json or {}
@@ -767,6 +818,7 @@ def get_yaml_config(name):
 
 
 @app.route("/api/config/yaml/<name>", methods=["PUT"])
+@login_required
 def put_yaml_config(name):
     """回写配置文件。me 写入 instances/users/ 下。"""
     data = request.json
@@ -875,6 +927,7 @@ def get_model_config():
 
 
 @app.route("/api/config/model", methods=["POST"])
+@login_required
 def set_model_config():
     data = request.json or {}
     provider = data.get("provider", "").strip()
@@ -932,6 +985,7 @@ def list_campaigns():
 
 
 @app.route("/api/session/campaign", methods=["POST"])
+@login_required
 def set_session_campaign():
     """设置当前 session 的 campaign。传 null 清除选择。"""
     data = request.json or {}
@@ -998,6 +1052,7 @@ def list_users():
 
 
 @app.route("/api/config/user", methods=["POST"])
+@login_required
 def set_config_user():
     """切换当前活跃画像。优先更新 SQLite，同步写 .current_user 文件。"""
     data = request.json or {}
@@ -1049,6 +1104,24 @@ atexit.register(cleanup_playwright)
 atexit.register(cleanup_renderer)
 
 
+# ── 当前用户信息 API ──
+
+@app.route("/api/user/current", methods=["GET"])
+def get_current_user_info():
+    """返回当前用户信息。优先从 session 获取，否则回退到数据库标记。"""
+    if "user" in session:
+        return jsonify({"username": session["user"], "role": session["role"]})
+    user_name = _get_current_user()
+    if not user_name:
+        return jsonify({"username": None, "role": None})
+    row = _db_fetch_one(
+        "SELECT username, role FROM users WHERE username = ?", (user_name,)
+    )
+    if row:
+        return jsonify({"username": row["username"], "role": row["role"]})
+    return jsonify({"username": user_name, "role": "user"})
+
+
 # ── 用户画像 Schema API ──
 
 @app.route("/api/schema/user_field", methods=["GET"])
@@ -1074,6 +1147,61 @@ def get_user_field_schema():
         return jsonify(schema)
     except Exception as e:
         return jsonify({"error": f"Schema 解析失败: {str(e)}"}), 500
+
+
+@app.route("/api/schema/user_field", methods=["PUT"])
+@login_required
+def put_user_field_schema():
+    """更新用户画像字段定义 Schema。仅管理员可操作。SQL + YAML 双写。"""
+    user_name = _get_current_user()
+    if not user_name:
+        return jsonify({"error": "未登录"}), 401
+    row = _db_fetch_one(
+        "SELECT role FROM users WHERE username = ?", (user_name,)
+    )
+    if not row or row["role"] != "admin":
+        return jsonify({"error": "仅管理员可修改字段定义"}), 403
+
+    data = request.json
+    if not data:
+        return jsonify({"error": "请求体为空"}), 400
+    if "groups" not in data:
+        return jsonify({"error": "Schema 必须包含 groups 字段"}), 400
+
+    sql_ok = False
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE field_schemas SET data = ?, updated_by = (SELECT id FROM users WHERE username = ?), updated_at = CURRENT_TIMESTAMP WHERE name = 'user_field'",
+            (json.dumps(data, ensure_ascii=False), user_name)
+        )
+        conn.commit()
+        conn.close()
+        sql_ok = True
+    except Exception:
+        pass
+
+    import os as _os
+    schema_path = _os.path.join(_os.path.dirname(__file__), "profiles", "user_field_schema.yaml")
+    yaml_ok = False
+    try:
+        import shutil
+        tmp_path = schema_path + ".tmp"
+        bak_path = schema_path + ".bak"
+        if _os.path.exists(schema_path):
+            shutil.copy2(schema_path, bak_path)
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        _os.replace(tmp_path, schema_path)
+        yaml_ok = True
+    except Exception:
+        pass
+
+    if sql_ok or yaml_ok:
+        return jsonify({"status": "ok"})
+    else:
+        return jsonify({"error": "写入 Schema 失败"}), 500
 
 
 # ============================================================
