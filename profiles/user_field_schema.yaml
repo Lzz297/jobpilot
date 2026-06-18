@@ -17,8 +17,8 @@
 #           columns: 表格的列定义 (widget=table 时)
 #           fields: 子字段定义 (type=object 时)
 #           item_schema: 动态分类项的 schema (type=map 时)
-#  注: 当前版本暂不开放深层嵌套编辑 (work_experience[].key_achievements, core_modules)，
-#       它们将继续通过只读展示 + YAML 编辑方式修改。
+#  注: 深层嵌套字段 (key_achievements, resume_bullets, core_modules) 已支持 Web 编辑。
+#       部分超大文本字段 (story, technical_details) 保持只读或折叠展示。
 
 groups:
   # ── 基本信息 ──
