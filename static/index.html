@@ -1616,76 +1616,103 @@ async function renderSettings(){
 
 async function saveYaml(name){
   if(name==='me'){
-    const orig = await loadYaml('me') || {};
-    const newMe = {
-      ...orig,
-      name: $('#p-name').value, name_en: $('#p-name-en')?.value||orig.name_en||'',
-      phone: $('#p-phone').value, email: $('#p-email').value,
-      linkedin: $('#p-linkedin').value, github: $('#p-github').value,
-      location: $('#p-loc').value,
-      job_intent: {...(orig.job_intent||{}), target_titles:$('#p-titles').value.split('\n').map(s=>s.trim()).filter(Boolean), salary_expectation: orig.job_intent?.salary_expectation, notice_period: orig.job_intent?.notice_period, target_industries:$('#p-industry').value.split(',').map(s=>s.trim()).filter(Boolean)},
-      strategic_positioning: $('#p-core').value,
-      summary: $('#p-self').value,
-    };
-    const res = await api('PUT', '/api/config/yaml/me', {content:newMe});
-    if(res && !res.error) {
-      toast('已保存用户画像','ok');
-      await loadUserList(); // 刷新侧边栏下拉框
-    } else toast('保存失败: '+(res?.error||'未知错误'),'err');
+    try {
+      const orig = await loadYaml('me') || {};
+      const newMe = {
+        ...orig,
+        name: $('#p-name')?.value || orig.name || '',
+        name_en: $('#p-name-en')?.value || orig.name_en || '',
+        phone: $('#p-phone')?.value || orig.phone || '',
+        email: $('#p-email')?.value || orig.email || '',
+        linkedin: $('#p-linkedin')?.value || orig.linkedin || '',
+        github: $('#p-github')?.value || orig.github || '',
+        location: $('#p-loc')?.value || orig.location || '',
+        job_intent: {
+          ...(orig.job_intent || {}),
+          target_titles: ($('#p-titles')?.value || '').split('\n').map(s=>s.trim()).filter(Boolean),
+          salary_expectation: orig.job_intent?.salary_expectation,
+          notice_period: orig.job_intent?.notice_period,
+          target_industries: ($('#p-industry')?.value || '').split(',').map(s=>s.trim()).filter(Boolean)
+        },
+        strategic_positioning: $('#p-core')?.value || orig.strategic_positioning || '',
+        summary: $('#p-self')?.value || orig.summary || '',
+      };
+      const res = await api('PUT', '/api/config/yaml/me', {content:newMe});
+      if(res && !res.error) {
+        toast('已保存用户画像','ok');
+        await loadUserList(); // 刷新侧边栏下拉框
+      } else {
+        toast('保存失败: ' + (res?.error || '未知错误'), 'err');
+      }
+    } catch(e) {
+      toast('保存失败: ' + (e.message || '未知错误'), 'err');
+    }
   }
 }
 
 async function saveJobConfig(){
-  const cfg = await loadYaml('search_config') || {};
-  const newCfg = {
-    ...cfg,
-    sort_mode: $('#c-sort').value.trim() || cfg.sort_mode || 'date',
-    filters: {
-      ...(cfg.filters || {}),
-      exclude_companies: $('#c-exclude').value.split('\n').map(s=>s.trim()).filter(Boolean)
-    },
-    search: {
-      ...(cfg.search || {}),
-      max_pages: parseInt($('#job-max-pages').value) || cfg.search?.max_pages || 3,
-      max_total_results: parseInt($('#job-max-results').value) || cfg.search?.max_total_results || 200,
-      jd_max_chars: parseInt($('#job-jd-chars').value) || cfg.search?.jd_max_chars || 4000,
+  try {
+    const cfg = await loadYaml('search_config') || {};
+    const newCfg = {
+      ...cfg,
+      sort_mode: ($('#c-sort')?.value || '').trim() || cfg.sort_mode || 'date',
+      filters: {
+        ...(cfg.filters || {}),
+        exclude_companies: ($('#c-exclude')?.value || '').split('\n').map(s=>s.trim()).filter(Boolean)
+      },
+      search: {
+        ...(cfg.search || {}),
+        max_pages: parseInt($('#job-max-pages')?.value) || cfg.search?.max_pages || 3,
+        max_total_results: parseInt($('#job-max-results')?.value) || cfg.search?.max_total_results || 200,
+        jd_max_chars: parseInt($('#job-jd-chars')?.value) || cfg.search?.jd_max_chars || 4000,
+      }
+    };
+    const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
+    if(res && !res.error){
+      toast('已保存找工作配置','ok');
+      STATE.sort = newCfg.sort_mode || 'date';
+      document.querySelectorAll('.sortbtn').forEach(x=>{
+        const on = x.dataset.sort === STATE.sort;
+        x.className = 'sortbtn flex-1 py-1.5 ' + (on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500');
+      });
+      const qaSort = document.getElementById('qa-sort'); if(qaSort) qaSort.textContent = STATE.sort==='date'?'按发布时间':'按相关度';
+    } else {
+      toast('保存失败: ' + (res?.error || '未知错误'), 'err');
     }
-  };
-  const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
-  if(res && !res.error){
-    toast('已保存找工作配置','ok');
-    STATE.sort = newCfg.sort_mode || 'date';
-    document.querySelectorAll('.sortbtn').forEach(x=>{
-      const on = x.dataset.sort === STATE.sort;
-      x.className = 'sortbtn flex-1 py-1.5 ' + (on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500');
-    });
-    const qaSort = document.getElementById('qa-sort'); if(qaSort) qaSort.textContent = STATE.sort==='date'?'按发布时间':'按相关度';
-  } else toast('保存失败: '+(res?.error||'未知错误'),'err');
+  } catch(e) {
+    toast('保存失败: ' + (e.message || '未知错误'), 'err');
+  }
 }
 
 async function saveMarketConfig(){
-  const cfg = await loadYaml('search_config') || {};
-  const jobCategories = [...document.querySelectorAll('#cfg-cats .cat-in')].map(i=>i.value.trim()).filter(Boolean);
-  const classifications = [...document.querySelectorAll('#cfg-cls .cls-in')].map(i=>i.value.trim()).filter(Boolean);
-  const newCfg = {
-    ...cfg,
-    market_presets: {
-      job_categories: jobCategories,
-      classifications: classifications,
-    },
-    market_analysis: {
-      ...(cfg.market_analysis || {}),
-      max_pages: parseInt($('#c-mpages').value) || cfg.market_analysis?.max_pages || 4,
-      max_fetch_jd: parseInt($('#c-mjd').value) || cfg.market_analysis?.max_fetch_jd || 100,
-      batch_size: parseInt($('#c-mbatch').value) || cfg.market_analysis?.batch_size || 5,
-      jd_max_chars: parseInt($('#c-mchars').value) || cfg.market_analysis?.jd_max_chars || 6000,
+  try {
+    const cfg = await loadYaml('search_config') || {};
+    const jobCategories = [...document.querySelectorAll('#cfg-cats .cat-in')].map(i=>i.value.trim()).filter(Boolean);
+    const classifications = [...document.querySelectorAll('#cfg-cls .cls-in')].map(i=>i.value.trim()).filter(Boolean);
+    const newCfg = {
+      ...cfg,
+      market_presets: {
+        job_categories: jobCategories,
+        classifications: classifications,
+      },
+      market_analysis: {
+        ...(cfg.market_analysis || {}),
+        max_pages: parseInt($('#c-mpages')?.value) || cfg.market_analysis?.max_pages || 4,
+        max_fetch_jd: parseInt($('#c-mjd')?.value) || cfg.market_analysis?.max_fetch_jd || 100,
+        batch_size: parseInt($('#c-mbatch')?.value) || cfg.market_analysis?.batch_size || 5,
+        jd_max_chars: parseInt($('#c-mchars')?.value) || cfg.market_analysis?.jd_max_chars || 6000,
+      }
+    };
+    const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
+    if(res && !res.error){
+      toast('已保存市场调研配置','ok');
+      renderMarketPresets();
+    } else {
+      toast('保存失败: ' + (res?.error || '未知错误'), 'err');
     }
-  };
-  const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
-  if(res && !res.error){
-    toast('已保存市场调研配置','ok');
-    renderMarketPresets();
-  } else toast('保存失败: '+(res?.error||'未知错误'),'err');
+  } catch(e) {
+    toast('保存失败: ' + (e.message || '未知错误'), 'err');
+  }
 }
 
 function addDynamicRow(containerId, inputClass){

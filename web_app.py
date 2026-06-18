@@ -767,12 +767,15 @@ def put_yaml_config(name):
         import shutil
         tmp_path = filepath + ".tmp"
         bak_path = filepath + ".bak"
-        if os.path.exists(filepath):
-            shutil.copy2(filepath, bak_path)
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            yaml.dump(new_content, f, Dumper=_MultilineDumper, allow_unicode=True, default_flow_style=False)
-        os.replace(tmp_path, filepath)
-        return jsonify({"status": "ok", "name": name})
+        try:
+            if os.path.exists(filepath):
+                shutil.copy2(filepath, bak_path)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                yaml.dump(new_content, f, Dumper=_MultilineDumper, allow_unicode=True, default_flow_style=False)
+            os.replace(tmp_path, filepath)
+            return jsonify({"status": "ok", "name": name})
+        except Exception as e:
+            return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
     elif name == "search_config":
         filepath = os.path.join(config.PROFILES_DIR, f"{name}.yaml")
         try:
