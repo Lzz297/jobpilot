@@ -1,12 +1,15 @@
-# instances/strategies/payment.yaml
-# 支付方向的匹配评分策略
+# ============================================================
+# 策略配置 — 支付/结算方向
+# 适用于 Payment Engineer, Settlement Engineer,
+# Clearing/Reconciliation 等岗位。
+# ============================================================
 
 weight_profile:
-  skill: 25
-  experience: 20
-  level: 10
-  industry: 25
-  bonus: 20
+  skill: 25       # 支付/清算类 JD 技术栈相对集中，技能权重适中
+  experience: 20  # 金融支付领域经验是加分项
+  level: 10       # 支付岗通常不卡职级，初级也可投
+  industry: 25    # 支付/清算行业背景高度加分
+  bonus: 20       # 粤语/普通话在本地支付公司是硬通货
 
 weight_rules_keywords:
   - "payment"
@@ -20,7 +23,6 @@ weight_rules_keywords:
   - "merchant services"
   - "treasury"
 
-# 通用匹配参数
 min_match_score: 45
 borderline_rescore: true
 borderline_range: 8

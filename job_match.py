@@ -84,11 +84,12 @@ def _load_scoring_prompt():
     return template
 
 
-def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str = None):
+def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str = None, config: dict = None):
     """对一批岗位调用 LLM 评分，返回 scored 列表（可能为空）。
 
     Args:
         strategy: 策略方向名（如 "web3"），用于加载对应的 few-shot 示例
+        config: Campaign 配置字典，用于读取 JD 截断长度等参数
     """
 
     prompts = load_prompts()
@@ -116,8 +117,9 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         if job.get("salary"):
             jobs_text += f"薪资: {job['salary']}\n"
         desc = job.get("description", "")
-        if len(desc) > 3000:
-            desc = desc[:3000] + "\n...(截断)"
+        max_chars = (config or {}).get("search", {}).get("jd_max_chars", 4000)
+        if len(desc) > max_chars:
+            desc = desc[:max_chars] + "\n...(截断)"
         jobs_text += f"职位描述:\n{desc}\n"
         jobs_text += f"链接: {job.get('url', '')}\n"
 
@@ -228,7 +230,7 @@ def match_jobs(config: dict = None, profile: dict = None):
         emit(f"   📊 分析第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
 
         scored = _score_batch(batch, profile_summary, default_weights,
-                              batch_label=f"第 {batch_num} 批")
+                              batch_label=f"第 {batch_num} 批", config=config)
 
         for s in scored:
             local_idx = s.get("index", 1) - 1
@@ -305,7 +307,7 @@ def match_jobs(config: dict = None, profile: dict = None):
                     w = get_weights(cat, weight_profiles)
 
                     scored2 = _score_batch([orig_job], profile_summary, w,
-                                           batch_label=f"复评 {s.get('title', '?')[:30]}")
+                                           batch_label=f"复评 {s.get('title', '?')[:30]}", config=config)
 
                     if scored2:
                         s2 = scored2[0]
@@ -606,8 +608,9 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
 
     # ── 构造单条 JD 的 user message（截断规则与 _score_batch 一致）──
     desc = jd_text
-    if len(desc) > 3000:
-        desc = desc[:3000] + "\n...(截断)"
+    max_chars = (config or {}).get("search", {}).get("jd_max_chars", 4000)
+    if len(desc) > max_chars:
+        desc = desc[:max_chars] + "\n...(截断)"
 
     user_message = f"--- 岗位 1 ---\n"
     if jd_title:

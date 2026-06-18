@@ -746,6 +746,17 @@ def put_yaml_config(name):
     if not isinstance(new_content, dict):
         return jsonify({"error": "content 必须是 JSON 对象"}), 400
 
+    # ── 自定义 dumper：多行文本自动使用块标量 | 风格，避免 \n 转义 ──
+    class _MultilineDumper(yaml.Dumper):
+        pass
+
+    def _str_representer(dumper, data):
+        if '\n' in data:
+            return dumper.represent_scalar('tag:yaml.org,2002:str', data, style='|')
+        return dumper.represent_scalar('tag:yaml.org,2002:str', data)
+
+    _MultilineDumper.add_representer(str, _str_representer)
+
     if name == "me":
         user_name = _get_current_user()
         if not user_name:
@@ -759,7 +770,7 @@ def put_yaml_config(name):
         if os.path.exists(filepath):
             shutil.copy2(filepath, bak_path)
         with open(tmp_path, "w", encoding="utf-8") as f:
-            yaml.dump(new_content, f, allow_unicode=True, default_flow_style=False)
+            yaml.dump(new_content, f, Dumper=_MultilineDumper, allow_unicode=True, default_flow_style=False)
         os.replace(tmp_path, filepath)
         return jsonify({"status": "ok", "name": name})
     elif name == "search_config":
@@ -771,7 +782,7 @@ def put_yaml_config(name):
             if os.path.exists(filepath):
                 shutil.copy2(filepath, bak_path)
             with open(tmp_path, "w", encoding="utf-8") as f:
-                yaml.dump(new_content, f, allow_unicode=True, default_flow_style=False)
+                yaml.dump(new_content, f, Dumper=_MultilineDumper, allow_unicode=True, default_flow_style=False)
             os.replace(tmp_path, filepath)
         except Exception as e:
             return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
@@ -821,7 +832,6 @@ def list_campaigns():
                         "strategy": data.get("strategy", ""),
                         "queries": len(sq),
                         "keywords": [q.get("keywords", "") for q in sq if q.get("keywords")],
-                        "sort_mode": data.get("sort_mode", ""),
                     })
                 except Exception:
                     continue

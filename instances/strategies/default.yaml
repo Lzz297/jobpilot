@@ -1,17 +1,21 @@
-# instances/strategies/default.yaml
-# 默认/通用方向的匹配评分策略
+# ============================================================
+# 策略配置 — 默认/通用方向
+# 当岗位标题无法匹配到任何特定分类时使用此方案。
+# ============================================================
 
+# ── 五维权重（skill/experience/level/industry/bonus，总和须为 100）──
 weight_profile:
-  skill: 30
-  experience: 25
-  level: 15
-  industry: 15
-  bonus: 15
+  skill: 30       # JD 要求的编程语言、框架、工具匹配度
+  experience: 25  # 工作年限和行业经验匹配度
+  level: 15       # 岗位级别与候选人水平匹配度
+  industry: 15    # 岗位行业与候选人背景匹配度
+  bonus: 15       # 认证、语言能力、地点便利性等
 
+# ── 标题关键词匹配规则（用于 LLM 方向判断失败时的回退分类）──
 weight_rules_keywords: []
 
-# 通用匹配参数
-min_match_score: 45
-borderline_rescore: true
-borderline_range: 8
-top_n: 999
+# ── 匹配执行参数 ──
+min_match_score: 45       # 最低达标分数
+borderline_rescore: true  # 及格线复评开关
+borderline_range: 8       # 复评区间（min_score ± range 内的岗位重评一次）
+top_n: 999                # 保留排名前 N（999 即全部保留）

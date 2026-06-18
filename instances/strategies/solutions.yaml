@@ -1,12 +1,15 @@
-# instances/strategies/solutions.yaml
-# 方案/集成方向的匹配评分策略
+# ============================================================
+# 策略配置 — 方案/集成方向
+# 适用于 Solutions Engineer, Pre-sales Engineer,
+# Implementation Engineer, Customer Success 等岗位。
+# ============================================================
 
 weight_profile:
-  skill: 25
-  experience: 20
-  level: 15
-  industry: 20
-  bonus: 20
+  skill: 25       # 方案岗不要求全栈精通，但需要广度的技术认知
+  experience: 20  # 对接经验是核心价值
+  level: 15       # 方案岗通常需要一定经验，但 junior 也可投
+  industry: 20    # ICT/Fintech 行业背景加分
+  bonus: 20       # B2B 沟通能力、售前经验、双语能力权重高
 
 weight_rules_keywords:
   - "solutions engineer"
@@ -20,7 +23,6 @@ weight_rules_keywords:
   - "implementation engineer"
   - "integration consultant"
 
-# 通用匹配参数
 min_match_score: 45
 borderline_rescore: true
 borderline_range: 8

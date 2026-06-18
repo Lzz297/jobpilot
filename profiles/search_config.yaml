@@ -1,13 +1,38 @@
-filters:
-  exclude_companies: []
+# ============================================================
+# 系统基础设施配置（不随求职方向改变）
+# 用户画像由 profiles/.current_user 指定，不在此文件中。
+# ============================================================
+
+# ── LLM 模型（侧边栏可实时切换）──
 llm:
   model: deepseek-v4-pro
   provider: deepseek
-market_analysis:
-  batch_size: 5
-  jd_max_chars: 6000
-  max_fetch_jd: 100
-  max_pages: 4
-market_classifications: []
-market_job_categories: []
+
+# ── 全局默认排序（date=按发布时间 / relevance=按相关度）──
 sort_mode: date
+
+# ── 全局过滤规则 ──
+filters:
+  exclude_companies: []
+
+# ── 找工作执行参数 ──
+search:
+  max_pages: 3             # 每组关键词翻页数
+  max_total_results: 200   # JD 抓取上限
+  jd_max_chars: 4000       # 匹配评分时单条 JD 截断长度（发给 LLM 前截断）
+
+# ── 简历生成相关参数 ──
+resume_gen:
+  jd_max_chars: 3000       # 方向聚合时单条 JD 截断长度（发给 LLM 提取共性需求前截断）
+
+# ── 市场调研执行参数 ──
+market_analysis:
+  max_pages: 4             # 列表页翻页数
+  max_fetch_jd: 100        # 最多抓取 JD 数
+  batch_size: 5            # LLM 每批分析条数
+  jd_max_chars: 6000       # 单条 JD 截断长度
+
+# ── 市场调研预设（前端快速填入用）──
+market_presets:
+  job_categories: []
+  classifications: []

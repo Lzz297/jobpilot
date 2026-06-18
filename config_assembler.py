@@ -5,22 +5,10 @@ config_assembler.py — 按变化轴组装配置
 旧路径（profiles/me.yaml + search_config.yaml）保持不动，新旧模式并行。
 """
 import os
-import copy
 import yaml
 
 INSTANCES_DIR = "instances"
 PROFILES_DIR = "profiles"
-
-
-def _deep_merge(base: dict, override: dict) -> dict:
-    """深度合并两个字典。override 中的值覆盖 base，嵌套字典逐层合并。"""
-    result = copy.deepcopy(base)
-    for key, value in override.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = _deep_merge(result[key], value)
-        else:
-            result[key] = copy.deepcopy(value)
-    return result
 
 
 def _load_yaml(rel_path: str) -> dict:
@@ -54,7 +42,7 @@ def load_campaign(campaign_name: str) -> dict:
     4. 读取 instances/strategies/{strategy}.yaml 作为策略
     5. 读取 search_config.yaml 获取通用配置
     6. 读取 prompts.yaml、resume_guide.yaml、resume_template.yaml
-    7. 按优先级合并：通用配置 → 策略配置 → campaign.overrides
+    7. 按优先级合并：通用配置（search_config.yaml）→ 策略配置（strategy 文件）→ campaign 顶层字段（无 overrides）
     """
     # ── 1. 加载 campaign ──
     campaign_path = os.path.join(INSTANCES_DIR, "campaigns", f"{campaign_name}.yaml")
@@ -121,23 +109,19 @@ def load_campaign(campaign_name: str) -> dict:
         "strategy": strategy,
         "strategy_name": strategy_name,
         "search_queries": campaign.get("search_queries", []),
-        "sort_mode": campaign.get("sort_mode", base_config["sort_mode"]),
+        "sort_mode": base_config["sort_mode"],
         "llm": base_config["llm"],
         "filters": base_config["filters"],
-        "max_pages_per_query": campaign.get("overrides", {}).get("max_pages_per_query", 3),
-        "max_total_results": campaign.get("overrides", {}).get("max_total_results", 200),
+        "max_pages_per_query": search_cfg.get("search", {}).get("max_pages", 3),
+        "max_total_results": search_cfg.get("search", {}).get("max_total_results", 200),
+        "search": search_cfg.get("search", {}),
+        "resume_gen": search_cfg.get("resume_gen", {}),
         "matching": matching,
         "market_analysis": base_config["market_analysis"],
         "prompts": prompts,
         "resume_template": resume_template,
         "resume_guide": resume_guide,
     }
-
-    # ── 8. 应用 campaign overrides ──
-    overrides = campaign.get("overrides", {})
-    if overrides:
-        config = _deep_merge(config, overrides)
-        print(f"  已应用 overrides: {list(overrides.keys())}")
 
     print(f"  配置组装完成")
     return config

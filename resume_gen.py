@@ -75,8 +75,9 @@ def _aggregate_direction_requirements(matched_jobs, profile_text, search_cfg):
         for j, job in enumerate(jobs[:15], 1):
             jds_text += f"\n--- 岗位 {j}: {job.get('title', '')} @ {job.get('company', '')} ---\n"
             desc = job.get("description", "")
-            if len(desc) > 2000:
-                desc = desc[:2000] + "\n...(截断)"
+            max_chars = (search_cfg or {}).get("resume_gen", {}).get("jd_max_chars", 3000)
+            if len(desc) > max_chars:
+                desc = desc[:max_chars] + "\n...(截断)"
             jds_text += desc + "\n"
 
         system_prompt = render_prompt(template, profile_summary=profile_text)

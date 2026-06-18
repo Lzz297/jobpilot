@@ -1,6 +1,13 @@
+# ============================================================
+# 简历模板 — 控制简历的段落顺序和输出格式
+# 内容撰写规范见 resume_guide.yaml
+# ============================================================
+
+# ── 基础输出设置 ──
 format: "markdown"
 output_style: "professional"
 
+# ── 段落排列顺序（从上到下）──
 sections_order:
   - "summary"
   - "skills"
@@ -9,7 +16,8 @@ sections_order:
   - "education"
   - "certifications"
 
+# ── 自动调整选项 ──
 customization:
-  auto_reorder_skills: true
-  auto_adjust_summary: true
-  max_pages: 2
+  auto_reorder_skills: true   # 自动按目标岗位 JD 重排技能展示顺序
+  auto_adjust_summary: true   # 自动根据目标岗位调整 Summary 措辞
+  max_pages: 2                # 最多页数

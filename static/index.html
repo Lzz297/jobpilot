@@ -321,15 +321,17 @@
 
       <!-- ===== SETTINGS ===== -->
       <section id="view-settings" class="view h-full overflow-y-auto hidden">
-        <div class="p-6 max-w-3xl">
+        <div class="p-6 w-full">
           <h1 class="text-lg font-bold text-slate-900">设置</h1>
           <p class="text-sm text-slate-500 mb-4">在 Web 端编辑个人画像与系统配置</p>
           <div class="flex rounded-lg border border-slate-200 overflow-hidden text-sm w-fit mb-4">
             <button id="set-tab-profile" onclick="setTab('profile')" class="px-4 py-1.5 bg-indigo-600 text-white">个人画像</button>
-            <button id="set-tab-config" onclick="setTab('config')" class="px-4 py-1.5 bg-white text-slate-500">搜索配置</button>
+            <button id="set-tab-job" onclick="setTab('job')" class="px-4 py-1.5 bg-white text-slate-500">找工作配置</button>
+            <button id="set-tab-market" onclick="setTab('market')" class="px-4 py-1.5 bg-white text-slate-500">市场调研配置</button>
           </div>
           <div id="set-profile"></div>
-          <div id="set-config" class="hidden"></div>
+          <div id="set-job" class="hidden"></div>
+          <div id="set-market" class="hidden"></div>
         </div>
       </section>
 
@@ -1373,8 +1375,9 @@ function mktTab(tab){
 function renderMarket(){ renderMarketPresets(); }
 async function renderMarketPresets(){
   const cfg = await loadYaml('search_config');
-  const cats = cfg?.market_job_categories || [];
-  const clss = cfg?.market_classifications || [];
+  const presets = cfg?.market_presets || {};
+  const cats = presets.job_categories || [];
+  const clss = presets.classifications || [];
 
   $('#mkt-cat-chips').innerHTML = cats.length
     ? cats.map((c,i)=>`<button onclick="$('#mkt-cat').value='${escapeHtml(c)}'" class="text-xs px-2.5 py-1 rounded-full border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600">${escapeHtml(c)}</button>`).join('')
@@ -1437,8 +1440,9 @@ function hlYaml(text){
 function closeModal(){ $('#modal-overlay').classList.add('hidden'); }
 
 /* ===================== SETTINGS VIEW ===================== */
-function field(label,id,val,type='text',hint=''){
-  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><input id="${id}" type="${type}" value="${escapeHtml(String(val||''))}" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
+function field(label,id,val,type='text',hint='',min=''){
+  const minAttr = min ? ` min="${min}"` : '';
+  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><input id="${id}" type="${type}" value="${escapeHtml(String(val||''))}"${minAttr} class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
 }
 function areaField(label,id,val,rows=3,hint=''){
   return `<div><label class="text-xs font-medium text-slate-500">${label}</label><textarea id="${id}" rows="${rows}" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none">${escapeHtml(String(val||''))}</textarea>${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
@@ -1450,7 +1454,21 @@ async function loadYaml(name){
   return data ? data.content : null;
 }
 
-function skillVal(sk, key){ return (sk&&sk[key]&&Array.isArray(sk[key])) ? sk[key].join(', ') : ''; }
+function skillVal(sk, key){
+  const arr = sk && sk[key] && Array.isArray(sk[key]) ? sk[key] : [];
+  if (arr.length === 0) return '';
+  // 对象数组：提取 name 字段
+  if (typeof arr[0] === 'object' && arr[0] !== null) {
+    return arr.map(item => {
+      const name = item.name || item.skill || '';
+      const level = item.level || '';
+      const years = item.years ? `, ${item.years}年` : '';
+      return `${name}${level ? ` (${level}${years})` : ''}`;
+    }).join('；');
+  }
+  // 字符串数组
+  return arr.join('、');
+}
 
 async function renderSettings(){
   const me = await loadYaml('me');
@@ -1461,54 +1479,140 @@ async function renderSettings(){
     const exp = (me.work_experience||[]).map(e=>`${e.company||''} | ${e.title||''} | ${e.period||''}\n`+(e.highlights||[]).map(h=>'· '+h).join('\n')).join('\n\n');
     $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入当前用户画像</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
       ${card('基本信息',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('姓名','p-name',me.name)}${field('英文名','p-name-en',me.name_en)}${field('所在地','p-loc',me.location)}${field('电话','p-phone',me.phone)}${field('邮箱','p-email',me.email)}${field('LinkedIn','p-linkedin',me.linkedin)}${field('GitHub','p-github',me.github)}</div>`)}
-      ${card('求职意向',`<div class="space-y-3">${areaField('目标岗位（每行一个）','p-titles',(intent.target_titles||[]).join('\n'),4)}<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('薪资期望','p-salary',intent.salary_expectation||'')}${field('到岗时间','p-avail',intent.notice_period||intent.availability||'')}</div><div class="text-xs text-amber-600">⚠️ 薪资期望在此页面保存时不生效，请直接编辑 YAML 配置文件。</div>${field('目标行业','p-industry',(intent.target_industries||[]).join(', '))}</div>`)}
+      ${card('求职意向',`<div class="space-y-3">
+        ${areaField('目标岗位（每行一个）','p-titles',(intent.target_titles||[]).join('\n'),4)}
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label class="text-xs font-medium text-slate-500">工作类型</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${intent.job_type || '未填写'}</div></div>
+          <div><label class="text-xs font-medium text-slate-500">薪资期望</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${typeof intent.salary_expectation === 'object' && intent.salary_expectation !== null ? `${intent.salary_expectation.min || '?'}-${intent.salary_expectation.max || '?'} ${intent.salary_expectation.currency || ''}` : (intent.salary_expectation || '未填写')}</div></div>
+          <div><label class="text-xs font-medium text-slate-500">到岗时间</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${intent.notice_period || intent.availability || '未填写'}</div></div>
+          <div><label class="text-xs font-medium text-slate-500">目标城市</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${(intent.location_preference || []).join('、') || '未填写'}</div></div>
+        </div>
+        ${field('目标行业','p-industry',(intent.target_industries||[]).join(', '))}
+        <div class="text-xs text-amber-600">⚠️ 工作类型、薪资期望、到岗时间、目标城市请直接编辑 YAML 配置文件修改。</div>
+      </div>`)}
       ${card('战略定位',areaField('核心画像','p-core',me.strategic_positioning||'',3))}
-      ${card('专业技能',`<div class="space-y-3">${field('数据库','p-db',skillVal(skills,'databases_and_data'))}${field('API 集成','p-api',skillVal(skills,'api_and_integration'))}${field('编程语言','p-lang',skillVal(skills,'programming_languages'))}${field('框架','p-fw',skillVal(skills,'frameworks'))}${field('区块链','p-chain',skillVal(skills,'blockchain'))}${field('DevOps','p-devops',skillVal(skills,'devops_and_tools'))}${field('AI 工具','p-ai',skillVal(skills,'ai_tools'))}${field('业务能力','p-biz',skillVal(skills,'business_skills'))}${field('语言能力','p-spoken',skillVal(skills,'languages'))}</div><div class="text-xs text-amber-600 mt-2">⚠️ 技能和薪资字段在 Web 端暂不可编辑，请直接编辑 YAML 配置文件以修改此内容。</div>`)}
+      ${card('香港身份',`<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">
+        ${me.hk_permanent_resident ? '✅ 香港永久居民' : '❌ 非香港永久居民（或未填写）'}
+        <div class="text-xs text-amber-600 mt-1">⚠️ 此字段请直接编辑 YAML 配置文件修改。</div>
+      </div>`)}
+      ${card('工作经历', (() => {
+        const exp = me.work_experience || [];
+        if (exp.length === 0) return '<p class="text-sm text-slate-400">未填写工作经历</p>';
+        let h = '<div class="space-y-3">';
+        exp.forEach(e => {
+          h += '<div class="bg-slate-50 rounded-lg p-3"><div class="flex justify-between items-center"><span class="text-sm font-medium text-slate-700">'+ (e.company||'') +' · '+ (e.title||'') +'</span><span class="text-xs text-slate-400">'+ (e.period||'') +'</span></div>'+ (e.overview ? '<p class="text-xs text-slate-500 mt-1">'+e.overview+'</p>' : '') + (e.tech_stack&&e.tech_stack.length ? '<div class="text-xs text-slate-400 mt-1">技术栈：'+e.tech_stack.join(', ')+'</div>' : '') + (e.highlights&&e.highlights.length ? '<ul class="mt-2 space-y-1 text-xs text-slate-600">'+e.highlights.map(x=>'<li>· '+x+'</li>').join('')+'</ul>' : '') + (e.key_achievements&&e.key_achievements.length ? '<div class="text-xs text-slate-500 mt-1">'+e.key_achievements.map(a=>typeof a==='object'?'🏆 '+(a.title||a.resume_bullet||''):'🏆 '+a).join('<br>')+'</div>' : '') +'</div>';
+        });
+        h += '<div class="text-xs text-amber-600 mt-2">⚠️ 工作经历请直接编辑 YAML 配置文件修改。</div></div>';
+        return h;
+      })())}
+      ${card('教育背景', (() => {
+        const edu = me.education || [];
+        if (edu.length === 0) return '<p class="text-sm text-slate-400">未填写教育背景</p>';
+        let h = '<div class="space-y-2">';
+        edu.forEach(e => {
+          h += '<div class="bg-slate-50 rounded-lg p-3 flex justify-between items-center"><div><span class="text-sm font-medium text-slate-700">'+ (e.degree||'') +' · '+ (e.major||'') +'</span><div class="text-xs text-slate-400">'+ (e.school||'') + (e.school_en ? ' ('+e.school_en+')' : '') +'</div></div><span class="text-xs text-slate-400">'+ (e.period||'') +'</span></div>';
+        });
+        h += '<div class="text-xs text-amber-600 mt-2">⚠️ 教育背景请直接编辑 YAML 配置文件修改。</div></div>';
+        return h;
+      })())}
+      ${card('项目经历', (() => {
+        const proj = me.projects || [];
+        if (proj.length === 0) return '<p class="text-sm text-slate-400">未填写项目经历</p>';
+        let h = '<div class="space-y-3">';
+        proj.forEach(p => {
+          h += '<div class="bg-slate-50 rounded-lg p-3"><div class="flex justify-between items-center"><span class="text-sm font-medium text-slate-700">'+ (p.name||'') +'</span><span class="text-xs text-slate-400">'+ (p.role||'') +'</span></div>'+ (p.description ? '<p class="text-xs text-slate-500 mt-1">'+p.description+'</p>' : '') + (p.tech_stack&&p.tech_stack.length ? '<div class="text-xs text-slate-400 mt-1">技术栈：'+p.tech_stack.join(', ')+'</div>' : '') + (p.resume_bullets&&p.resume_bullets.length ? '<ul class="mt-1 space-y-0.5 text-xs text-slate-500">'+p.resume_bullets.map(b=>typeof b==='object'?'<li>· '+(b.text||'')+'</li>':'<li>· '+b+'</li>').join('')+'</ul>' : '') + (p.for_resume ? '<span class="text-xs text-green-600 ml-1">● 已标记用于简历</span>' : '') +'</div>';
+        });
+        h += '<div class="text-xs text-amber-600 mt-2">⚠️ 项目经历请直接编辑 YAML 配置文件修改。</div></div>';
+        return h;
+      })())}
+      ${card('证书', (() => {
+        const certs = me.certifications || [];
+        if (certs.length === 0) return '<p class="text-sm text-slate-400">未填写证书</p>';
+        let h = '<div class="flex flex-wrap gap-2">';
+        certs.forEach(c => { h += '<span class="text-xs bg-slate-50 text-slate-600 rounded-full px-2.5 py-1">'+c+'</span>'; });
+        h += '<div class="text-xs text-amber-600 mt-2 w-full">⚠️ 证书请直接编辑 YAML 配置文件修改。</div></div>';
+        return h;
+      })())}
+      ${card('专业技能', (() => {
+        const skillEntries = Object.entries(skills);
+        if (skillEntries.length === 0) return '<p class="text-sm text-slate-400">未配置技能</p>';
+        let html = '<div class="space-y-4">';
+        for (const [key, arr] of skillEntries) {
+          if (!Array.isArray(arr) || arr.length === 0) continue;
+          const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          html += '<div>';
+          html += '<div class="text-xs font-medium text-slate-500 mb-1">' + label + '</div>';
+          if (typeof arr[0] === 'object' && arr[0] !== null) {
+            html += '<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">';
+            html += arr.map(item => {
+              const name = item.name || item.skill || '';
+              const level = item.level ? '<span class="text-indigo-600">' + item.level + '</span>' : '';
+              const years = item.years ? item.years + '年' : '';
+              const detail = item.detail || item.note || '';
+              return '<div class="flex justify-between items-center py-1 border-b border-slate-100 last:border-0"><span>' + name + '</span><span class="text-xs">' + level + ' ' + years + ' ' + detail + '</span></div>';
+            }).join('');
+            html += '</div>';
+          } else {
+            html += '<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">' + arr.join('、') + '</div>';
+          }
+          html += '</div>';
+        }
+        html += '<div class="text-xs text-amber-600 mt-2">⚠️ 技能详情请直接编辑 YAML 配置文件，此处仅展示概要。</div>';
+        html += '</div>';
+        return html;
+      })())}
       ${card('自我评价',areaField('p-self',me.summary||'',3))}
       <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
   }
 
   const cfg = await loadYaml('search_config');
-  if(!cfg){ $('#set-config').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`; }
-  else {
-    const matching = cfg.matching || {};
-    const wprofiles = matching.weight_profiles || {};
-    const wnames = {default:'通用',technical:'技术',solutions:'方案',web3:'Web3',payment:'支付'};
-    const wrows = Object.entries(wprofiles).map(([name,w])=>{
-      const cls = (DIR_META[name]||{}).cls || 'bg-slate-100 text-slate-600';
-      return `<tr class="border-b border-slate-50"><td class="py-1.5 pr-2"><span class="text-xs px-1.5 py-0.5 rounded ${cls}">${wnames[name]||name}</span></td><td class="py-1 px-1"><input id="w-${name}-skill" type="number" value="${w.skill||30}" class="w-12 border border-slate-200 rounded px-1 py-0.5 text-xs text-center"></td><td class="py-1 px-1"><input id="w-${name}-experience" type="number" value="${w.experience||25}" class="w-12 border border-slate-200 rounded px-1 py-0.5 text-xs text-center"></td><td class="py-1 px-1"><input id="w-${name}-level" type="number" value="${w.level||15}" class="w-12 border border-slate-200 rounded px-1 py-0.5 text-xs text-center"></td><td class="py-1 px-1"><input id="w-${name}-industry" type="number" value="${w.industry||15}" class="w-12 border border-slate-200 rounded px-1 py-0.5 text-xs text-center"></td><td class="py-1 px-1"><input id="w-${name}-bonus" type="number" value="${w.bonus||15}" class="w-12 border border-slate-200 rounded px-1 py-0.5 text-xs text-center"></td></tr>`;
-    }).join('');
-    const queries = cfg.search_queries || [];
+  if(cfg){
+    const searchCfg = cfg.search || {};
     const marketCfg = cfg.market_analysis || {};
-    const marketCats = cfg.market_job_categories || [];
-    const marketCls = cfg.market_classifications || [];
+    const presets = cfg.market_presets || {};
 
-    let qHtml = `<div id="cfg-queries" class="space-y-2">`;
-    queries.forEach((q,i)=>qHtml+=`<div class="query-row grid grid-cols-1 sm:grid-cols-3 gap-2 items-center"><input value="${escapeHtml(q.keywords||'')}" placeholder="keywords" class="q-kw border border-slate-300 rounded-lg px-2 py-1.5 text-xs"><input value="${escapeHtml(q.location||'')}" placeholder="location" class="q-loc border border-slate-300 rounded-lg px-2 py-1.5 text-xs"><div class="flex gap-1"><input value="${escapeHtml(q.classification||'')}" placeholder="classification（可选）" class="q-cls border border-slate-300 rounded-lg px-2 py-1.5 text-xs flex-1"><button onclick="this.closest('.query-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`);
-    qHtml += `</div><button onclick="addQueryRow()" class="text-xs text-indigo-600 flex items-center gap-1 mt-2"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 添加关键词组</button>`;
+    // ── 找工作配置面板 ──
+    $('#set-job').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">权重方案和搜索词通过侧边栏「求职方向」管理。</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML</button></div>
+      ${card('基础设置',`
+        ${field('全局默认排序','c-sort',cfg.sort_mode||'date','text','date / relevance')}
+        ${areaField('排除公司（每行一个）','c-exclude',(cfg.filters?.exclude_companies||[]).join('\n'),4,'大小写不敏感，在基础清洗阶段直接排除')}
+      `)}
+      ${card('抓取参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','','1')}
+        ${field('JD 抓取上限','job-max-results',searchCfg.max_total_results||200,'number','','1')}
+        ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','发给 LLM 前截断','1')}
+      </div>`)}
+      <button onclick="saveJobConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存找工作配置</button>`;
 
-    let catsHtml = `<div id="cfg-cats" class="space-y-2">`;
-    marketCats.forEach(c=>catsHtml+=`<div class="cat-row flex gap-2 items-center"><input value="${escapeHtml(c)}" placeholder="如 Web3 / Solutions Engineer" class="cat-in flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><button onclick="this.closest('.cat-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`);
-    catsHtml += `</div><button onclick="addCatRow()" class="text-xs text-indigo-600 flex items-center gap-1 mt-2"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 添加岗位类别</button>`;
+    // ── 市场调研配置面板 ──
+    let catsHtml = `<div id="cfg-cats">`;
+    (presets.job_categories||[]).forEach(v=>{ catsHtml+=`<div class="flex gap-1 mb-1"><input class="cat-in w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" value="${escapeHtml(v)}"><button onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button></div>`; });
+    catsHtml += `</div><button onclick="addDynamicRow('cfg-cats','cat-in')" class="text-xs text-indigo-600 mt-1">+ 添加类别</button>`;
 
-    let clsHtml = `<div id="cfg-cls" class="space-y-2">`;
-    marketCls.forEach(c=>clsHtml+=`<div class="cls-row flex gap-2 items-center"><input value="${escapeHtml(c)}" placeholder="如 information-communication-technology" class="cls-in flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-mono"><button onclick="this.closest('.cls-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`);
-    clsHtml += `</div><button onclick="addClsRow()" class="text-xs text-indigo-600 flex items-center gap-1 mt-2"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 添加行业分类</button>`;
+    let clsHtml = `<div id="cfg-cls">`;
+    (presets.classifications||[]).forEach(v=>{ clsHtml+=`<div class="flex gap-1 mb-1"><input class="cls-in w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" value="${escapeHtml(v)}"><button onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button></div>`; });
+    clsHtml += `</div><button onclick="addDynamicRow('cfg-cls','cls-in')" class="text-xs text-indigo-600 mt-1">+ 添加行业</button>`;
 
-    $('#set-config').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">业务配置（搜索词、权重）请通过侧边栏「求职方向」管理。以下为系统基础设施。</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
-      ${card('系统参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('全局排序 sort_mode','c-sort',cfg.sort_mode||'date','text','date / relevance')}</div>`)}
-      ${card('排除公司',areaField('每行一个公司名（大小写不敏感）','c-exclude',(cfg.filters||{}).exclude_companies?cfg.filters.exclude_companies.join('\n'):'',3,'在基础清洗阶段直接排除'))}
-      ${card('市场调研 · 岗位类别预设',`<p class="text-[11px] text-slate-400 mb-2">在市场调研页可一键填入。</p>${catsHtml}`)}
-      ${card('市场调研 · 行业分类预设',`<p class="text-[11px] text-slate-400 mb-2">与岗位类别相互独立。</p>${clsHtml}`)}
-      ${card('市场调研参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('列表页翻页','c-mpages',marketCfg.max_pages||4,'number')}${field('最多抓取 JD','c-mjd',marketCfg.max_fetch_jd||100,'number')}${field('LLM 每批','c-mbatch',marketCfg.batch_size||5,'number')}${field('JD 截断字数','c-mchars',marketCfg.jd_max_chars||6000,'number')}</div>`)}
-      <button onclick="saveConfigYaml()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存系统配置</button>`;
+    $('#set-market').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">预设分类和抓取参数独立于找工作流程。</span><button onclick="openYamlModal('search_config')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML</button></div>
+      ${card('预设分类',`
+        <div class="space-y-3">
+          <div><label class="block text-xs font-medium text-slate-500 mb-1">岗位类别（在市场调研页可一键填入）</label>${catsHtml}</div>
+          <div><label class="block text-xs font-medium text-slate-500 mb-1">行业分类（与岗位类别相互独立）</label>${clsHtml}</div>
+        </div>
+      `)}
+      ${card('执行参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${field('列表页翻页','c-mpages',marketCfg.max_pages||4,'number')}
+        ${field('最多抓取 JD','c-mjd',marketCfg.max_fetch_jd||100,'number')}
+        ${field('LLM 每批','c-mbatch',marketCfg.batch_size||5,'number')}
+        ${field('JD 截断字数','c-mchars',marketCfg.jd_max_chars||6000,'number')}
+      </div>`)}
+      <button onclick="saveMarketConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存市场调研配置</button>`;
+  } else {
+    $('#set-job').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
+    $('#set-market').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
   }
   refreshIcons();
 }
-
-function addQueryRow(q){ q=q||{keywords:'',location:'Hong Kong',classification:''}; const box=$('#cfg-queries'); if(!box) return; const row=document.createElement('div'); row.className='query-row grid grid-cols-1 sm:grid-cols-3 gap-2 items-center'; row.innerHTML=`<input value="${escapeHtml(q.keywords||'')}" placeholder="keywords" class="q-kw border border-slate-300 rounded-lg px-2 py-1.5 text-xs"><input value="${escapeHtml(q.location||'')}" placeholder="location" class="q-loc border border-slate-300 rounded-lg px-2 py-1.5 text-xs"><div class="flex gap-1"><input value="${escapeHtml(q.classification||'')}" placeholder="classification（可选）" class="q-cls border border-slate-300 rounded-lg px-2 py-1.5 text-xs flex-1"><button onclick="this.closest('.query-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div>`; box.appendChild(row); refreshIcons(); }
-function addCatRow(v){ const box=$('#cfg-cats'); if(!box) return; const row=document.createElement('div'); row.className='cat-row flex gap-2 items-center'; row.innerHTML=`<input value="${escapeHtml(v||'')}" placeholder="如 Web3 / Solutions Engineer（大小写敏感）" class="cat-in flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm"><button onclick="this.closest('.cat-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`; box.appendChild(row); refreshIcons(); }
-function addClsRow(v){ const box=$('#cfg-cls'); if(!box) return; const row=document.createElement('div'); row.className='cls-row flex gap-2 items-center'; row.innerHTML=`<input value="${escapeHtml(v||'')}" placeholder="如 information-communication-technology" class="cls-in flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm font-mono"><button onclick="this.closest('.cls-row').remove()" class="text-slate-400 hover:text-red-500"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`; box.appendChild(row); refreshIcons(); }
 
 async function saveYaml(name){
   if(name==='me'){
@@ -1519,7 +1623,7 @@ async function saveYaml(name){
       phone: $('#p-phone').value, email: $('#p-email').value,
       linkedin: $('#p-linkedin').value, github: $('#p-github').value,
       location: $('#p-loc').value,
-      job_intent: {...(orig.job_intent||{}), target_titles:$('#p-titles').value.split('\n').map(s=>s.trim()).filter(Boolean), salary_expectation: orig.job_intent?.salary_expectation, notice_period:$('#p-avail').value, target_industries:$('#p-industry').value.split(',').map(s=>s.trim()).filter(Boolean)},
+      job_intent: {...(orig.job_intent||{}), target_titles:$('#p-titles').value.split('\n').map(s=>s.trim()).filter(Boolean), salary_expectation: orig.job_intent?.salary_expectation, notice_period: orig.job_intent?.notice_period, target_industries:$('#p-industry').value.split(',').map(s=>s.trim()).filter(Boolean)},
       strategic_positioning: $('#p-core').value,
       summary: $('#p-self').value,
     };
@@ -1531,26 +1635,66 @@ async function saveYaml(name){
   }
 }
 
-async function saveConfigYaml(){
+async function saveJobConfig(){
   const cfg = await loadYaml('search_config') || {};
-
   const newCfg = {
-    llm: cfg.llm || {provider:STATE.model, model:MODELS[STATE.model]},
-    sort_mode: $('#c-sort').value.trim()||'date',
-    filters: {exclude_companies: $('#c-exclude').value.split('\n').map(s=>s.trim()).filter(Boolean)},
-    market_job_categories: [...document.querySelectorAll('#cfg-cats .cat-in')].map(i=>i.value.trim()).filter(Boolean),
-    market_classifications: [...document.querySelectorAll('#cfg-cls .cls-in')].map(i=>i.value.trim()).filter(Boolean),
-    market_analysis: {max_pages:parseInt($('#c-mpages').value)||4,max_fetch_jd:parseInt($('#c-mjd').value)||100,batch_size:parseInt($('#c-mbatch').value)||5,jd_max_chars:parseInt($('#c-mchars').value)||6000},
+    ...cfg,
+    sort_mode: $('#c-sort').value.trim() || cfg.sort_mode || 'date',
+    filters: {
+      ...(cfg.filters || {}),
+      exclude_companies: $('#c-exclude').value.split('\n').map(s=>s.trim()).filter(Boolean)
+    },
+    search: {
+      ...(cfg.search || {}),
+      max_pages: parseInt($('#job-max-pages').value) || cfg.search?.max_pages || 3,
+      max_total_results: parseInt($('#job-max-results').value) || cfg.search?.max_total_results || 200,
+      jd_max_chars: parseInt($('#job-jd-chars').value) || cfg.search?.jd_max_chars || 4000,
+    }
   };
   const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
   if(res && !res.error){
-    toast('已保存系统配置','ok');
-    // Sync global UI state
-    STATE.sort = newCfg.sort_mode||'date';
-    document.querySelectorAll('.sortbtn').forEach(x=>{ const on=x.dataset.sort===STATE.sort; x.className='sortbtn flex-1 py-1.5 '+(on?'bg-indigo-600 text-white':'bg-white text-slate-500'); });
+    toast('已保存找工作配置','ok');
+    STATE.sort = newCfg.sort_mode || 'date';
+    document.querySelectorAll('.sortbtn').forEach(x=>{
+      const on = x.dataset.sort === STATE.sort;
+      x.className = 'sortbtn flex-1 py-1.5 ' + (on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500');
+    });
     const qaSort = document.getElementById('qa-sort'); if(qaSort) qaSort.textContent = STATE.sort==='date'?'按发布时间':'按相关度';
+  } else toast('保存失败: '+(res?.error||'未知错误'),'err');
+}
+
+async function saveMarketConfig(){
+  const cfg = await loadYaml('search_config') || {};
+  const jobCategories = [...document.querySelectorAll('#cfg-cats .cat-in')].map(i=>i.value.trim()).filter(Boolean);
+  const classifications = [...document.querySelectorAll('#cfg-cls .cls-in')].map(i=>i.value.trim()).filter(Boolean);
+  const newCfg = {
+    ...cfg,
+    market_presets: {
+      job_categories: jobCategories,
+      classifications: classifications,
+    },
+    market_analysis: {
+      ...(cfg.market_analysis || {}),
+      max_pages: parseInt($('#c-mpages').value) || cfg.market_analysis?.max_pages || 4,
+      max_fetch_jd: parseInt($('#c-mjd').value) || cfg.market_analysis?.max_fetch_jd || 100,
+      batch_size: parseInt($('#c-mbatch').value) || cfg.market_analysis?.batch_size || 5,
+      jd_max_chars: parseInt($('#c-mchars').value) || cfg.market_analysis?.jd_max_chars || 6000,
+    }
+  };
+  const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
+  if(res && !res.error){
+    toast('已保存市场调研配置','ok');
     renderMarketPresets();
   } else toast('保存失败: '+(res?.error||'未知错误'),'err');
+}
+
+function addDynamicRow(containerId, inputClass){
+  const container = document.getElementById(containerId);
+  if(!container) return;
+  const div = document.createElement('div');
+  div.className = 'flex gap-1 mb-1';
+  div.innerHTML = `<input class="${inputClass} w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" value=""><button onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button>`;
+  container.appendChild(div);
 }
 
 /* ===================== YAML BUILDERS ===================== */
@@ -1591,10 +1735,10 @@ summary: >
   ${data.summary||''}`;
 }
 function buildConfigYamlText(data){
-  const q = (data.search_queries||[]).map(s=>`  - keywords: ${s.keywords||''}\n    location: ${s.location||''}${s.classification?`\n    classification: ${s.classification}`:''}`).join('\n');
-  const cats = (data.market_job_categories||[]).map(c=>`  - ${c}`).join('\n');
-  const cls = (data.market_classifications||[]).map(c=>`  - ${c}`).join('\n');
-  const m = data.matching || {};
+  const presets = data.market_presets || {};
+  const cats = (presets.job_categories||[]).map(c=>`  - ${c}`).join('\n');
+  const cls = (presets.classifications||[]).map(c=>`  - ${c}`).join('\n');
+  const s = data.search || {};
   const ma = data.market_analysis || {};
   return `# profiles/search_config.yaml
 llm:
@@ -1603,25 +1747,21 @@ llm:
 
 sort_mode: ${data.sort_mode||'date'}
 
-search_queries:
-${q}
+search:
+  max_pages: ${s.max_pages||3}
+  max_total_results: ${s.max_total_results||200}
+  jd_max_chars: ${s.jd_max_chars||4000}
 
-max_pages_per_query: ${data.max_pages_per_query||3}
-max_total_results: ${data.max_total_results||200}
+resume_gen:
+  jd_max_chars: ${(data.resume_gen||{}).jd_max_chars||3000}
 
 filters:
   exclude_companies: [${(data.filters||{}).exclude_companies||[]}]
 
-matching:
-  min_match_score: ${m.min_match_score||45}
-  top_n: ${m.top_n||999}
-  borderline_rescore: ${m.borderline_rescore!==false}
-  borderline_range: ${m.borderline_range||8}
-
-market_job_categories:
+market_presets:
+  job_categories:
 ${cats}
-
-market_classifications:
+  classifications:
 ${cls}
 
 market_analysis:
@@ -1638,7 +1778,7 @@ async function openYamlModal(which){
   $('#modal-overlay').classList.remove('hidden');
   $('#modal-tabs').classList.remove('hidden');
   $('#modal-title').textContent = which==='me'?'个人画像':'搜索与匹配配置';
-  $('#modal-sub').textContent = 'profiles/'+which+'.yaml';
+  $('#modal-sub').textContent = which==='me' ? 'instances/users/{user}.yaml' : 'profiles/search_config.yaml';
   $('#modal-icon').innerHTML = `<i data-lucide="${which==='me'?'user-round':'sliders-horizontal'}" class="w-4 h-4 text-indigo-600"></i>`;
   const friendlyBtn = $('#mm-friendly'); const rawBtn = $('#mm-raw'); const body = $('#modal-body');
 
@@ -1656,24 +1796,43 @@ async function openYamlModal(which){
     const titlesHtml = (intent.target_titles||[]).map((t,i)=>`<div class="flex items-center gap-2 text-sm text-slate-700"><span class="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] flex items-center justify-center font-medium shrink-0">${i+1}</span> ${escapeHtml(t)}</div>`).join('');
     const intentSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> 求职意向</div><div class="space-y-1.5 mb-3">${titlesHtml}</div><div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${[['薪资期望',intent.salary_expectation],['到岗时间',intent.notice_period],['目标行业',(intent.target_industries||[]).join('、')]].map(([k,v])=>`<div class="bg-slate-50 rounded-lg px-3 py-2"><div class="text-[10px] text-slate-400">${k}</div><div class="text-sm text-slate-700 font-medium mt-0.5">${escapeHtml(v||'—')}</div></div>`).join('')}</div></section>`;
     const pos = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="compass" class="w-3.5 h-3.5"></i> 战略定位</div><div class="bg-indigo-50 border-l-2 border-indigo-400 rounded-r-lg px-3 py-2.5 text-sm text-slate-700 leading-relaxed">${escapeHtml(data.strategic_positioning||'')}</div></section>`;
-    const skillsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="wrench" class="w-3.5 h-3.5"></i> 专业技能</div><div class="space-y-2.5">${Object.entries(skills).map(([k,vs])=>`<div class="flex gap-3 items-start"><div class="text-xs text-slate-400 w-16 shrink-0 pt-1">${escapeHtml(k)}</div><div class="flex flex-wrap gap-1.5">${(Array.isArray(vs)?vs:[]).map(v=>`<span class="text-xs bg-slate-100 text-slate-600 rounded-md px-2 py-1">${escapeHtml(v)}</span>`).join('')}</div></div>`).join('')}</div></section>`;
+    const skillsSec = (() => {
+      const skillEntries = Object.entries(data.skills||{});
+      if (skillEntries.length === 0) return '';
+      let shtml = '<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="cpu" class="w-3.5 h-3.5"></i> 专业技能</div>';
+      skillEntries.forEach(([key, arr]) => {
+        if (!Array.isArray(arr) || arr.length === 0) return;
+        const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        shtml += '<div class="mb-2"><span class="text-xs font-medium text-slate-500">'+label+'</span><div class="text-sm text-slate-600 mt-0.5">';
+        if (typeof arr[0] === 'object' && arr[0] !== null) {
+          shtml += arr.map(item => (item.name||item.skill||'')).join(' · ');
+        } else {
+          shtml += arr.join(' · ');
+        }
+        shtml += '</div></div>';
+      });
+      shtml += '</section>';
+      return shtml;
+    })();
     const expSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="briefcase" class="w-3.5 h-3.5"></i> 工作经历</div>${exp.map(e=>`<div class="border-l-2 border-slate-200 pl-3 mb-3"><div class="flex items-baseline justify-between gap-2 flex-wrap"><div class="font-medium text-slate-800 text-sm">${escapeHtml(e.title||'')} · ${escapeHtml(e.company||'')}</div><div class="text-[11px] text-slate-400">${escapeHtml(e.period||'')}</div></div><ul class="mt-1.5 space-y-1">${(e.highlights||[]).map(h=>`<li class="text-xs text-slate-600 flex gap-1.5"><span class="text-indigo-400">•</span> ${escapeHtml(h)}</li>`).join('')}</ul></div>`).join('')}</section>`;
     const selfSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="quote" class="w-3.5 h-3.5"></i> 自我评价</div><p class="text-sm text-slate-600 leading-relaxed bg-slate-50 rounded-lg px-3 py-2.5">${escapeHtml(data.summary||'')}</p></section>`;
-    friendlyHtml = header+contact+intentSec+pos+skillsSec+expSec+selfSec;
+    const eduSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="graduation-cap" class="w-3.5 h-3.5"></i> 教育背景</div>${(data.education||[]).length ? data.education.map(e => `<div class="bg-slate-50 rounded-lg px-3 py-2 mb-1.5"><div class="text-sm text-slate-700 font-medium">${escapeHtml(e.degree||'')} · ${escapeHtml(e.major||'')}</div><div class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(e.school||'')}${e.school_en ? ' (' + escapeHtml(e.school_en) + ')' : ''} · ${escapeHtml(e.period||'')}</div></div>`).join('') : '<p class="text-sm text-slate-400">未填写</p>'}</section>`;
+    const projSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="folder" class="w-3.5 h-3.5"></i> 项目经历</div>${(data.projects||[]).length ? data.projects.map(p => `<div class="bg-slate-50 rounded-lg px-3 py-2 mb-1.5"><div class="text-sm text-slate-700 font-medium">${escapeHtml(p.name||'')}</div><div class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(p.role||'')} · 技术栈：${(p.tech_stack||[]).join(', ') || '无'}</div>${p.description ? '<p class="text-xs text-slate-500 mt-1">'+escapeHtml(p.description)+'</p>' : ''}</div>`).join('') : '<p class="text-sm text-slate-400">未填写</p>'}</section>`;
+    const certSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="award" class="w-3.5 h-3.5"></i> 证书</div>${(data.certifications||[]).length ? data.certifications.map(c => `<span class="text-xs bg-slate-50 text-slate-600 rounded-full px-2.5 py-1 mr-1">${escapeHtml(c)}</span>`).join('') : '<p class="text-sm text-slate-400">未填写</p>'}</section>`;
+    friendlyHtml = header+contact+intentSec+pos+skillsSec+expSec+eduSec+projSec+certSec+selfSec;
   } else {
-    const m = data.matching || {};
+    const s = data.search || {};
     const ma = data.market_analysis || {};
-    const queries = (data.search_queries||[]).map(q=>`<div class="bg-slate-50 rounded-lg px-3 py-2 mb-1.5"><div class="text-sm text-slate-700 font-medium">${escapeHtml(q.keywords||'')}</div><div class="text-[11px] text-slate-400 mt-0.5 flex gap-3 flex-wrap"><span class="flex items-center gap-1"><i data-lucide="map-pin" class="w-3 h-3"></i>${escapeHtml(q.location||'')}</span>${q.classification?`<span class="font-mono">${escapeHtml(q.classification)}</span>`:''}</div></div>`).join('');
-    const wnames = {default:'通用',technical:'技术',solutions:'方案',web3:'Web3',payment:'支付'};
-    const wprofiles = m.weight_profiles || {};
-    const wtable = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> 权重方案（技能/经验/职级/行业/加分）</div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-[11px] text-slate-400 border-b border-slate-100"><th class="text-left py-1 font-medium">方案</th><th class="py-1">技能</th><th class="py-1">经验</th><th class="py-1">职级</th><th class="py-1">行业</th><th class="py-1">加分</th></tr></thead><tbody>${Object.entries(wprofiles).map(([k,w])=>`<tr class="border-b border-slate-50"><td class="py-1.5"><span class="text-xs px-1.5 py-0.5 rounded ${(({payment:'bg-emerald-100 text-emerald-700',web3:'bg-purple-100 text-purple-700',solutions:'bg-blue-100 text-blue-700',technical:'bg-indigo-100 text-indigo-700'})[k]||'bg-slate-100 text-slate-600')}">${wnames[k]||k}</span></td>${['skill','experience','level','industry','bonus'].map(d=>`<td class="text-center py-1.5 text-slate-600">${w[d]||0}</td>`).join('')}</tr>`).join('')}</tbody></table></div></section>`;
-    const catsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="bookmark" class="w-3.5 h-3.5"></i> 岗位类别预设</div><div class="flex flex-wrap gap-1.5">${(data.market_job_categories||[]).map(c=>`<span class="text-xs bg-indigo-50 text-indigo-700 rounded-md px-2 py-1">${escapeHtml(c)}</span>`).join('')||'<span class="text-xs text-slate-400">无</span>'}</div></section>`;
-    const clsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="layers" class="w-3.5 h-3.5"></i> 行业分类预设</div><div class="flex flex-wrap gap-1.5">${(data.market_classifications||[]).map(c=>`<span class="text-xs bg-slate-100 text-slate-600 rounded-md px-2 py-1 font-mono">${escapeHtml(c)}</span>`).join('')||'<span class="text-xs text-slate-400">无</span>'}</div></section>`;
+    const presets = data.market_presets || {};
     const llmCard = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="cpu" class="w-3.5 h-3.5"></i> 模型</div><div class="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2.5"><span class="text-xs bg-indigo-100 text-indigo-700 rounded px-2 py-0.5 font-medium">${escapeHtml(data.llm?.provider||'glm')}</span><span class="text-sm text-slate-700 font-mono">${escapeHtml(data.llm?.model||'')}</span></div></section>`;
-    const fetchKvs = [['每组翻页',data.max_pages_per_query||3],['抓取上限',data.max_total_results||200],['排序',data.sort_mode||'date']].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${escapeHtml(String(v))}</span></div>`).join('');
-    const matchKvs = [['最低达标分',m.min_match_score||45],['保留 Top N',m.top_n||999],['复评区间',m.borderline_range||8],['及格线复评',m.borderline_rescore!==false?'开启':'关闭']].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${escapeHtml(String(v))}</span></div>`).join('');
+    const searchSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="search" class="w-3.5 h-3.5"></i> 找工作参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${[['每组翻页',s.max_pages||3],['抓取上限',s.max_total_results||200],['JD 截断',s.jd_max_chars||4000],['排序',data.sort_mode||'date']].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${escapeHtml(String(v))}</span></div>`).join('')}</div></section>`;
+    const catsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="bookmark" class="w-3.5 h-3.5"></i> 岗位类别预设</div><div class="flex flex-wrap gap-1.5">${(presets.job_categories||[]).map(c=>`<span class="text-xs bg-indigo-50 text-indigo-700 rounded-md px-2 py-1">${escapeHtml(c)}</span>`).join('')||'<span class="text-xs text-slate-400">无</span>'}</div></section>`;
+    const clsSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="layers" class="w-3.5 h-3.5"></i> 行业分类预设</div><div class="flex flex-wrap gap-1.5">${(presets.classifications||[]).map(c=>`<span class="text-xs bg-slate-100 text-slate-600 rounded-md px-2 py-1 font-mono">${escapeHtml(c)}</span>`).join('')||'<span class="text-xs text-slate-400">无</span>'}</div></section>`;
     const mktKvs = [['列表翻页',ma.max_pages||4],['JD 上限',ma.max_fetch_jd||100],['LLM 每批',ma.batch_size||5],['JD 截断',ma.jd_max_chars||6000]].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${escapeHtml(String(v))}</span></div>`).join('');
-    friendlyHtml = llmCard+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="search" class="w-3.5 h-3.5"></i> 搜索关键词组</div>${queries}</section>`+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="download" class="w-3.5 h-3.5"></i> 抓取参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${fetchKvs}</div></section>`+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> 匹配参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${matchKvs}</div></section>`+wtable+catsSec+clsSec+`<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="line-chart" class="w-3.5 h-3.5"></i> 市场调研参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${mktKvs}</div></section>`;
+    const mktSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="line-chart" class="w-3.5 h-3.5"></i> 市场调研参数</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${mktKvs}</div></section>`;
+    const filtersSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="filter" class="w-3.5 h-3.5"></i> 过滤规则</div><div class="bg-slate-50 rounded-lg px-3 py-2.5"><span class="text-xs text-slate-400">排除公司：</span><span class="text-sm text-slate-700">${(data.filters?.exclude_companies||[]).join(', ') || '无'}</span></div></section>`;
+    const resumeSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="file-text" class="w-3.5 h-3.5"></i> 简历生成</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${[['方向聚合 JD 截断',(data.resume_gen||{}).jd_max_chars||3000]].map(([k,v])=>`<div class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2"><span class="text-xs text-slate-400">${k}</span><span class="text-sm text-slate-700 font-medium">${v}</span></div>`).join('')}</div></section>`;
+    friendlyHtml = llmCard+searchSec+filtersSec+resumeSec+catsSec+clsSec+mktSec;
   }
 
   body.innerHTML = friendlyHtml;
@@ -1691,9 +1850,12 @@ function setModalMode(m){ /* handled by friendly/raw buttons above */ }
 function setTab(t){
   STATE.settingsTab = t;
   $('#set-profile').classList.toggle('hidden',t!=='profile');
-  $('#set-config').classList.toggle('hidden',t!=='config');
-  $('#set-tab-profile').className='px-4 py-1.5 '+(t==='profile'?'bg-indigo-600 text-white':'bg-white text-slate-500');
-  $('#set-tab-config').className='px-4 py-1.5 '+(t==='config'?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  $('#set-job').classList.toggle('hidden',t!=='job');
+  $('#set-market').classList.toggle('hidden',t!=='market');
+  ['profile','job','market'].forEach(tab => {
+    const btn = document.getElementById('set-tab-'+tab);
+    if(btn) btn.className = 'px-4 py-1.5 ' + (t===tab?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  });
   refreshIcons();
 }
 
