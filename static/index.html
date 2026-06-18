@@ -1635,15 +1635,20 @@ function renderWidget(fieldDef, value) {
 function renderSchemaForm(schema, data) {
   let html = '';
   (schema.groups || []).forEach(group => {
-    if (group.type === 'array') {
-      html += card(group.label, tableField(group, data ? (data[group.key] || []) : []));
-    } else if (group.type === 'map') {
-      html += card(group.label, categoriesField(group, data ? (data[group.key] || {}) : {}));
+    // array/map 类型：统一走 renderWidget 分发（由 widget 字段路由到 tableField / categoriesField / chipsField）
+    if (group.type === 'array' || group.type === 'map') {
+      const groupData = data ? (data[group.key] || (group.type === 'map' ? {} : [])) : (group.type === 'map' ? {} : []);
+      html += card(group.label, renderWidget(group, groupData));
     } else {
+      // fields 分组：从 data[group.key] 获取本分组的数据源（如 job_intent → data.job_intent）
+      const groupData = (group.key && data && data[group.key]) ? data[group.key] : data;
       let groupHtml = '';
       (group.fields || []).forEach(fieldDef => {
-        const value = data ? (fieldDef.key.includes('.') ? getValueByPath(data, fieldDef.key) : data[fieldDef.key]) : '';
-        groupHtml += `<div class="mb-3">${renderWidget(fieldDef, value)}</div>`;
+        // 从 groupData 中取值
+        const value = groupData ? (fieldDef.key.includes('.') ? getValueByPath(groupData, fieldDef.key) : groupData[fieldDef.key]) : '';
+        // 拼接完整 data-key 路径（如 target_titles → job_intent.target_titles）
+        const fullKey = (group.key && !fieldDef.key.includes('.')) ? `${group.key}.${fieldDef.key}` : fieldDef.key;
+        groupHtml += `<div class="mb-3">${renderWidget({...fieldDef, key: fullKey}, value)}</div>`;
       });
       html += card(group.label, groupHtml);
     }
@@ -1726,7 +1731,19 @@ async function saveYaml(name){
       const orig = await loadYaml('me') || {};
       // Schema 驱动：从表单收集数据，深度合并到原始对象
       const collected = collectFormData();
-      const newMe = deepMerge(orig, collected);
+      let newMe = deepMerge(orig, collected);
+
+      // 对表格编辑的数组字段逐行深度合并，保留 orig 中非编辑列（如 key_achievements、core_modules、school_en 等）
+      const arrayFields = ['work_experience', 'education', 'projects'];
+      arrayFields.forEach(field => {
+        if (Array.isArray(orig[field]) && Array.isArray(collected[field])) {
+          newMe[field] = collected[field].map((row, i) => {
+            const origRow = orig[field][i] || {};
+            return deepMerge(origRow, row);
+          });
+        }
+      });
+
       const res = await api('PUT', '/api/config/yaml/me', {content: newMe});
       if(res && !res.error) {
         toast('已保存用户画像','ok');
