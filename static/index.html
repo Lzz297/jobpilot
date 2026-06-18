@@ -396,6 +396,48 @@ const DIR_META = {
   solutions:{cls:'bg-blue-100 text-blue-700'}, technical:{cls:'bg-indigo-100 text-indigo-700'}, default:{cls:'bg-slate-100 text-slate-600'},
 };
 
+/* ===================== SCHEMA UTILITIES ===================== */
+// 根据点分隔路径设置对象的值（用于收集表单数据）
+function setValueByPath(obj, path, value) {
+  const keys = path.split('.');
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (/^\d+$/.test(keys[i + 1])) {
+      if (!current[key]) current[key] = [];
+    } else {
+      if (!current[key]) current[key] = {};
+    }
+    current = current[key];
+  }
+  current[keys[keys.length - 1]] = value;
+}
+
+// 从对象中根据点路径取值
+function getValueByPath(obj, path) {
+  return path.split('.').reduce((o, k) => (o || {})[k], obj);
+}
+
+// 深度合并
+function deepMerge(target, source) {
+  const output = { ...target };
+  if (isObject(target) && isObject(source)) {
+    Object.keys(source).forEach(key => {
+      if (isObject(source[key])) {
+        if (!(key in target)) Object.assign(output, { [key]: source[key] });
+        else output[key] = deepMerge(target[key], source[key]);
+      } else {
+        Object.assign(output, { [key]: source[key] });
+      }
+    });
+  }
+  return output;
+}
+
+function isObject(item) {
+  return (item && typeof item === 'object' && !Array.isArray(item));
+}
+
 /* ===================== UTILITIES ===================== */
 const $ = s => document.querySelector(s);
 const refreshIcons = () => { if(window.lucide) lucide.createIcons(); };
@@ -995,7 +1037,8 @@ document.getElementById('user-select').addEventListener('change', async function
     await apiPost('/api/config/user', {user:user});
     STATE.user = user;
     // 如果设置面板已打开且当前在「个人画像」tab，则自动刷新
-    if (document.getElementById('view-settings')?.style.display !== 'none' && STATE.settingsTab === 'profile') {
+    const settingsView = document.getElementById('view-settings');
+    if (settingsView && !settingsView.classList.contains('hidden') && STATE.settingsTab === 'profile') {
         renderSettings();
     }
     toast(`已切换画像：${user}`,'ok');
@@ -1449,120 +1492,183 @@ function areaField(label,id,val,rows=3,hint=''){
 }
 function card(title,body){ return `<div class="bg-white border border-slate-200 rounded-xl p-4 mb-3"><div class="text-sm font-semibold text-slate-700 mb-3">${title}</div>${body}</div>`; }
 
+/* ===================== SCHEMA WIDGETS ===================== */
+function toggleField(id, value) {
+  const checked = value === true || value === 'true' || value === 1;
+  return `<label class="relative inline-flex items-center cursor-pointer">
+    <input type="checkbox" id="${id}" class="sr-only peer" ${checked ? 'checked' : ''} data-key="${id}">
+    <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+    <span class="ml-2 text-sm text-slate-600">${checked ? '是' : '否'}</span>
+  </label>`;
+}
+
+function selectField(id, value, options) {
+  const opts = options.map(opt => `<option value="${opt}" ${value === opt ? 'selected' : ''}>${opt}</option>`).join('');
+  return `<select id="${id}" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" data-key="${id}">
+    ${opts}
+  </select>`;
+}
+
+function tagsField(containerId, values) {
+  const tagSpans = (values || []).map(v => `<span class="tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium"><span>${escapeHtml(v)}</span><button type="button" onclick="this.parentElement.remove()" class="text-indigo-400 hover:text-red-500">&times;</button></span>`).join('');
+  return `<div class="mt-1" data-key="${containerId}">
+    <div class="flex flex-wrap gap-1 mb-1" id="${containerId}-tags">${tagSpans}</div>
+    <input type="text" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" placeholder="输入后按回车添加" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const val=this.value.trim(); if(val){ const span=document.createElement('span'); span.className='tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium'; span.innerHTML='<span>'+escapeHtml(val)+'</span><button type=button onclick=this.parentElement.remove() class=text-indigo-400 hover:text-red-500>&times;</button>'; document.getElementById('${containerId}-tags').appendChild(span); this.value='';}}">
+  </div>`;
+}
+
+function listField(containerId, values) {
+  const items = (values || []).map(v => `<div class="flex gap-1 mb-1"><input class="list-item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" value="${escapeHtml(v)}"><button type="button" onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button></div>`).join('');
+  return `<div id="${containerId}" data-key="${containerId}">
+    ${items}
+    <button type="button" onclick="addDynamicRow('${containerId}','list-item')" class="text-xs text-indigo-600 mt-1">+ 添加</button>
+  </div>`;
+}
+
+function chipsField(id, values) { return tagsField(id, values); }
+
+function objectField(fieldDef, data) {
+  const prefix = fieldDef.key;
+  let html = '<div class="space-y-3">';
+  (fieldDef.fields || []).forEach(subField => {
+    const subKey = `${prefix}.${subField.key}`;
+    const value = data ? (data[subField.key] || '') : '';
+    html += `<div>${renderWidget({...subField, key: subKey}, value)}</div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+function tableField(fieldDef, dataArray) {
+  const key = fieldDef.key;
+  const columns = fieldDef.columns;
+  let html = `<div class="overflow-x-auto"><table class="w-full text-sm" data-table="${key}">
+    <thead><tr>${columns.map(col => `<th class="text-left py-1.5 text-xs font-medium text-slate-500">${col.label}</th>`).join('')}<th class="w-8"></th></tr></thead>
+    <tbody>`;
+  (dataArray || []).forEach((row, rowIdx) => {
+    html += `<tr>`;
+    columns.forEach(col => {
+      const cellValue = row ? (row[col.key] || '') : '';
+      const cellId = `${key}.${rowIdx}.${col.key}`;
+      if (col.widget === 'tags') {
+        html += `<td class="pr-2 py-1">${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</td>`;
+      } else if (col.widget === 'list') {
+        html += `<td class="pr-2 py-1">${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}</td>`;
+      } else if (col.widget === 'textarea') {
+        html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
+      } else {
+        html += `<td class="pr-2 py-1"><input data-key="${cellId}" value="${escapeHtml(cellValue)}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+      }
+    });
+    html += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
+  });
+  html += `</tbody></table>
+    <button type="button" onclick="addTableRow(this, '${key}', ${JSON.stringify(columns).replace(/"/g, '&quot;')})" class="text-xs text-indigo-600 mt-2">+ 添加行</button>
+  </div>`;
+  return html;
+}
+
+function addTableRow(btn, tableKey, columns) {
+  const tbl = btn.parentElement.querySelector('table');
+  if(!tbl) return;
+  const tbody = tbl.querySelector('tbody');
+  const rowCount = tbody.querySelectorAll('tr').length;
+  let rowHtml = '<tr>';
+  columns.forEach(col => {
+    const cellId = `${tableKey}.${rowCount}.${col.key}`;
+    if (col.widget === 'tags') {
+      rowHtml += `<td class="pr-2 py-1">${tagsField(cellId, [])}</td>`;
+    } else if (col.widget === 'list') {
+      rowHtml += `<td class="pr-2 py-1">${listField(cellId, [])}</td>`;
+    } else if (col.widget === 'textarea') {
+      rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
+    } else {
+      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+    }
+  });
+  rowHtml += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
+  tbody.insertAdjacentHTML('beforeend', rowHtml);
+}
+
+function categoriesField(fieldDef, data) {
+  const prefix = fieldDef.key;
+  const schema = fieldDef.item_schema;
+  let html = '<div class="space-y-4">';
+  if (data && typeof data === 'object') {
+    Object.entries(data).forEach(([category, items]) => {
+      const label = category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      html += `<div class="border border-slate-200 rounded-lg p-3">
+        <div class="text-sm font-medium text-slate-700 mb-2">${label}</div>`;
+      if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object') {
+        const tableDef = { key: `${prefix}.${category}`, columns: schema.columns };
+        html += tableField(tableDef, items);
+      } else {
+        html += listField(`${prefix}.${category}`, items || []);
+      }
+      html += `</div>`;
+    });
+  }
+  html += '<div class="text-xs text-slate-400 mt-2">新增分类暂不支持，请手动编辑 YAML。</div>';
+  html += '</div>';
+  return html;
+}
+
+/* ===================== SCHEMA RENDER ENGINE ===================== */
+function renderWidget(fieldDef, value) {
+  const key = fieldDef.key;
+  switch (fieldDef.widget) {
+    case 'input': return field(fieldDef.label, key, value, 'text', fieldDef.hint || '');
+    case 'textarea': return areaField(fieldDef.label, key, value, fieldDef.rows || 3, fieldDef.hint || '');
+    case 'number': return field(fieldDef.label, key, value, 'number', fieldDef.hint || '', fieldDef.min || '');
+    case 'toggle': return toggleField(key, value);
+    case 'select': return selectField(key, value, fieldDef.options || []);
+    case 'object': return objectField(fieldDef, value);
+    case 'table': return tableField(fieldDef, value || []);
+    case 'tags': return tagsField(key, value || []);
+    case 'list': return listField(key, value || []);
+    case 'categories': return categoriesField(fieldDef, value);
+    case 'chips': return chipsField(key, value || []);
+    default: return `<div class="text-red-500 text-sm">未知控件: ${fieldDef.widget}</div>`;
+  }
+}
+
+function renderSchemaForm(schema, data) {
+  let html = '';
+  (schema.groups || []).forEach(group => {
+    if (group.type === 'array') {
+      html += card(group.label, tableField(group, data ? (data[group.key] || []) : []));
+    } else if (group.type === 'map') {
+      html += card(group.label, categoriesField(group, data ? (data[group.key] || {}) : {}));
+    } else {
+      let groupHtml = '';
+      (group.fields || []).forEach(fieldDef => {
+        const value = data ? (fieldDef.key.includes('.') ? getValueByPath(data, fieldDef.key) : data[fieldDef.key]) : '';
+        groupHtml += `<div class="mb-3">${renderWidget(fieldDef, value)}</div>`;
+      });
+      html += card(group.label, groupHtml);
+    }
+  });
+  return html;
+}
+
 async function loadYaml(name){
   const data = await apiGet('/api/config/yaml/'+name);
   return data ? data.content : null;
-}
-
-function skillVal(sk, key){
-  const arr = sk && sk[key] && Array.isArray(sk[key]) ? sk[key] : [];
-  if (arr.length === 0) return '';
-  // 对象数组：提取 name 字段
-  if (typeof arr[0] === 'object' && arr[0] !== null) {
-    return arr.map(item => {
-      const name = item.name || item.skill || '';
-      const level = item.level || '';
-      const years = item.years ? `, ${item.years}年` : '';
-      return `${name}${level ? ` (${level}${years})` : ''}`;
-    }).join('；');
-  }
-  // 字符串数组
-  return arr.join('、');
 }
 
 async function renderSettings(){
   const me = await loadYaml('me');
   if(!me){ $('#set-profile').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载用户画像</div>`; }
   else {
-    const intent = me.job_intent || {};
-    const skills = me.skills || {};
-    const exp = (me.work_experience||[]).map(e=>`${e.company||''} | ${e.title||''} | ${e.period||''}\n`+(e.highlights||[]).map(h=>'· '+h).join('\n')).join('\n\n');
-    $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">编辑后点击保存将写入当前用户画像</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
-      ${card('基本信息',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">${field('姓名','p-name',me.name)}${field('英文名','p-name-en',me.name_en)}${field('所在地','p-loc',me.location)}${field('电话','p-phone',me.phone)}${field('邮箱','p-email',me.email)}${field('LinkedIn','p-linkedin',me.linkedin)}${field('GitHub','p-github',me.github)}</div>`)}
-      ${card('求职意向',`<div class="space-y-3">
-        ${areaField('目标岗位（每行一个）','p-titles',(intent.target_titles||[]).join('\n'),4)}
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><label class="text-xs font-medium text-slate-500">工作类型</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${intent.job_type || '未填写'}</div></div>
-          <div><label class="text-xs font-medium text-slate-500">薪资期望</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${typeof intent.salary_expectation === 'object' && intent.salary_expectation !== null ? `${intent.salary_expectation.min || '?'}-${intent.salary_expectation.max || '?'} ${intent.salary_expectation.currency || ''}` : (intent.salary_expectation || '未填写')}</div></div>
-          <div><label class="text-xs font-medium text-slate-500">到岗时间</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${intent.notice_period || intent.availability || '未填写'}</div></div>
-          <div><label class="text-xs font-medium text-slate-500">目标城市</label><div class="mt-1 bg-slate-50 rounded-lg p-3 text-sm text-slate-600">${(intent.location_preference || []).join('、') || '未填写'}</div></div>
-        </div>
-        ${field('目标行业','p-industry',(intent.target_industries||[]).join(', '))}
-        <div class="text-xs text-amber-600">⚠️ 工作类型、薪资期望、到岗时间、目标城市请直接编辑 YAML 配置文件修改。</div>
-      </div>`)}
-      ${card('战略定位',areaField('核心画像','p-core',me.strategic_positioning||'',3))}
-      ${card('香港身份',`<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">
-        ${me.hk_permanent_resident ? '✅ 香港永久居民' : '❌ 非香港永久居民（或未填写）'}
-        <div class="text-xs text-amber-600 mt-1">⚠️ 此字段请直接编辑 YAML 配置文件修改。</div>
-      </div>`)}
-      ${card('工作经历', (() => {
-        const exp = me.work_experience || [];
-        if (exp.length === 0) return '<p class="text-sm text-slate-400">未填写工作经历</p>';
-        let h = '<div class="space-y-3">';
-        exp.forEach(e => {
-          h += '<div class="bg-slate-50 rounded-lg p-3"><div class="flex justify-between items-center"><span class="text-sm font-medium text-slate-700">'+ (e.company||'') +' · '+ (e.title||'') +'</span><span class="text-xs text-slate-400">'+ (e.period||'') +'</span></div>'+ (e.overview ? '<p class="text-xs text-slate-500 mt-1">'+e.overview+'</p>' : '') + (e.tech_stack&&e.tech_stack.length ? '<div class="text-xs text-slate-400 mt-1">技术栈：'+e.tech_stack.join(', ')+'</div>' : '') + (e.highlights&&e.highlights.length ? '<ul class="mt-2 space-y-1 text-xs text-slate-600">'+e.highlights.map(x=>'<li>· '+x+'</li>').join('')+'</ul>' : '') + (e.key_achievements&&e.key_achievements.length ? '<div class="text-xs text-slate-500 mt-1">'+e.key_achievements.map(a=>typeof a==='object'?'🏆 '+(a.title||a.resume_bullet||''):'🏆 '+a).join('<br>')+'</div>' : '') +'</div>';
-        });
-        h += '<div class="text-xs text-amber-600 mt-2">⚠️ 工作经历请直接编辑 YAML 配置文件修改。</div></div>';
-        return h;
-      })())}
-      ${card('教育背景', (() => {
-        const edu = me.education || [];
-        if (edu.length === 0) return '<p class="text-sm text-slate-400">未填写教育背景</p>';
-        let h = '<div class="space-y-2">';
-        edu.forEach(e => {
-          h += '<div class="bg-slate-50 rounded-lg p-3 flex justify-between items-center"><div><span class="text-sm font-medium text-slate-700">'+ (e.degree||'') +' · '+ (e.major||'') +'</span><div class="text-xs text-slate-400">'+ (e.school||'') + (e.school_en ? ' ('+e.school_en+')' : '') +'</div></div><span class="text-xs text-slate-400">'+ (e.period||'') +'</span></div>';
-        });
-        h += '<div class="text-xs text-amber-600 mt-2">⚠️ 教育背景请直接编辑 YAML 配置文件修改。</div></div>';
-        return h;
-      })())}
-      ${card('项目经历', (() => {
-        const proj = me.projects || [];
-        if (proj.length === 0) return '<p class="text-sm text-slate-400">未填写项目经历</p>';
-        let h = '<div class="space-y-3">';
-        proj.forEach(p => {
-          h += '<div class="bg-slate-50 rounded-lg p-3"><div class="flex justify-between items-center"><span class="text-sm font-medium text-slate-700">'+ (p.name||'') +'</span><span class="text-xs text-slate-400">'+ (p.role||'') +'</span></div>'+ (p.description ? '<p class="text-xs text-slate-500 mt-1">'+p.description+'</p>' : '') + (p.tech_stack&&p.tech_stack.length ? '<div class="text-xs text-slate-400 mt-1">技术栈：'+p.tech_stack.join(', ')+'</div>' : '') + (p.resume_bullets&&p.resume_bullets.length ? '<ul class="mt-1 space-y-0.5 text-xs text-slate-500">'+p.resume_bullets.map(b=>typeof b==='object'?'<li>· '+(b.text||'')+'</li>':'<li>· '+b+'</li>').join('')+'</ul>' : '') + (p.for_resume ? '<span class="text-xs text-green-600 ml-1">● 已标记用于简历</span>' : '') +'</div>';
-        });
-        h += '<div class="text-xs text-amber-600 mt-2">⚠️ 项目经历请直接编辑 YAML 配置文件修改。</div></div>';
-        return h;
-      })())}
-      ${card('证书', (() => {
-        const certs = me.certifications || [];
-        if (certs.length === 0) return '<p class="text-sm text-slate-400">未填写证书</p>';
-        let h = '<div class="flex flex-wrap gap-2">';
-        certs.forEach(c => { h += '<span class="text-xs bg-slate-50 text-slate-600 rounded-full px-2.5 py-1">'+c+'</span>'; });
-        h += '<div class="text-xs text-amber-600 mt-2 w-full">⚠️ 证书请直接编辑 YAML 配置文件修改。</div></div>';
-        return h;
-      })())}
-      ${card('专业技能', (() => {
-        const skillEntries = Object.entries(skills);
-        if (skillEntries.length === 0) return '<p class="text-sm text-slate-400">未配置技能</p>';
-        let html = '<div class="space-y-4">';
-        for (const [key, arr] of skillEntries) {
-          if (!Array.isArray(arr) || arr.length === 0) continue;
-          const label = key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-          html += '<div>';
-          html += '<div class="text-xs font-medium text-slate-500 mb-1">' + label + '</div>';
-          if (typeof arr[0] === 'object' && arr[0] !== null) {
-            html += '<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">';
-            html += arr.map(item => {
-              const name = item.name || item.skill || '';
-              const level = item.level ? '<span class="text-indigo-600">' + item.level + '</span>' : '';
-              const years = item.years ? item.years + '年' : '';
-              const detail = item.detail || item.note || '';
-              return '<div class="flex justify-between items-center py-1 border-b border-slate-100 last:border-0"><span>' + name + '</span><span class="text-xs">' + level + ' ' + years + ' ' + detail + '</span></div>';
-            }).join('');
-            html += '</div>';
-          } else {
-            html += '<div class="bg-slate-50 rounded-lg p-3 text-sm text-slate-600">' + arr.join('、') + '</div>';
-          }
-          html += '</div>';
-        }
-        html += '<div class="text-xs text-amber-600 mt-2">⚠️ 技能详情请直接编辑 YAML 配置文件，此处仅展示概要。</div>';
-        html += '</div>';
-        return html;
-      })())}
-      ${card('自我评价',areaField('p-self',me.summary||'',3))}
-      <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
+    const schemaRes = await apiGet('/api/schema/user_field');
+    if (schemaRes) {
+      const formHtml = renderSchemaForm(schemaRes, me);
+      $('#set-profile').innerHTML = `<div class="flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">根据 Schema 动态渲染</span><button onclick="openYamlModal('me')" class="text-[11px] text-indigo-600 flex items-center gap-1 shrink-0"><i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看 YAML 原文</button></div>
+        ${formHtml}
+        <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
+    } else {
+      $('#set-profile').innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">无法加载 Schema 配置</div>';
+    }
   }
 
   const cfg = await loadYaml('search_config');
@@ -1618,26 +1724,10 @@ async function saveYaml(name){
   if(name==='me'){
     try {
       const orig = await loadYaml('me') || {};
-      const newMe = {
-        ...orig,
-        name: $('#p-name')?.value || orig.name || '',
-        name_en: $('#p-name-en')?.value || orig.name_en || '',
-        phone: $('#p-phone')?.value || orig.phone || '',
-        email: $('#p-email')?.value || orig.email || '',
-        linkedin: $('#p-linkedin')?.value || orig.linkedin || '',
-        github: $('#p-github')?.value || orig.github || '',
-        location: $('#p-loc')?.value || orig.location || '',
-        job_intent: {
-          ...(orig.job_intent || {}),
-          target_titles: ($('#p-titles')?.value || '').split('\n').map(s=>s.trim()).filter(Boolean),
-          salary_expectation: orig.job_intent?.salary_expectation,
-          notice_period: orig.job_intent?.notice_period,
-          target_industries: ($('#p-industry')?.value || '').split(',').map(s=>s.trim()).filter(Boolean)
-        },
-        strategic_positioning: $('#p-core')?.value || orig.strategic_positioning || '',
-        summary: $('#p-self')?.value || orig.summary || '',
-      };
-      const res = await api('PUT', '/api/config/yaml/me', {content:newMe});
+      // Schema 驱动：从表单收集数据，深度合并到原始对象
+      const collected = collectFormData();
+      const newMe = deepMerge(orig, collected);
+      const res = await api('PUT', '/api/config/yaml/me', {content: newMe});
       if(res && !res.error) {
         toast('已保存用户画像','ok');
         await loadUserList(); // 刷新侧边栏下拉框
@@ -1713,6 +1803,95 @@ async function saveMarketConfig(){
   } catch(e) {
     toast('保存失败: ' + (e.message || '未知错误'), 'err');
   }
+}
+
+/* ===================== SCHEMA DATA COLLECTION ===================== */
+function collectFormData() {
+  const result = {};
+  const container = document.getElementById('set-profile');
+  if (!container) return result;
+
+  // 处理普通 data-key 元素
+  container.querySelectorAll('[data-key]').forEach(el => {
+    const key = el.getAttribute('data-key');
+    let value;
+    if (el.type === 'checkbox') {
+      value = el.checked;
+    } else if (el.tagName === 'SELECT') {
+      value = el.value;
+    } else {
+      value = el.value;
+    }
+    setValueByPath(result, key, value);
+  });
+
+  // 处理 tags 容器
+  container.querySelectorAll('[data-key]').forEach(el => {
+    const tagSpans = el.querySelectorAll('.tag-item span:first-child');
+    if (tagSpans.length > 0) {
+      const key = el.getAttribute('data-key');
+      const tags = Array.from(tagSpans).map(s => s.textContent.trim()).filter(Boolean);
+      if (tags.length > 0) setValueByPath(result, key, tags);
+    }
+  });
+
+  // 处理 list 容器
+  container.querySelectorAll('[data-key]').forEach(el => {
+    const inputs = el.querySelectorAll('input.list-item');
+    if (inputs.length > 0) {
+      const key = el.getAttribute('data-key');
+      const items = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
+      if (items.length > 0) setValueByPath(result, key, items);
+    }
+  });
+
+  // 处理 table 数据
+  container.querySelectorAll('[data-table]').forEach(table => {
+    const tableKey = table.getAttribute('data-table');
+    const rows = [];
+    table.querySelectorAll('tbody tr').forEach(row => {
+      const rowData = {};
+      row.querySelectorAll('[data-key]').forEach(cell => {
+        const cellKey = cell.getAttribute('data-key');
+        const parts = cellKey.split('.');
+        if (parts.length >= 3) {
+          const colKey = parts[parts.length - 1];
+          let val;
+          if (cell.type === 'checkbox') val = cell.checked;
+          else val = cell.value;
+          rowData[colKey] = val;
+        }
+      });
+      // 行内 tags
+      row.querySelectorAll('[data-key] .tag-item span:first-child').forEach(span => {
+        const div = span.closest('[data-key]');
+        if (div) {
+          const cellKey = div.getAttribute('data-key');
+          const parts = cellKey.split('.');
+          if (parts.length >= 3) {
+            const colKey = parts[parts.length - 1];
+            rowData[colKey] = Array.from(div.querySelectorAll('.tag-item span:first-child')).map(s => s.textContent.trim()).filter(Boolean);
+          }
+        }
+      });
+      // 行内 list
+      row.querySelectorAll('[data-key] input.list-item').forEach(input => {
+        const div = input.closest('[data-key]');
+        if (div) {
+          const cellKey = div.getAttribute('data-key');
+          const parts = cellKey.split('.');
+          if (parts.length >= 3) {
+            const colKey = parts[parts.length - 1];
+            rowData[colKey] = Array.from(div.querySelectorAll('input.list-item')).map(i => i.value.trim()).filter(Boolean);
+          }
+        }
+      });
+      if (Object.keys(rowData).length > 0) rows.push(rowData);
+    });
+    if (rows.length > 0) setValueByPath(result, tableKey, rows);
+  });
+
+  return result;
 }
 
 function addDynamicRow(containerId, inputClass){

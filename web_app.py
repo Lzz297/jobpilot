@@ -920,6 +920,23 @@ atexit.register(cleanup_playwright)
 atexit.register(cleanup_renderer)
 
 
+# ── 用户画像 Schema API ──
+
+@app.route("/api/schema/user_field", methods=["GET"])
+def get_user_field_schema():
+    """返回用户画像字段定义 Schema，供前端动态渲染表单。"""
+    import os as _os
+    schema_path = _os.path.join(_os.path.dirname(__file__), "profiles", "user_field_schema.yaml")
+    if not _os.path.exists(schema_path):
+        return jsonify({"error": "Schema 文件不存在"}), 404
+    try:
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = yaml.safe_load(f)
+        return jsonify(schema)
+    except Exception as e:
+        return jsonify({"error": f"Schema 解析失败: {str(e)}"}), 500
+
+
 # ============================================================
 #  Main
 # ============================================================
