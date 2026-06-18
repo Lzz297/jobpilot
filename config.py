@@ -7,8 +7,42 @@ import os
 import json
 import yaml
 import threading
+import sqlite3
 
 load_dotenv()
+
+# ── 数据库连接（SQLite）──
+_db_path = os.path.join(os.path.dirname(__file__), "data", "job_agent.db")
+
+def _get_db():
+    """获取数据库连接（每次调用创建新连接，线程安全）"""
+    conn = sqlite3.connect(_db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def _db_fetch_one(query, params=()):
+    """执行查询并返回单行 dict，无结果或异常返回 None"""
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+def _db_fetch_all(query, params=()):
+    """执行查询并返回所有行（list of dict），无结果或异常返回 []"""
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
 
 # ── 常量 ──
 PROFILES_DIR = "profiles"
@@ -83,9 +117,9 @@ _LLM_PRESETS = {
 
 
 def _init_llm_client():
-    """从 search_config.yaml 读取 llm 配置，创建 OpenAI client"""
+    """从 SQLite search_config 表读取 llm 配置（带回退到 YAML），创建 OpenAI client"""
     try:
-        cfg, _ = load_yaml("search_config.yaml")
+        cfg, _ = load_search_config_dict()
         llm_cfg = (cfg or {}).get("llm", {})
     except Exception:
         llm_cfg = {}
@@ -210,7 +244,21 @@ def switch_model(provider, model=None):
     client.api_key = api_key
     MODEL_NAME = model
 
-    # 同步更新 yaml（只替换 llm 段的 provider 和 model，保留注释和其他内容）
+    # 更新 SQLite search_config 表
+    try:
+        cfg_dict, _ = load_search_config_dict()
+        if cfg_dict:
+            cfg_dict["llm"] = {"provider": provider, "model": model}
+            conn = _get_db()
+            cursor = conn.cursor()
+            cursor.execute("UPDATE search_config SET data = ?, updated_at = CURRENT_TIMESTAMP",
+                           (json.dumps(cfg_dict, ensure_ascii=False),))
+            conn.commit()
+            conn.close()
+    except Exception:
+        pass  # SQL 更新失败不阻塞，内存 client 已切换
+
+    # 同步更新 yaml（保持兼容）
     import re
     filepath = os.path.join(PROFILES_DIR, "search_config.yaml")
     with open(filepath, "r", encoding="utf-8") as f:
@@ -226,7 +274,7 @@ def switch_model(provider, model=None):
 def get_model_info():
     """返回当前模型信息和可选列表"""
     try:
-        cfg, _ = load_yaml("search_config.yaml")
+        cfg, _ = load_search_config_dict()
         llm_cfg = (cfg or {}).get("llm", {})
     except Exception:
         llm_cfg = {}
@@ -240,52 +288,72 @@ def get_model_info():
 
 def get_current_user():
     """
-    读取当前活跃的画像名。
-    唯一来源：profiles/.current_user 文件。
-    文件不存在或内容为空时抛出 RuntimeError。
+    读取当前活跃的用户名。
+    优先从 SQLite user_profiles 表查询 is_current=1 的记录。
+    数据库读取失败时回退到读 .current_user 文件。
     """
+    row = _db_fetch_one(
+        "SELECT u.username FROM user_profiles p JOIN users u ON p.user_id = u.id WHERE p.is_current = 1"
+    )
+    if row:
+        return row["username"]
+    # 回退：读 .current_user 文件
     import os
     user_file = os.path.join(os.path.dirname(__file__), "profiles", ".current_user")
-    if not os.path.exists(user_file):
-        raise RuntimeError(
-            f"未找到当前用户配置文件: {user_file}"
-        )
-    with open(user_file, "r", encoding="utf-8") as f:
-        user_name = f.read().strip()
-    if not user_name:
-        raise RuntimeError(f"{user_file} 内容为空，请写入当前画像名称")
-    return user_name
+    if os.path.exists(user_file):
+        with open(user_file, "r", encoding="utf-8") as f:
+            name = f.read().strip()
+            if name:
+                return name
+    raise RuntimeError("无法确定当前用户：数据库无活跃画像，且 .current_user 文件不存在或为空")
 
 
 def load_profile():
     """
-    加载用户画像。唯一来源：instances/users/{user}.yaml。
-
-    从 profiles/.current_user 读取当前画像名，
-    拼接 instances/users/{user}.yaml 路径并加载。
-    文件不存在或加载失败时抛出 RuntimeError。
+    加载当前活跃用户的画像。
+    优先从 SQLite user_profiles 表读取 is_current=1 的 data 字段（JSON）。
+    数据库读取失败时回退到读 YAML 文件。
     """
+    import json as _json
+    row = _db_fetch_one(
+        "SELECT data FROM user_profiles WHERE is_current = 1"
+    )
+    if row:
+        try:
+            return _json.loads(row["data"])
+        except _json.JSONDecodeError:
+            pass
+    # 回退：读 YAML 文件
     import os
     user_name = get_current_user()
-
     user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
     filepath = os.path.join(user_dir, f"{user_name}.yaml")
-
     if not os.path.exists(filepath):
         raise RuntimeError(
             f"用户画像文件不存在: {filepath}"
             f"（profiles/.current_user 内容为 \"{user_name}\"）"
         )
-
     data, err = load_yaml(f"{user_name}.yaml", directory=user_dir)
     if err:
         raise RuntimeError(f"加载用户画像失败: {err}")
-
     return data
 
 
 def load_search_config_dict():
-    """加载 profiles/search_config.yaml，返回 (dict, None) 或 (None, error_msg)"""
+    """
+    加载系统配置。
+    优先从 SQLite search_config 表读取 data 字段（JSON）。
+    数据库读取失败时回退到读 YAML 文件。
+    返回 (dict, None) 或 (None, error_msg)，保持与 load_yaml 相同的返回值格式。
+    """
+    import json as _json
+    row = _db_fetch_one("SELECT data FROM search_config LIMIT 1")
+    if row:
+        try:
+            return _json.loads(row["data"]), None
+        except _json.JSONDecodeError:
+            pass
+    # 回退：读 YAML 文件
     return load_yaml("search_config.yaml")
 
 

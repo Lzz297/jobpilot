@@ -8,7 +8,7 @@ from datetime import datetime
 
 from config import (
     emit, llm_call, OUTPUT_DIR, track_file,
-    load_profile, load_yaml, parse_json_response,
+    load_profile, load_yaml, load_search_config_dict, parse_json_response,
     load_prompts, render_prompt,
 )
 from scraper import scan_jobsdb_listings, fetch_multiple_details
@@ -40,7 +40,7 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
         sort_by: 排序方式，"date" = 按发布时间, "relevance" = 按相关度
     """
     # ── 加载配置 ──
-    search_cfg, _ = load_yaml("search_config.yaml")
+    search_cfg, _ = load_search_config_dict()
     ma_cfg = (search_cfg or {}).get("market_analysis", {})
     cfg_max_pages = ma_cfg.get("max_pages", 3)
     cfg_max_fetch = ma_cfg.get("max_fetch_jd", 40)

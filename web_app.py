@@ -18,6 +18,7 @@ import config
 from config import (
     llm_call, set_emit_target, get_session_files, get_system_prompt,
     OUTPUT_DIR, get_current_run_dir, get_latest_run_dir,
+    _db_fetch_one, _db_fetch_all, _get_db,
 )
 from tools_defs import tools, execute_tool, deduplicate_tool_calls
 from scraper import cleanup_playwright
@@ -34,15 +35,25 @@ from market_analysis import analyze_market, batch_analyze_market
 
 app = Flask(__name__, static_folder="static")
 
-# ── 当前画像名（profiles/.current_user）──
+# ── 当前画像名（优先 SQLite，回退 .current_user）──
 def _get_current_user():
-    """读取 profiles/.current_user 获取当前画像名。"""
+    """获取当前活跃用户名。优先从 SQLite 读取，失败时回退到 .current_user 文件。"""
+    try:
+        from config import _db_fetch_one
+        row = _db_fetch_one(
+            "SELECT u.username FROM user_profiles p JOIN users u ON p.user_id = u.id WHERE p.is_current = 1"
+        )
+        if row:
+            return row["username"]
+    except Exception:
+        pass
+    # 回退：读 .current_user 文件
     import os
     user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles", ".current_user")
-    if not os.path.exists(user_file):
-        return None
-    with open(user_file, "r", encoding="utf-8") as f:
-        return f.read().strip() or None
+    if os.path.exists(user_file):
+        with open(user_file, "r", encoding="utf-8") as f:
+            return f.read().strip() or None
+    return None
 
 # ── Session 管理 ──
 _sessions = {}       # sid → {messages, queue, busy, last_done}
@@ -719,6 +730,17 @@ def get_yaml_config(name):
         user_name = _get_current_user()
         if not user_name:
             return jsonify({"error": "未设置当前画像，请在侧边栏选择画像"}), 400
+        # 优先从 SQLite 读取
+        row = _db_fetch_one(
+            "SELECT data FROM user_profiles WHERE is_current = 1"
+        )
+        if row:
+            try:
+                data = json.loads(row["data"])
+                return jsonify({"name": name, "content": data})
+            except json.JSONDecodeError:
+                pass
+        # 回退：读 YAML 文件
         user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
         filepath = os.path.join(user_dir, f"{user_name}.yaml")
         if not os.path.exists(filepath):
@@ -727,6 +749,15 @@ def get_yaml_config(name):
             data = yaml.safe_load(f)
         return jsonify({"name": name, "content": data})
     elif name == "search_config":
+        # 优先从 SQLite 读取
+        row = _db_fetch_one("SELECT data FROM search_config LIMIT 1")
+        if row:
+            try:
+                data = json.loads(row["data"])
+                return jsonify({"name": name, "content": data})
+            except json.JSONDecodeError:
+                pass
+        # 回退：读 YAML
         data, err = config.load_yaml(f"{name}.yaml")
         if err:
             return jsonify({"error": err}), 404
@@ -761,23 +792,60 @@ def put_yaml_config(name):
         user_name = _get_current_user()
         if not user_name:
             return jsonify({"error": "未设置当前画像，请在侧边栏选择画像"}), 400
+        # 优先更新 SQLite
+        sql_ok = False
+        try:
+            conn = _get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE user_profiles SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE is_current = 1",
+                (json.dumps(new_content, ensure_ascii=False),)
+            )
+            conn.commit()
+            conn.close()
+            sql_ok = True
+        except Exception:
+            pass
+        # 双写：更新 YAML 文件（保留作为备份）
         user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
         os.makedirs(user_dir, exist_ok=True)
         filepath = os.path.join(user_dir, f"{user_name}.yaml")
         import shutil
         tmp_path = filepath + ".tmp"
         bak_path = filepath + ".bak"
+        yaml_ok = False
         try:
             if os.path.exists(filepath):
                 shutil.copy2(filepath, bak_path)
             with open(tmp_path, "w", encoding="utf-8") as f:
-                yaml.dump(new_content, f, Dumper=_MultilineDumper, allow_unicode=True, default_flow_style=False)
+                yaml.dump(new_content, f, Dumper=_MultilineDumper,
+                          allow_unicode=True, default_flow_style=False)
             os.replace(tmp_path, filepath)
+            yaml_ok = True
+        except Exception:
+            pass
+        if sql_ok or yaml_ok:
             return jsonify({"status": "ok", "name": name})
-        except Exception as e:
-            return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
+        else:
+            return jsonify({"error": "写入文件失败"}), 500
     elif name == "search_config":
+        # 优先更新 SQLite
+        sql_ok = False
+        try:
+            conn = _get_db()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE search_config SET data = ?, updated_at = CURRENT_TIMESTAMP",
+                (json.dumps(new_content, ensure_ascii=False),)
+            )
+            conn.commit()
+            conn.close()
+            sql_ok = True
+        except Exception:
+            pass
+        # 双写：更新 YAML 文件
         filepath = os.path.join(config.PROFILES_DIR, f"{name}.yaml")
+        yaml_ok = False
         try:
             import shutil
             tmp_path = filepath + ".tmp"
@@ -785,11 +853,16 @@ def put_yaml_config(name):
             if os.path.exists(filepath):
                 shutil.copy2(filepath, bak_path)
             with open(tmp_path, "w", encoding="utf-8") as f:
-                yaml.dump(new_content, f, Dumper=_MultilineDumper, allow_unicode=True, default_flow_style=False)
+                yaml.dump(new_content, f, Dumper=_MultilineDumper,
+                          allow_unicode=True, default_flow_style=False)
             os.replace(tmp_path, filepath)
-        except Exception as e:
-            return jsonify({"error": f"写入文件失败: {str(e)}"}), 500
-        return jsonify({"status": "ok", "name": name})
+            yaml_ok = True
+        except Exception:
+            pass
+        if sql_ok or yaml_ok:
+            return jsonify({"status": "ok", "name": name})
+        else:
+            return jsonify({"error": "写入文件失败"}), 500
     else:
         return jsonify({"error": f"不支持的配置文件: {name}"}), 400
 
@@ -818,26 +891,43 @@ def set_model_config():
 
 @app.route("/api/campaigns", methods=["GET"])
 def list_campaigns():
-    """列出所有可用的 campaign（摘要信息，不加载完整配置）。"""
+    """列出所有可用 Campaign。优先从 SQLite 读取。"""
+    rows = _db_fetch_all("SELECT name, data FROM campaigns")
+    if rows:
+        result = []
+        for r in rows:
+            try:
+                data = json.loads(r["data"])
+            except json.JSONDecodeError:
+                continue
+            sq = data.get("search_queries", [])
+            result.append({
+                "name": r["name"],
+                "strategy": data.get("strategy", ""),
+                "queries": len(sq),
+                "keywords": [q.get("keywords", "") for q in sq if q.get("keywords")],
+            })
+        return jsonify(result)
+    # 回退：遍历目录
     campaigns_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "campaigns")
     result = []
     if os.path.isdir(campaigns_dir):
         for fname in sorted(os.listdir(campaigns_dir)):
             if fname.endswith(".yaml"):
+                name = fname[:-5]
                 filepath = os.path.join(campaigns_dir, fname)
                 try:
                     with open(filepath, "r", encoding="utf-8") as f:
                         data = yaml.safe_load(f) or {}
-                    name = fname.replace(".yaml", "")
-                    sq = data.get("search_queries", [])
-                    result.append({
-                        "name": name,
-                        "strategy": data.get("strategy", ""),
-                        "queries": len(sq),
-                        "keywords": [q.get("keywords", "") for q in sq if q.get("keywords")],
-                    })
                 except Exception:
                     continue
+                sq = data.get("search_queries", [])
+                result.append({
+                    "name": name,
+                    "strategy": data.get("strategy", ""),
+                    "queries": len(sq),
+                    "keywords": [q.get("keywords", "") for q in sq if q.get("keywords")],
+                })
     return jsonify(result)
 
 
@@ -853,14 +943,16 @@ def set_session_campaign():
 
     session = _get_or_create_session(sid)
 
-    # 验证 campaign 文件存在（传 None 直接清除）
+    # 验证 Campaign 存在（优先查数据库，回退查文件）
     if campaign is not None:
-        filepath = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
-            "instances", "campaigns", f"{campaign}.yaml"
-        )
-        if not os.path.isfile(filepath):
-            return jsonify({"error": f"Campaign '{campaign}' 不存在"}), 400
+        row = _db_fetch_one("SELECT name FROM campaigns WHERE name = ?", (campaign,))
+        if not row:
+            filepath = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "instances", "campaigns", f"{campaign}.yaml"
+            )
+            if not os.path.isfile(filepath):
+                return jsonify({"error": f"Campaign '{campaign}' 不存在"}), 400
 
     session["campaign"] = campaign
     return jsonify({"status": "ok", "campaign": campaign})
@@ -870,36 +962,73 @@ def set_session_campaign():
 
 @app.route("/api/users", methods=["GET"])
 def list_users():
-    """列出 instances/users/ 下所有可用的画像文件。"""
+    """列出所有可用用户画像。优先从 SQLite 读取。"""
+    rows = _db_fetch_all("SELECT name, data FROM user_profiles")
+    if rows:
+        result = []
+        for r in rows:
+            try:
+                profile = json.loads(r["data"])
+                user_name = profile.get("name", r["name"])
+            except json.JSONDecodeError:
+                user_name = r["name"]
+            result.append({
+                "name": r["name"],
+                "user_name": user_name,
+            })
+        return jsonify(result)
+    # 回退：遍历目录
     users_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "users")
     result = []
     if os.path.isdir(users_dir):
         for fname in sorted(os.listdir(users_dir)):
             if fname.endswith(".yaml"):
+                name = fname[:-5]
+                filepath = os.path.join(users_dir, fname)
                 try:
-                    with open(os.path.join(users_dir, fname), "r", encoding="utf-8") as f:
+                    with open(filepath, "r", encoding="utf-8") as f:
                         data = yaml.safe_load(f) or {}
-                    result.append({
-                        "name": fname.replace(".yaml", ""),
-                        "user_name": data.get("name", fname.replace(".yaml", "")),
-                    })
                 except Exception:
                     continue
+                result.append({
+                    "name": name,
+                    "user_name": data.get("name", name),
+                })
     return jsonify(result)
 
 
 @app.route("/api/config/user", methods=["POST"])
 def set_config_user():
-    """更新 profiles/.current_user 文件。"""
+    """切换当前活跃画像。优先更新 SQLite，同步写 .current_user 文件。"""
     data = request.json or {}
     new_user = data.get("user", "").strip()
     if not new_user:
         return jsonify({"error": "user 不能为空"}), 400
 
-    user_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "users")
-    if not os.path.isfile(os.path.join(user_dir, f"{new_user}.yaml")):
-        return jsonify({"error": f"画像文件不存在: {new_user}.yaml"}), 400
+    # 验证画像存在
+    row = _db_fetch_one(
+        "SELECT name FROM user_profiles WHERE name = ?", (new_user,)
+    )
+    if not row:
+        # 回退：检查 YAML 文件
+        user_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "users")
+        if not os.path.isfile(os.path.join(user_dir, f"{new_user}.yaml")):
+            return jsonify({"error": f"画像文件不存在: {new_user}.yaml"}), 400
 
+    # 更新 SQLite
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_profiles SET is_current = 0")
+        cursor.execute(
+            "UPDATE user_profiles SET is_current = 1 WHERE name = ?", (new_user,)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+    # 同步 .current_user 文件
     user_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles", ".current_user")
     with open(user_file, "w", encoding="utf-8") as f:
         f.write(new_user)
@@ -924,7 +1053,17 @@ atexit.register(cleanup_renderer)
 
 @app.route("/api/schema/user_field", methods=["GET"])
 def get_user_field_schema():
-    """返回用户画像字段定义 Schema，供前端动态渲染表单。"""
+    """返回用户画像字段定义 Schema。优先从 SQLite 读取，失败回退 YAML。"""
+    row = _db_fetch_one(
+        "SELECT data FROM field_schemas WHERE name = 'user_field'"
+    )
+    if row:
+        try:
+            schema = json.loads(row["data"])
+            return jsonify(schema)
+        except json.JSONDecodeError:
+            pass
+    # 回退：读 YAML 文件
     import os as _os
     schema_path = _os.path.join(_os.path.dirname(__file__), "profiles", "user_field_schema.yaml")
     if not _os.path.exists(schema_path):
