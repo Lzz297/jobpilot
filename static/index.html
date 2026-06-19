@@ -1548,6 +1548,17 @@ function formatLabel(key) {
   return LABEL_MAP[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+const WIDGET_LABELS = {
+  input: '单行文本', textarea: '多行文本', select: '下拉单选', toggle: '开关',
+  tags: '标签输入', list: '多行列表', table: '表格', subtable: '子条目表',
+  module_map: '模块组', categories: '分类清单', chips: '标签集合',
+  object: '组合字段', number: '数字', modal_text: '大文本弹窗',
+};
+
+function formatWidget(widget) {
+  return WIDGET_LABELS[widget] || widget;
+}
+
 /* ===================== SCHEMA WIDGETS ===================== */
 function toggleField(id, value) {
   const checked = value === true || value === 'true' || value === 1;
@@ -1844,8 +1855,7 @@ async function renderSettings(){
           ));
         }
       }
-      $('#set-profile').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">根据 Schema 动态渲染</span></div>
-        ${formHtml}
+      $('#set-profile').innerHTML = `${formHtml}
         ${coreModulesHtml}
         <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
     } else {
@@ -2298,32 +2308,28 @@ async function renderSchemaEditor(){
     return;
   }
   let html = '<div class=\"space-y-4\">';
-  html += '<div class=\"flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3\"><span class=\"text-xs text-amber-700\">修改字段定义后需刷新页面生效。key 和 type 不可修改。</span></div>';
+  html += '<div class=\"flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3\"><span class=\"text-xs text-amber-700\">修改显示名称后即时生效。字段标识与类型不可修改。</span></div>';
 
   schemaRes.groups.forEach((group, gi) => {
     html += `<div class=\"bg-white border border-slate-200 rounded-xl p-4 mb-3\">
       <div class=\"flex items-center gap-2 mb-3\">
-        <span class=\"text-xs font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded\">key: ${escapeHtml(group.key)}</span>
         <input value=\"${escapeHtml(group.label || '')}\" data-schema-group-label=\"${gi}\" class=\"text-sm font-semibold text-slate-700 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 outline-none px-1\" placeholder=\"分组标签\">
-        <span class=\"text-xs text-slate-400\">type: ${group.type || 'fields'}</span>
       </div>`;
 
     if(group.type === 'array' || group.type === 'map') {
-      html += `<div class=\"text-xs text-slate-500 mb-2\">widget: ${group.widget || 'table'}</div>`;
+      html += `<div class=\"text-xs text-slate-500 mb-2\">类型：${formatWidget(group.widget || 'table')}</div>`;
       if(group.columns) {
         html += '<div class=\"text-xs text-slate-400 mb-1\">列定义：</div>';
         group.columns.forEach((col, ci) => {
           html += `<div class=\"flex items-center gap-2 ml-2 mb-1 text-xs\">
-            <span class=\"font-mono text-slate-500 w-28\" title=\"${escapeHtml(col.key)}\">${escapeHtml(col.key)}</span>
             <input value=\"${escapeHtml(col.label || '')}\" data-schema-col-label=\"${gi}.${ci}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"列标签\">
-            <span class=\"text-slate-400\">widget: ${col.widget || 'input'}</span>
+            <span class=\"text-slate-400\">${formatWidget(col.widget || 'input')}</span>
           </div>`;
         });
         if(group.columns && group.columns.length > 0 && group.columns[0].columns) {
           html += '<div class=\"text-xs text-slate-400 mt-1 ml-2\">子表格列：</div>';
           group.columns[0].columns.forEach((subCol, si) => {
             html += `<div class=\"flex items-center gap-2 ml-4 mb-1 text-xs\">
-              <span class=\"font-mono text-slate-500 w-28\" title=\"${escapeHtml(subCol.key)}\">${escapeHtml(subCol.key)}</span>
               <input value=\"${escapeHtml(subCol.label || '')}\" data-schema-subcol-label=\"${gi}.${si}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子列表格列标签\">
             </div>`;
           });
@@ -2332,15 +2338,12 @@ async function renderSchemaEditor(){
     } else if(group.fields) {
       group.fields.forEach((field, fi) => {
         html += `<div class=\"flex items-center gap-2 ml-2 mb-2 text-xs\">
-          <span class=\"font-mono text-slate-500 w-32\" title=\"${escapeHtml(field.key)}\">${escapeHtml(field.key)}</span>
           <input value=\"${escapeHtml(field.label || '')}\" data-schema-field-label=\"${gi}.${fi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"字段标签\">
-          <span class=\"text-slate-400\">type: ${field.type || 'string'}</span>
-          <span class=\"text-slate-400\">widget: ${field.widget || 'input'}</span>
+          <span class=\"text-slate-400\">${formatWidget(field.widget || 'input')}</span>
         </div>`;
         if(field.fields) {
           field.fields.forEach((subField, sfi) => {
             html += `<div class=\"flex items-center gap-2 ml-6 mb-1 text-xs\">
-              <span class=\"font-mono text-slate-500 w-28\" title=\"${escapeHtml(subField.key)}\">${escapeHtml(subField.key)}</span>
               <input value=\"${escapeHtml(subField.label || '')}\" data-schema-subfield-label=\"${gi}.${fi}.${sfi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子字段标签\">
             </div>`;
           });
