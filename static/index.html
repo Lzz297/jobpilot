@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JobPilot · 智能求职助手</title>
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1/Sortable.min.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
   body{font-family:'Inter',system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;}
@@ -24,6 +25,16 @@
   .logbox{background:#0f172a}
   .logbox .ln,.yaml-pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   input[type=range]{accent-color:#4f46e5}
+  .card-collapsed .card-body{display:none}
+  .card-collapsed .caret{transform:rotate(-90deg)}
+  .caret{transition:transform .2s ease}
+  details>summary{list-style:none}
+  details>summary::-webkit-details-marker{display:none}
+  details[open] .det-caret{transform:rotate(90deg)}
+  .det-caret{transition:transform .2s ease;display:inline-block}
+  .anchor-link{border-left:2px solid transparent;transition:all .15s ease}
+  .anchor-link.active{border-left-color:#4f46e5;background:#eef2ff;color:#4338ca;font-weight:600}
+  #view-settings{scroll-behavior:smooth}
 </style>
 </head>
 <body class="bg-slate-100 text-slate-800">
@@ -350,20 +361,38 @@
       </section>
 
       <!-- ===== SETTINGS ===== -->
-      <section id="view-settings" class="view h-full overflow-y-auto hidden">
-        <div class="p-6 w-full">
-          <h1 class="text-lg font-bold text-slate-900">设置</h1>
-          <p class="text-sm text-slate-500 mb-4">在 Web 端编辑个人画像与系统配置</p>
-          <div class="flex rounded-lg border border-slate-200 overflow-hidden text-sm w-fit mb-4">
-            <button id="set-tab-profile" onclick="setTab('profile')" class="px-4 py-1.5 bg-indigo-600 text-white">个人画像</button>
-            <button id="set-tab-job" onclick="setTab('job')" class="px-4 py-1.5 bg-white text-slate-500">找工作配置</button>
-            <button id="set-tab-market" onclick="setTab('market')" class="px-4 py-1.5 bg-white text-slate-500">市场调研配置</button>
-            <button id="set-tab-schema" onclick="setTab('schema')" class="px-4 py-1.5 bg-white text-slate-500 hidden">字段配置</button>
+      <section id="view-settings" class="view h-full hidden">
+        <div class="flex h-full">
+          <div id="anchor-nav-wrap" class="w-44 shrink-0 pt-6 pl-6" style="position:sticky;top:0;align-self:flex-start;display:none"></div>
+          <div class="flex-1 flex flex-col min-w-0">
+            <div class="p-6 w-full flex-1 overflow-y-auto">
+              <h1 class="text-lg font-bold text-slate-900">设置</h1>
+              <p class="text-sm text-slate-500 mb-4">在 Web 端编辑个人画像与系统配置</p>
+              <div class="flex items-center gap-2.5 text-sm w-fit mb-4">
+                <span class="select-none text-[11px] font-normal text-slate-400 cursor-default">画像</span>
+                <span class="h-4 w-px bg-slate-300"></span>
+                <button id="set-tab-profile" onclick="setTab('profile')" class="px-4 py-1.5 rounded-md bg-indigo-600 text-white font-medium shadow-sm">个人画像</button>
+                <button id="set-tab-schema" onclick="setTab('schema')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100 hidden">字段配置</button>
+                <span class="h-4 w-px bg-slate-200"></span>
+                <span class="select-none text-[11px] font-normal text-slate-400 cursor-default">运行配置</span>
+                <span class="h-4 w-px bg-slate-300"></span>
+                <button id="set-tab-job" onclick="setTab('job')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">找工作配置</button>
+                <button id="set-tab-market" onclick="setTab('market')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">市场调研配置</button>
+              </div>
+              <div id="set-profile"></div>
+              <div id="set-job" class="hidden"></div>
+              <div id="set-market" class="hidden"></div>
+              <div id="set-schema" class="hidden"></div>
+            </div>
+            <div id="save-bar" class="sticky bottom-0 z-10 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3 pr-[calc(1.5rem+15px)]">
+              <div class="flex items-center gap-2 text-xs">
+                <span id="dirty-badge" class="hidden items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
+                  <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>有未保存的更改
+                </span>
+              </div>
+              <button id="save-bar-btn" onclick="handleSaveBarClick()" class="cursor-not-allowed rounded-md bg-slate-200 px-5 py-2 text-sm font-medium text-slate-400">保存</button>
+            </div>
           </div>
-          <div id="set-profile"></div>
-          <div id="set-job" class="hidden"></div>
-          <div id="set-market" class="hidden"></div>
-          <div id="set-schema" class="hidden"></div>
         </div>
       </section>
 
@@ -415,7 +444,7 @@
 
 <script>
 /* ===================== STATE ===================== */
-const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, userRole:'user', sid:null, settingsTab:'profile' };
+const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, userRole:'user', sid:null, settingsTab:'profile', dirty:false };
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
 const DIR_META = {
   payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
@@ -528,7 +557,7 @@ function toast(msg,type='info'){
   const el=document.createElement('div');
   el.className=`${c[type]} text-white text-sm px-4 py-2.5 rounded-lg shadow-lg fade-in`; el.textContent=msg;
   $('#toast-wrap').appendChild(el);
-  setTimeout(()=>{el.style.transition='opacity .3s';el.style.opacity='0';setTimeout(()=>el.remove(),300);},2600);
+  setTimeout(()=>{el.style.transition='opacity .3s';el.style.opacity='0';setTimeout(()=>el.remove(),300);},2000);
 }
 
 /* ===================== BUSY LOCK ===================== */
@@ -962,7 +991,7 @@ function switchView(v){
   if(v==='files'){ renderFiles(); syncRangeUI(); }
   if(v==='market') renderMarketPresets();
   if(v==='resume') loadRunsForSelect();
-  if(v==='settings') renderSettings();
+  if(v==='settings'){ renderSettings(); setTab(STATE.settingsTab); }
   if(window.innerWidth<768){ $('#sidebar').classList.add('hidden'); $('#sidebar').classList.remove('flex'); }
   refreshIcons();
 }
@@ -1518,14 +1547,22 @@ function hlYaml(text){
 function closeModal(){ $('#modal-overlay').classList.add('hidden'); }
 
 /* ===================== SETTINGS VIEW ===================== */
-function field(label,id,val,type='text',hint='',min=''){
+function field(label,id,val,type='text',hint='',min='',max='',maxlength='',pattern='',placeholder='',validate=''){
   const minAttr = min ? ` min="${min}"` : '';
-  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><input id="${id}" type="${type}" data-key="${id}" value="${escapeHtml(String(val||''))}"${minAttr} class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
+  const maxAttr = max ? ` max="${max}"` : '';
+  const maxlengthAttr = maxlength ? ` maxlength="${maxlength}"` : '';
+  const patternAttr = pattern ? ` pattern="${escapeHtml(pattern)}"` : '';
+  const placeholderAttr = placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : '';
+  const validateAttr = validate ? ` data-validate="${validate}"` : '';
+  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><input id="${id}" type="${type}" data-key="${id}" value="${escapeHtml(String(val||''))}"${minAttr}${maxAttr}${maxlengthAttr}${patternAttr}${placeholderAttr}${validateAttr} class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
 }
-function areaField(label,id,val,rows=3,hint=''){
-  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><textarea id="${id}" data-key="${id}" rows="${rows}" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none">${escapeHtml(String(val||''))}</textarea>${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
+function areaField(label,id,val,rows=3,hint='',maxlength='',placeholder=''){
+  const maxlengthAttr = maxlength ? ` maxlength="${maxlength}" data-max="${maxlength}"` : '';
+  const placeholderAttr = placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : '';
+  const ccHtml = maxlength ? `<span class="char-count text-xs text-slate-400 mt-1 block text-right"></span>` : '';
+  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><textarea id="${id}" data-key="${id}" rows="${rows}"${maxlengthAttr}${placeholderAttr} class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none">${escapeHtml(String(val||''))}</textarea>${ccHtml}${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
 }
-function card(title,body){ return `<div class="bg-white border border-slate-200 rounded-xl p-4 mb-3"><div class="text-sm font-semibold text-slate-700 mb-3">${title}</div>${body}</div>`; }
+function card(title, body, id){ const idAttr = id ? ` id="sec-${id}"` : ''; return `<div${idAttr} class="bg-white border border-slate-200 rounded-lg p-3.5 mb-2.5 scroll-mt-6"><div class="text-sm font-semibold text-slate-700 mb-2.5">${title}</div>${body}</div>`; }
 
 /* ===================== LABEL MAP ===================== */
 const LABEL_MAP = {
@@ -1580,13 +1617,21 @@ function tagsField(containerId, values) {
   const tagSpans = (values || []).map(v => `<span class="tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium"><span>${escapeHtml(v)}</span><button type="button" onclick="this.parentElement.remove()" class="text-indigo-400 hover:text-red-500">&times;</button></span>`).join('');
   return `<div class="mt-1" data-key="${containerId}">
     <div class="flex flex-wrap gap-1 mb-1" id="${containerId}-tags">${tagSpans}</div>
-    <input type="text" class="w-full border border-slate-300 rounded-lg px-3 py-1.5 text-sm" placeholder="输入后按回车添加" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const val=this.value.trim(); if(val){ const span=document.createElement('span'); span.className='tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium'; span.innerHTML='<span>'+escapeHtml(val)+'</span><button type=button onclick=this.parentElement.remove() class=text-indigo-400 hover:text-red-500>&times;</button>'; document.getElementById('${containerId}-tags').appendChild(span); this.value='';}}">
+    <input type="text" class="w-full max-w-[280px] border border-slate-300 rounded-lg px-3 py-1.5 text-sm" placeholder="输入后按回车添加" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const val=this.value.trim(); if(val){ const span=document.createElement('span'); span.className='tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium'; span.innerHTML='<span>'+escapeHtml(val)+'</span><button type=button onclick=this.parentElement.remove() class=text-indigo-400 hover:text-red-500>&times;</button>'; document.getElementById('${containerId}-tags').appendChild(span); this.value='';}}">
   </div>`;
 }
 
 function listField(containerId, values) {
-  const items = (values || []).map(v => `<div class="flex gap-1 mb-1"><input class="list-item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" value="${escapeHtml(v)}"><button type="button" onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button></div>`).join('');
-  return `<div id="${containerId}" data-key="${containerId}">
+  const items = (values || []).map(v =>
+    `<div class="flex gap-1 mb-1" data-list-item>
+      <span class="drag-handle cursor-grab text-slate-300 hover:text-slate-500 flex items-center justify-center w-5 shrink-0 select-none" title="拖拽排序">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
+      </span>
+      <input class="list-item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" value="${escapeHtml(v)}">
+      <button type="button" onclick="this.closest('[data-list-item]').remove()" class="text-red-400 text-xs">&times;</button>
+    </div>`
+  ).join('');
+  return `<div id="${containerId}" data-key="${containerId}" class="sortable-list">
     ${items}
     <button type="button" onclick="addDynamicRow('${containerId}','list-item')" class="text-xs text-indigo-600 mt-1">+ 添加</button>
   </div>`;
@@ -1610,6 +1655,14 @@ function tableField(fieldDef, dataArray) {
   const key = fieldDef.key;
   const columns = fieldDef.columns;
   const totalCols = columns.length + 1; // +1 for delete button
+
+  // 判断是否需要卡片化：任一列使用重型控件
+  const needsCard = columns.some(col =>
+    ['textarea','tags','list','subtable','modal_text'].includes(col.widget)
+  );
+  if (needsCard) return renderCardTable(fieldDef, dataArray);
+
+  // 原有表格模式（仅轻量控件）
   let html = `<div class="overflow-x-auto"><table class="w-full text-sm" data-table="${key}">
     <thead><tr>${columns.map(col => `<th class="text-left py-1.5 text-xs font-medium text-slate-500">${col.label}</th>`).join('')}<th class="w-8"></th></tr></thead>
     <tbody>`;
@@ -1643,7 +1696,7 @@ function tableField(fieldDef, dataArray) {
     html += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
   });
   html += `</tbody></table>
-    <button type="button" onclick="addTableRow(this, '${key}', ${JSON.stringify(columns).replace(/"/g, '&quot;')})" class="text-xs text-indigo-600 mt-2">+ 添加行</button>
+    <button type="button" onclick="addTableRow(this, '${key}', ${JSON.stringify(columns).replace(/"/g, '&quot;')})" class="text-xs text-indigo-600 mt-2">+ 添加</button>
   </div>`;
   return html;
 }
@@ -1677,6 +1730,154 @@ function addTableRow(btn, tableKey, columns) {
   });
   rowHtml += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
   tbody.insertAdjacentHTML('beforeend', rowHtml);
+}
+
+/* ===================== CARD TABLE ===================== */
+function renderCardTable(fieldDef, dataArray) {
+  const key = fieldDef.key;
+  const columns = fieldDef.columns;
+  let html = `<div class="space-y-3" data-table="${key}" data-card-container="${key}">`;
+  (dataArray || []).forEach((row, rowIdx) => {
+    html += buildCardHTML(key, rowIdx, columns, row);
+  });
+  html += `</div>
+    <button type="button" onclick="addCardRow(this, '${key}', ${JSON.stringify(columns).replace(/"/g, '&quot;')})" class="mt-3 w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-sm text-slate-500 transition-colors hover:border-indigo-400 hover:text-indigo-600">+ 添加</button>`;
+  return html;
+}
+
+function buildCardHTML(key, rowIdx, columns, row) {
+  const title1 = (row && columns[0] && row[columns[0].key]) || (columns[0] && columns[0].label) || '';
+  const title2 = (row && columns[1] && row[columns[1].key]) || (columns[1] && columns[1].label) || '';
+  const period = (row && columns[2] && row[columns[2].key]) || '';
+  const cardId = `${key.replace(/\./g, '_')}_${rowIdx}`;
+  let html = `<div class="card-item overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-row-index="${rowIdx}">
+    <div class="flex items-center justify-between gap-2 px-4 py-3">
+      <button type="button" onclick="toggleCard(this)" class="flex min-w-0 items-center gap-2 text-left">
+        <svg class="caret h-4 w-4 shrink-0 text-slate-400 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+        <span class="truncate text-sm font-semibold text-slate-800">${escapeHtml(title1)} · ${escapeHtml(title2)}</span>
+      </button>
+      <div class="flex shrink-0 items-center gap-3">
+        <span class="hidden text-xs text-slate-400 sm:inline">${escapeHtml(period)}</span>
+        <button type="button" onclick="event.preventDefault(); this.closest('.card-item').remove()" class="text-slate-300 transition hover:text-rose-500">
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="card-body space-y-4 border-t border-slate-100 p-4">`;
+  // 前3列短字段并排
+  if (columns.length >= 3) {
+    const end = Math.min(3, columns.length);
+    html += `<div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">`;
+    for (let ci = 0; ci < end; ci++) {
+      const col = columns[ci];
+      const cellId = `${key}.${rowIdx}.${col.key}`;
+      const cellValue = row ? (row[col.key] || '') : '';
+      if (col.widget === 'tags') {
+        html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
+      } else {
+        html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
+      }
+    }
+    html += `</div>`;
+  }
+  // 剩余列重型控件各占一整行
+  for (let ci = 3; ci < columns.length; ci++) {
+    const col = columns[ci];
+    const cellId = `${key}.${rowIdx}.${col.key}`;
+    const cellValue = row ? (row[col.key] || '') : '';
+    if (col.widget === 'textarea') {
+      const ml = col.maxlength || '';
+      const mlAttr = ml ? ` maxlength="${ml}" data-max="${ml}"` : '';
+      const ccHtml = ml ? `<span class="char-count text-xs text-slate-400 mt-1 block text-right"></span>` : '';
+      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><textarea data-key="${cellId}" rows="${col.rows || 3}"${mlAttr} class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${escapeHtml(cellValue)}</textarea>${ccHtml}</label>`;
+    } else if (col.widget === 'tags') {
+      html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''} <span class="font-normal text-slate-400">· 回车添加</span></span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
+    } else if (col.widget === 'list') {
+      html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
+    } else if (col.widget === 'subtable') {
+      const subTableData = Array.isArray(cellValue) ? cellValue : [];
+      const subTableDef = { key: cellId, columns: col.columns || [] };
+      html += `<details class="rounded-md border border-slate-200">
+        <summary class="cursor-pointer rounded-md bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600"><span class="det-caret mr-1">▶</span>${col.label}（${subTableData.length}）</summary>
+        <div class="border-t border-slate-100 p-3">${tableField(subTableDef, subTableData)}</div>
+      </details>`;
+    } else if (col.widget === 'modal_text') {
+      html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${modalTextField(cellId, col.label, cellValue)}</div>`;
+    } else {
+      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
+    }
+  }
+  html += `</div></div>`;
+  return html;
+}
+
+function addCardRow(btn, tableKey, columns) {
+  const container = btn.previousElementSibling;
+  if (!container || !container.hasAttribute('data-card-container')) return;
+  const rowCount = container.querySelectorAll('.card-item').length;
+  const newCard = buildCardHTML(tableKey, rowCount, columns, {});
+  container.insertAdjacentHTML('beforeend', newCard);
+}
+
+function toggleCard(btn) {
+  const card = btn.closest('.card-item');
+  if (card) card.classList.toggle('card-collapsed');
+}
+
+let _scrollObserver = null;
+
+function initScrollSpy() {
+  disconnectScrollSpy();
+  const container = document.getElementById('view-settings');
+  if (!container) return;
+  const links = document.querySelectorAll('#anchor-nav .anchor-link');
+  const sections = [...document.querySelectorAll('#set-profile div[id^="sec-"]')];
+  if (!links.length || !sections.length) return;
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        links.forEach(link => {
+          link.classList.toggle('active', link.getAttribute('href') === '#' + entry.target.id);
+        });
+      }
+    });
+  }, { root: container, rootMargin: '-60px 0px -60% 0px', threshold: 0 });
+  sections.forEach(s => observer.observe(s));
+  _scrollObserver = observer;
+}
+
+function disconnectScrollSpy() {
+  if (_scrollObserver) { _scrollObserver.disconnect(); _scrollObserver = null; }
+}
+
+function initCharCounters() {
+  document.querySelectorAll('textarea[data-max]').forEach(ta => {
+    if (ta.dataset.ccInit) return;
+    ta.dataset.ccInit = '1';
+    const counter = ta.closest('div').querySelector('.char-count');
+    if (!counter) return;
+    const max = parseInt(ta.dataset.max);
+    const upd = () => {
+      counter.textContent = `${ta.value.length}/${max}`;
+      counter.style.display = 'block';
+      counter.classList.toggle('text-rose-500', ta.value.length > max);
+    };
+    ta.addEventListener('input', upd);
+    upd();
+  });
+}
+
+function initListSortable() {
+  if (typeof Sortable === 'undefined') return;
+  document.querySelectorAll('.sortable-list').forEach(list => {
+    if (list.dataset.sortableInit) return;
+    list.dataset.sortableInit = '1';
+    Sortable.create(list, {
+      handle: '.drag-handle',
+      animation: 150,
+      onEnd: () => { checkDirtyState(); }
+    });
+  });
 }
 
 function categoriesField(fieldDef, data) {
@@ -1716,7 +1917,7 @@ function moduleMapField(fieldDef, data) {
           </summary>
           <div class="space-y-3 mt-2">
             ${field('模块名称', `${prefix}.${moduleName}.module_name`, (moduleData && moduleData.module_name) || '', 'text', '', '')}
-            ${areaField('模块描述', `${prefix}.${moduleName}.description`, (moduleData && moduleData.description) || '', 3, '')}
+            ${areaField('模块描述', `${prefix}.${moduleName}.description`, (moduleData && moduleData.description) || '', 5, '')}
             <div>
               <label class="text-xs font-medium text-slate-500">简历要点候选</label>
               ${tableField(
@@ -1738,7 +1939,7 @@ function moduleMapField(fieldDef, data) {
   html += `<div class="border-t border-slate-100 pt-3 mt-3">
     <div class="flex gap-2 items-center">
       <input id="new-module-name-${safeId}" placeholder="新模块英文标识（如 payment_gateway）" class="flex-1 border border-slate-200 rounded px-3 py-1.5 text-sm">
-      <button type="button" onclick="addCoreModule('${prefix}')" class="shrink-0 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg px-3 py-1.5 font-medium">+ 新增模块</button>
+      <button type="button" onclick="addCoreModule('${prefix}')" class="shrink-0 text-xs bg-indigo-50 text-indigo-600 hover:bg-indigo-100 rounded-lg px-3 py-1.5 font-medium">+ 添加</button>
     </div>
     <div class="text-xs text-slate-400 mt-1">英文标识将作为模块唯一标识，建议使用 snake_case 命名。</div>
   </div>`;
@@ -1765,7 +1966,7 @@ function addCoreModule(prefix) {
       </summary>
       <div class="space-y-3 mt-2">
         ${field('模块名称', prefix + '.' + moduleName + '.module_name', '', 'text', '', '')}
-        ${areaField('模块描述', prefix + '.' + moduleName + '.description', '', 3, '')}
+        ${areaField('模块描述', prefix + '.' + moduleName + '.description', '', 5, '')}
         <div><label class="text-xs font-medium text-slate-500">简历要点候选</label>
         ${tableField({ key: prefix + '.' + moduleName + '.resume_bullet_candidates', columns: subCols }, [])}
         </div>
@@ -1784,10 +1985,12 @@ function addCoreModule(prefix) {
 /* ===================== SCHEMA RENDER ENGINE ===================== */
 function renderWidget(fieldDef, value) {
   const key = fieldDef.key;
+  const labelSuffix = fieldDef.required ? ' <span class="text-rose-500">*</span>' : '';
+  const label = fieldDef.label + labelSuffix;
   switch (fieldDef.widget) {
-    case 'input': return field(fieldDef.label, key, value, 'text', fieldDef.hint || '');
-    case 'textarea': return areaField(fieldDef.label, key, value, fieldDef.rows || 3, fieldDef.hint || '');
-    case 'number': return field(fieldDef.label, key, value, 'number', fieldDef.hint || '', fieldDef.min || '');
+    case 'input': return field(label, key, value, 'text', fieldDef.hint || '', '', fieldDef.max || '', fieldDef.maxlength || '', fieldDef.pattern || '', fieldDef.placeholder || '', fieldDef.validate || '');
+    case 'textarea': return areaField(label, key, value, fieldDef.rows || 3, fieldDef.hint || '', fieldDef.maxlength || '', fieldDef.placeholder || '');
+    case 'number': return field(label, key, value, 'number', fieldDef.hint || '', fieldDef.min || '', fieldDef.max || '', '', '', fieldDef.placeholder || '', fieldDef.validate || '');
     case 'toggle': return toggleField(key, value);
     case 'select': return selectField(key, value, fieldDef.options || []);
     case 'object': return objectField(fieldDef, value);
@@ -1804,12 +2007,17 @@ function renderWidget(fieldDef, value) {
 function renderSchemaForm(schema, data) {
   let html = '';
   (schema.groups || []).forEach(group => {
-    // core_modules 由 renderSettings 单独渲染（嵌套在 work_experience[0] 下，非顶层字段）
-    if (group.key === 'core_modules') return;
+    // core_modules 数据源特殊处理：从 work_experience[0].core_modules 取值
+    if (group.key === 'core_modules') {
+      const we = data && data.work_experience ? data.work_experience : [];
+      const groupData = (we.length > 0 && we[0].core_modules) ? we[0].core_modules : {};
+      html += card(group.label, renderWidget(group, groupData), group.key);
+      return;
+    }
     // array/map 类型：统一走 renderWidget 分发（由 widget 字段路由到 tableField / categoriesField / chipsField）
     if (group.type === 'array' || group.type === 'map') {
       const groupData = data ? (data[group.key] || (group.type === 'map' ? {} : [])) : (group.type === 'map' ? {} : []);
-      html += card(group.label, renderWidget(group, groupData));
+      html += card(group.label, renderWidget(group, groupData), group.key);
     } else {
       // fields 分组：从 data[group.key] 获取本分组的数据源（如 job_intent → data.job_intent）
       const groupData = (group.key && data && data[group.key]) ? data[group.key] : data;
@@ -1821,7 +2029,7 @@ function renderSchemaForm(schema, data) {
         const fullKey = (group.key && !fieldDef.key.includes('.')) ? `${group.key}.${fieldDef.key}` : fieldDef.key;
         groupHtml += `<div class="mb-3">${renderWidget({...fieldDef, key: fullKey}, value)}</div>`;
       });
-      html += card(group.label, groupHtml);
+      html += card(group.label, groupHtml, group.key);
     }
   });
   return html;
@@ -1844,24 +2052,40 @@ async function renderSettings(){
       if (schemaTabBtn) {
         schemaTabBtn.classList.toggle('hidden', STATE.userRole !== 'admin');
       }
-      // 额外渲染 core_modules 编辑区（嵌套在 work_experience[0] 下）
-      let coreModulesHtml = '';
-      if (me.work_experience && me.work_experience.length > 0 && me.work_experience[0].core_modules) {
-        const coreFieldDef = (schemaRes.groups || []).find(g => g.key === 'core_modules');
-        if (coreFieldDef) {
-          coreModulesHtml = card('核心模块', moduleMapField(
-            { ...coreFieldDef, key: 'work_experience.0.core_modules' },
-            me.work_experience[0].core_modules
-          ));
-        }
+      const pc = calcCompleteness();
+      const progressBarHtml = `<div class="rounded-xl border border-indigo-100 bg-indigo-50 p-4 mb-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-semibold text-slate-900">画像完整度</p>
+            <p class="text-xs text-indigo-700">${pc.pct >= 80 ? '画像已很完善 — Agent 匹配更精准' : '完善的画像能让 Agent 匹配更精准'}</p>
+          </div>
+          <span class="text-2xl font-bold text-indigo-600">${pc.pct}%</span>
+        </div>
+        <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-white">
+          <div class="h-full rounded-full bg-indigo-600 transition-all" style="width:${pc.pct}%"></div>
+        </div>
+      </div>`;
+      const anchorGroups = schemaRes.groups;
+      const anchorNavWrap = document.getElementById('anchor-nav-wrap');
+      if (anchorNavWrap) {
+        anchorNavWrap.innerHTML = `<nav id="anchor-nav" class="space-y-0.5">
+          <p class="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">页面导航</p>
+          ${anchorGroups.map(g => `<a href="#sec-${g.key}" class="anchor-link flex items-center gap-2 rounded-md py-2 pl-3 pr-3 text-sm text-slate-600 hover:bg-slate-50">${g.label}</a>`).join('')}
+        </nav>`;
       }
-      $('#set-profile').innerHTML = `${formHtml}
-        ${coreModulesHtml}
+      $('#set-profile').innerHTML = `${progressBarHtml}${formHtml}
         <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
     } else {
       $('#set-profile').innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">无法加载 Schema 配置</div>';
     }
   }
+
+  // 存储表单原始快照，用于 dirty 状态恢复检测
+  setTimeout(() => {
+    STATE._originalData = collectFormData();
+    STATE.dirty = false;
+    updateSaveBar();
+  }, 500);
 
   const cfg = await loadYaml('search_config');
   if(cfg){
@@ -1870,7 +2094,7 @@ async function renderSettings(){
     const presets = cfg.market_presets || {};
 
     // ── 找工作配置面板 ──
-    $('#set-job').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">权重方案和搜索词通过侧边栏「求职方向」管理。</span></div>
+    $('#set-job').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">搜索策略和权重方案请在侧边栏「求职方向」中设置。</span></div>
       ${card('基础设置',`
         ${field('全局默认排序','c-sort',cfg.sort_mode||'date','text','date / relevance')}
         ${areaField('排除公司（每行一个）','c-exclude',(cfg.filters?.exclude_companies||[]).join('\n'),4,'大小写不敏感，在基础清洗阶段直接排除')}
@@ -1880,18 +2104,18 @@ async function renderSettings(){
         ${field('JD 抓取上限','job-max-results',searchCfg.max_total_results||200,'number','','1')}
         ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','发给 LLM 前截断','1')}
       </div>`)}
-      <button onclick="saveJobConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存找工作配置</button>`;
+      <button onclick="saveJobConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存配置</button>`;
 
     // ── 市场调研配置面板 ──
     let catsHtml = `<div id="cfg-cats">`;
     (presets.job_categories||[]).forEach(v=>{ catsHtml+=`<div class="flex gap-1 mb-1"><input class="cat-in w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" value="${escapeHtml(v)}"><button onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button></div>`; });
-    catsHtml += `</div><button onclick="addDynamicRow('cfg-cats','cat-in')" class="text-xs text-indigo-600 mt-1">+ 添加类别</button>`;
+    catsHtml += `</div><button onclick="addDynamicRow('cfg-cats','cat-in')" class="text-xs text-indigo-600 mt-1">+ 添加</button>`;
 
     let clsHtml = `<div id="cfg-cls">`;
     (presets.classifications||[]).forEach(v=>{ clsHtml+=`<div class="flex gap-1 mb-1"><input class="cls-in w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" value="${escapeHtml(v)}"><button onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button></div>`; });
-    clsHtml += `</div><button onclick="addDynamicRow('cfg-cls','cls-in')" class="text-xs text-indigo-600 mt-1">+ 添加行业</button>`;
+    clsHtml += `</div><button onclick="addDynamicRow('cfg-cls','cls-in')" class="text-xs text-indigo-600 mt-1">+ 添加</button>`;
 
-    $('#set-market').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">预设分类和抓取参数独立于找工作流程。</span></div>
+    $('#set-market').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">市场调研的参数独立设置，不受找工作配置影响。</span></div>
       ${card('预设分类',`
         <div class="space-y-3">
           <div><label class="block text-xs font-medium text-slate-500 mb-1">岗位类别（在市场调研页可一键填入）</label>${catsHtml}</div>
@@ -1904,7 +2128,7 @@ async function renderSettings(){
         ${field('LLM 每批','c-mbatch',marketCfg.batch_size||5,'number')}
         ${field('JD 截断字数','c-mchars',marketCfg.jd_max_chars||6000,'number')}
       </div>`)}
-      <button onclick="saveMarketConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存市场调研配置</button>`;
+      <button onclick="saveMarketConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存配置</button>`;
   } else {
     $('#set-job').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
     $('#set-market').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
@@ -1952,7 +2176,7 @@ async function saveYaml(name){
       let collected = collectFormData();
 
       // 扁平化纯 UI 分组：将 basic_info.name→name，避免 Schema group key 注入 YAML
-      const FLAT_GROUPS = ['basic_info', 'hk_status', 'strategic_positioning', 'summary'];
+      const FLAT_GROUPS = ['basic_info', 'strategic_positioning', 'summary'];
       const flatCollected = {};
       Object.assign(flatCollected, collected);
       FLAT_GROUPS.forEach(groupKey => {
@@ -1979,6 +2203,7 @@ async function saveYaml(name){
       const res = await api('PUT', '/api/config/yaml/me', {content: newMe});
       if(res && !res.error) {
         toast('已保存用户画像','ok');
+        STATE.dirty = false; updateSaveBar();
         await loadUserList(); // 刷新侧边栏下拉框
       } else {
         toast('保存失败: ' + (res?.error || '未知错误'), 'err');
@@ -2009,6 +2234,7 @@ async function saveJobConfig(){
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
       toast('已保存找工作配置','ok');
+      STATE.dirty = false; updateSaveBar();
       STATE.sort = newCfg.sort_mode || 'date';
       document.querySelectorAll('.sortbtn').forEach(x=>{
         const on = x.dataset.sort === STATE.sort;
@@ -2045,6 +2271,7 @@ async function saveMarketConfig(){
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
       toast('已保存市场调研配置','ok');
+      STATE.dirty = false; updateSaveBar();
       renderMarketPresets();
     } else {
       toast('保存失败: ' + (res?.error || '未知错误'), 'err');
@@ -2101,71 +2328,128 @@ function collectFormData() {
     }
   });
 
-  // 处理 table 数据（过滤子表格避免双重收集，消除空槽防止索引错位）
+  // 处理 table / card 数据（过滤子表格避免双重收集，消除空槽防止索引错位）
   container.querySelectorAll('[data-table]').forEach(table => {
     const tableKey = table.getAttribute('data-table');
     const rows = [];
-    // 只遍历本表的直接 tr（:scope > tbody > tr），不穿透子表格
-    table.querySelectorAll(':scope > tbody > tr').forEach(row => {
-      const rowData = {};
-      // 🔧 过滤：只收集 data-key 元素中最近 data-table 祖先就是当前表格的元素（排除子表格穿透）
-      const ownCells = Array.from(row.querySelectorAll('[data-key]')).filter(cell => {
-        return cell.closest('table[data-table]') === table;
-      });
-      ownCells.forEach(cell => {
-        const cellKey = cell.getAttribute('data-key');
-        const prefix = tableKey + '.';
-        if (!cellKey.startsWith(prefix)) return;
-        const relPath = cellKey.substring(prefix.length);
-        const dotIdx = relPath.indexOf('.');
-        if (dotIdx === -1) {
+    const isCard = table.hasAttribute('data-card-container');
+
+    if (isCard) {
+      // ── 卡片模式收集 ──
+      table.querySelectorAll('.card-item').forEach(card => {
+        const rowData = {};
+        const cells = card.querySelectorAll('[data-key]');
+        cells.forEach(cell => {
+          const cellKey = cell.getAttribute('data-key');
+          const prefix = tableKey + '.';
+          if (!cellKey.startsWith(prefix)) return;
+          const relPath = cellKey.substring(prefix.length);
+          const dotIdx = relPath.indexOf('.');
           let val;
           if (cell.type === 'checkbox') val = cell.checked;
-          else val = cell.value;
-          rowData[relPath] = val;
-        } else {
-          const colRelPath = relPath.substring(dotIdx + 1);
-          let val;
-          if (cell.type === 'checkbox') val = cell.checked;
-          else val = cell.value;
-          setValueByPath(rowData, colRelPath, val);
-        }
+          else if (cell.tagName === 'SELECT') val = cell.value;
+          else if (cell.tagName === 'TEXTAREA') {
+            val = cell.value.split('\n').map(s => s.trim()).filter(Boolean);
+          } else {
+            val = cell.value;
+          }
+          if (dotIdx === -1) { rowData[relPath] = val; }
+          else { const colRelPath = relPath.substring(dotIdx + 1); setValueByPath(rowData, colRelPath, val); }
+        });
+        // 卡片内 tags
+        card.querySelectorAll('[data-key] .tag-item span:first-child').forEach(span => {
+          const containerDiv = span.closest('[data-key]');
+          if (!containerDiv) return;
+          const cellKey = containerDiv.getAttribute('data-key');
+          const prefix = tableKey + '.';
+          if (!cellKey.startsWith(prefix)) return;
+          const relPath = cellKey.substring(prefix.length);
+          const dotIdx = relPath.indexOf('.');
+          const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
+          const tags = Array.from(containerDiv.querySelectorAll('.tag-item span:first-child')).map(s => s.textContent.trim()).filter(Boolean);
+          if (dotIdx === -1) { rowData[colRelPath] = tags; }
+          else { setValueByPath(rowData, colRelPath, tags); }
+        });
+        // 卡片内 list
+        card.querySelectorAll('[data-key] input.list-item').forEach(input => {
+          const containerDiv = input.closest('[data-key]');
+          if (!containerDiv) return;
+          const cellKey = containerDiv.getAttribute('data-key');
+          const prefix = tableKey + '.';
+          if (!cellKey.startsWith(prefix)) return;
+          const relPath = cellKey.substring(prefix.length);
+          const dotIdx = relPath.indexOf('.');
+          const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
+          const items = Array.from(containerDiv.querySelectorAll('input.list-item')).map(i => i.value.trim()).filter(Boolean);
+          if (dotIdx === -1) { rowData[colRelPath] = items; }
+          else { setValueByPath(rowData, colRelPath, items); }
+        });
+        if (Object.keys(rowData).length > 0) rows.push(rowData);
       });
-      // 行内 tags（同样过滤子表格）
-      Array.from(row.querySelectorAll('[data-key] .tag-item span:first-child')).forEach(span => {
-        const containerDiv = span.closest('[data-key]');
-        if (!containerDiv) return;
-        if (containerDiv.closest('table[data-table]') !== table) return;
-        const cellKey = containerDiv.getAttribute('data-key');
-        const prefix = tableKey + '.';
-        if (!cellKey.startsWith(prefix)) return;
-        const relPath = cellKey.substring(prefix.length);
-        const dotIdx = relPath.indexOf('.');
-        const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
-        const tags = Array.from(containerDiv.querySelectorAll('.tag-item span:first-child')).map(s => s.textContent.trim()).filter(Boolean);
-        if (dotIdx === -1) { rowData[colRelPath] = tags; }
-        else { setValueByPath(rowData, colRelPath, tags); }
+    } else {
+      // ── 原有表格模式收集 ──
+      // 只遍历本表的直接 tr（:scope > tbody > tr），不穿透子表格
+      table.querySelectorAll(':scope > tbody > tr').forEach(row => {
+        const rowData = {};
+        // 🔧 过滤：只收集 data-key 元素中最近 data-table 祖先就是当前表格的元素（排除子表格穿透）
+        const ownCells = Array.from(row.querySelectorAll('[data-key]')).filter(cell => {
+          return cell.closest('table[data-table]') === table;
+        });
+        ownCells.forEach(cell => {
+          const cellKey = cell.getAttribute('data-key');
+          const prefix = tableKey + '.';
+          if (!cellKey.startsWith(prefix)) return;
+          const relPath = cellKey.substring(prefix.length);
+          const dotIdx = relPath.indexOf('.');
+          if (dotIdx === -1) {
+            let val;
+            if (cell.type === 'checkbox') val = cell.checked;
+            else val = cell.value;
+            rowData[relPath] = val;
+          } else {
+            const colRelPath = relPath.substring(dotIdx + 1);
+            let val;
+            if (cell.type === 'checkbox') val = cell.checked;
+            else val = cell.value;
+            setValueByPath(rowData, colRelPath, val);
+          }
+        });
+        // 行内 tags（同样过滤子表格）
+        Array.from(row.querySelectorAll('[data-key] .tag-item span:first-child')).forEach(span => {
+          const containerDiv = span.closest('[data-key]');
+          if (!containerDiv) return;
+          if (containerDiv.closest('table[data-table]') !== table) return;
+          const cellKey = containerDiv.getAttribute('data-key');
+          const prefix = tableKey + '.';
+          if (!cellKey.startsWith(prefix)) return;
+          const relPath = cellKey.substring(prefix.length);
+          const dotIdx = relPath.indexOf('.');
+          const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
+          const tags = Array.from(containerDiv.querySelectorAll('.tag-item span:first-child')).map(s => s.textContent.trim()).filter(Boolean);
+          if (dotIdx === -1) { rowData[colRelPath] = tags; }
+          else { setValueByPath(rowData, colRelPath, tags); }
+        });
+        // 行内 list（过滤）
+        Array.from(row.querySelectorAll('[data-key] input.list-item')).forEach(input => {
+          const containerDiv = input.closest('[data-key]');
+          if (!containerDiv) return;
+          if (containerDiv.closest('table[data-table]') !== table) return;
+          const cellKey = containerDiv.getAttribute('data-key');
+          const prefix = tableKey + '.';
+          if (!cellKey.startsWith(prefix)) return;
+          const relPath = cellKey.substring(prefix.length);
+          const dotIdx = relPath.indexOf('.');
+          const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
+          const items = Array.from(containerDiv.querySelectorAll('input.list-item')).map(i => i.value.trim()).filter(Boolean);
+          if (dotIdx === -1) { rowData[colRelPath] = items; }
+          else { setValueByPath(rowData, colRelPath, items); }
+        });
+        if (Object.keys(rowData).length > 0) rows.push(rowData);
       });
-      // 行内 list（过滤）
-      Array.from(row.querySelectorAll('[data-key] input.list-item')).forEach(input => {
-        const containerDiv = input.closest('[data-key]');
-        if (!containerDiv) return;
-        if (containerDiv.closest('table[data-table]') !== table) return;
-        const cellKey = containerDiv.getAttribute('data-key');
-        const prefix = tableKey + '.';
-        if (!cellKey.startsWith(prefix)) return;
-        const relPath = cellKey.substring(prefix.length);
-        const dotIdx = relPath.indexOf('.');
-        const colRelPath = dotIdx === -1 ? relPath : relPath.substring(dotIdx + 1);
-        const items = Array.from(containerDiv.querySelectorAll('input.list-item')).map(i => i.value.trim()).filter(Boolean);
-        if (dotIdx === -1) { rowData[colRelPath] = items; }
-        else { setValueByPath(rowData, colRelPath, items); }
-      });
-      if (Object.keys(rowData).length > 0) rows.push(rowData);
-    });
-    // 🔧 记录结果：紧凑化数组消除空槽；有 tbody 则显式设置（含空数组，表示用户清空了表格）
+    }
+    // 🔧 记录结果：紧凑化数组消除空槽
     const compacted = rows.filter(() => true);
-    if (table.querySelector('tbody')) {
+    if (isCard || table.querySelector('tbody')) {
       setValueByPath(result, tableKey, compacted);
     } else if (compacted.length > 0) {
       setValueByPath(result, tableKey, compacted);
@@ -2173,6 +2457,25 @@ function collectFormData() {
   });
 
   return result;
+}
+
+/* ===================== PROFILE COMPLETENESS ===================== */
+function calcCompleteness() {
+  const container = document.getElementById('set-profile');
+  if (!container) return { pct: 0, total: 0, filled: 0 };
+  let total = 0, filled = 0;
+  container.querySelectorAll('[data-key]').forEach(el => {
+    if (el.closest('[data-table]') || el.type === 'checkbox' || el.disabled) return;
+    total++;
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT') {
+      if (el.value && el.value.trim()) filled++;
+    } else if (el.value && el.value.trim()) {
+      filled++;
+    }
+  });
+  container.querySelectorAll('[data-key] .tag-item').forEach(() => { total++; filled++; });
+  total = total || 1;
+  return { pct: Math.round(filled / total * 100), total, filled };
 }
 
 /* ===================== MODAL TEXT EDITOR ===================== */
@@ -2211,7 +2514,8 @@ function addDynamicRow(containerId, inputClass){
   if(!container) return;
   const div = document.createElement('div');
   div.className = 'flex gap-1 mb-1';
-  div.innerHTML = `<input class="${inputClass} w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" value=""><button onclick="this.parentElement.remove()" class="text-red-400 text-xs">&times;</button>`;
+  div.setAttribute('data-list-item', '');
+  div.innerHTML = `<span class="drag-handle cursor-grab text-slate-300 hover:text-slate-500 flex items-center justify-center w-5 shrink-0 select-none" title="拖拽排序"><svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg></span><input class="${inputClass} w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" value=""><button onclick="this.closest('[data-list-item]').remove()" class="text-red-400 text-xs">&times;</button>`;
   container.appendChild(div);
 }
 
@@ -2292,115 +2596,160 @@ function setTab(t){
   $('#set-job').classList.toggle('hidden',t!=='job');
   $('#set-market').classList.toggle('hidden',t!=='market');
   $('#set-schema').classList.toggle('hidden',t!=='schema');
+  const anchorWrap = document.getElementById('anchor-nav-wrap');
+  if (anchorWrap) {
+    const show = t === 'profile' && window.innerWidth >= 1024;
+    anchorWrap.style.display = show ? 'block' : 'none';
+  }
   ['profile','job','market','schema'].forEach(tab => {
     const btn = document.getElementById('set-tab-'+tab);
-    if(btn) btn.className = 'px-4 py-1.5 ' + (t===tab?'bg-indigo-600 text-white':'bg-white text-slate-500');
+    if(btn) btn.className = 'px-4 py-1.5 rounded-md ' + (t===tab?'bg-indigo-600 text-white font-medium shadow-sm':'text-slate-600 hover:bg-slate-100');
   });
   if(t==='schema') renderSchemaEditor();
+  else { window._schemaEditCache = null; window._schemaSelectedGroupIndex = 0; }
+  if (t === 'profile') { setTimeout(initScrollSpy, 300); setTimeout(initCharCounters, 400); setTimeout(initListSortable, 500); }
+  else { disconnectScrollSpy(); }
   refreshIcons();
 }
 
 /* ===================== SCHEMA EDITOR ===================== */
+function updateSchemaCache(path, value) {
+  if (!window._schemaEditCache) return;
+  const groups = window._schemaEditCache.groups;
+  const parts = path.split('.');
+  const gi = parseInt(parts[0]);
+  const group = groups[gi];
+  if (!group) return;
+  if (parts[1] === 'label') { group.label = value; return; }
+  if (parts.length === 2) {
+    const idx = parseInt(parts[1]);
+    if (group.fields && group.fields[idx]) { group.fields[idx].label = value; }
+    else if (group.columns && group.columns[idx]) { group.columns[idx].label = value; }
+  } else if (parts.length === 3) {
+    const a = parseInt(parts[1]), b = parseInt(parts[2]);
+    if (group.fields && group.fields[a] && group.fields[a].fields && group.fields[a].fields[b]) {
+      group.fields[a].fields[b].label = value;
+    } else if (group.columns && group.columns.length > 0 && group.columns[0].columns && group.columns[0].columns[b]) {
+      group.columns[0].columns[b].label = value;
+    }
+  }
+}
+
+function switchSchemaGroup(index) {
+  window._schemaSelectedGroupIndex = index;
+  renderSchemaEditor();
+}
+
 async function renderSchemaEditor(){
   const schemaRes = await apiGet('/api/schema/user_field');
   if(!schemaRes || !schemaRes.groups) {
     $('#set-schema').innerHTML = '<div class=\"text-sm text-slate-400 py-8 text-center\">无法加载 Schema</div>';
     return;
   }
-  let html = '<div class=\"space-y-4\">';
-  html += '<div class=\"flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2 mb-3\"><span class=\"text-xs text-amber-700\">修改显示名称后即时生效。字段标识与类型不可修改。</span></div>';
+  // 首次加载或缓存被清空时初始化
+  if (!window._schemaEditCache) {
+    window._schemaEditCache = JSON.parse(JSON.stringify(schemaRes));
+  }
+  const groups = window._schemaEditCache.groups;
+  let selectedIndex = window._schemaSelectedGroupIndex || 0;
+  if (selectedIndex >= groups.length) selectedIndex = 0;
 
-  schemaRes.groups.forEach((group, gi) => {
-    html += `<div class=\"bg-white border border-slate-200 rounded-xl p-4 mb-3\">
-      <div class=\"flex items-center gap-2 mb-3\">
-        <input value=\"${escapeHtml(group.label || '')}\" data-schema-group-label=\"${gi}\" class=\"text-sm font-semibold text-slate-700 bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 outline-none px-1\" placeholder=\"分组标签\">
-      </div>`;
-
-    if(group.type === 'array' || group.type === 'map') {
-      html += `<div class=\"text-xs text-slate-500 mb-2\">类型：${formatWidget(group.widget || 'table')}</div>`;
-      if(group.columns) {
-        html += '<div class=\"text-xs text-slate-400 mb-1\">列定义：</div>';
-        group.columns.forEach((col, ci) => {
-          html += `<div class=\"flex items-center gap-2 ml-2 mb-1 text-xs\">
-            <input value=\"${escapeHtml(col.label || '')}\" data-schema-col-label=\"${gi}.${ci}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"列标签\">
-            <span class=\"text-slate-400\">${formatWidget(col.widget || 'input')}</span>
-          </div>`;
-        });
-        if(group.columns && group.columns.length > 0 && group.columns[0].columns) {
-          html += '<div class=\"text-xs text-slate-400 mt-1 ml-2\">子表格列：</div>';
-          group.columns[0].columns.forEach((subCol, si) => {
-            html += `<div class=\"flex items-center gap-2 ml-4 mb-1 text-xs\">
-              <input value=\"${escapeHtml(subCol.label || '')}\" data-schema-subcol-label=\"${gi}.${si}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子列表格列标签\">
-            </div>`;
-          });
-        }
-      }
-    } else if(group.fields) {
-      group.fields.forEach((field, fi) => {
-        html += `<div class=\"flex items-center gap-2 ml-2 mb-2 text-xs\">
-          <input value=\"${escapeHtml(field.label || '')}\" data-schema-field-label=\"${gi}.${fi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"字段标签\">
-          <span class=\"text-slate-400\">${formatWidget(field.widget || 'input')}</span>
-        </div>`;
-        if(field.fields) {
-          field.fields.forEach((subField, sfi) => {
-            html += `<div class=\"flex items-center gap-2 ml-6 mb-1 text-xs\">
-              <input value=\"${escapeHtml(subField.label || '')}\" data-schema-subfield-label=\"${gi}.${fi}.${sfi}\" class=\"flex-1 border border-slate-200 rounded px-2 py-1 text-xs\" placeholder=\"子字段标签\">
-            </div>`;
-          });
-        }
-      });
-    }
-    html += '</div>';
+  // 左侧分组列表
+  let navHtml = '';
+  groups.forEach((g, i) => {
+    const isActive = i === selectedIndex;
+    navHtml += `<div class=\"flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors text-xs ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}\" onclick=\"switchSchemaGroup(${i})\">
+      <span class=\"flex-1 truncate\">${escapeHtml(g.label || g.key)}</span>
+      <span class=\"text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-400'}\">${g.fields ? g.fields.length + ' 字段' : (g.columns ? g.columns.length + ' 列' : '')}</span>
+    </div>`;
   });
 
-  html += '<button onclick=\"saveSchema()\" class=\"agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2\"><i data-lucide=\"save\" class=\"w-4 h-4\"></i> 保存字段配置</button>';
-  html += '</div>';
+  // 右侧编辑区
+  const group = groups[selectedIndex];
+  let editHtml = '';
+  if (group) {
+    const desc = group.description || '暂无引导说明。';
+    editHtml += `<div class=\"bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-4\">
+      <div class=\"flex items-start gap-2\">
+        <i data-lucide=\"info\" class=\"w-4 h-4 text-indigo-400 mt-0.5 flex-shrink-0\"></i>
+        <p class=\"text-xs text-indigo-700\">${escapeHtml(desc)}</p>
+      </div>
+    </div>`;
+    editHtml += `<div class=\"mb-4\">
+      <label class=\"text-xs font-medium text-slate-500 mb-1 block\">分组显示名称</label>
+      <input type=\"text\" value=\"${escapeHtml(group.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.label', this.value)\" class=\"w-full max-w-md border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-200 outline-none\">
+    </div>`;
+    const typeLabel = group.type === 'array' ? '数组' : group.type === 'map' ? '映射' : '分组';
+    editHtml += `<div class=\"text-xs text-slate-500 mb-3\">类型：${typeLabel} &nbsp;|&nbsp; 标识：${escapeHtml(group.key)}</div>`;
+
+    if (group.type === 'array' || group.type === 'map') {
+      if (group.columns) {
+        editHtml += '<div class=\"text-xs font-medium text-slate-600 mb-2\">列定义</div><div class=\"space-y-2 ml-2\">';
+        group.columns.forEach((col, ci) => {
+          editHtml += `<div class=\"flex items-center gap-2\">
+            <input type=\"text\" value=\"${escapeHtml(col.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${ci}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+            <span class=\"text-[10px] text-slate-400 w-20 flex-shrink-0\">${formatWidget(col.widget || 'input')}</span>
+          </div>`;
+          if (col.columns) {
+            col.columns.forEach((sub, si) => {
+              editHtml += `<div class=\"flex items-center gap-2 ml-4\">
+                <input type=\"text\" value=\"${escapeHtml(sub.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${si}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+                <span class=\"text-[10px] text-slate-400 w-20 flex-shrink-0\">${sub.widget || '文本'}</span>
+              </div>`;
+            });
+          }
+        });
+        editHtml += '</div>';
+      }
+    } else {
+      if (group.fields) {
+        editHtml += '<div class=\"text-xs font-medium text-slate-600 mb-2\">字段显示名称</div><div class=\"space-y-2 ml-2\">';
+        group.fields.forEach((field, fi) => {
+          editHtml += `<div class=\"flex items-center gap-2\">
+            <span class=\"text-[10px] text-slate-400 w-24 flex-shrink-0 truncate\" title=\"${escapeHtml(field.key)}\">${escapeHtml(field.key)}</span>
+            <input type=\"text\" value=\"${escapeHtml(field.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${fi}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+            <span class=\"text-[10px] text-slate-400 w-16 flex-shrink-0\">${formatWidget(field.widget || 'input')}</span>
+          </div>`;
+          if (field.fields) {
+            field.fields.forEach((sub, sfi) => {
+              editHtml += `<div class=\"flex items-center gap-2 ml-4\">
+                <span class=\"text-[10px] text-slate-400 w-20 flex-shrink-0 truncate\" title=\"${escapeHtml(sub.key)}\">${escapeHtml(sub.key)}</span>
+                <input type=\"text\" value=\"${escapeHtml(sub.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${fi}.${sfi}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+                <span class=\"text-[10px] text-slate-400 w-16 flex-shrink-0\">${sub.widget || 'input'}</span>
+              </div>`;
+            });
+          }
+        });
+        editHtml += '</div>';
+      }
+    }
+    editHtml += `<div class=\"mt-6 pt-4 border-t border-slate-200\">
+      <button onclick=\"saveSchema()\" class=\"agent-trigger px-5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2\"><i data-lucide=\"save\" class=\"w-4 h-4\"></i> 保存配置</button>
+    </div>`;
+  }
+
+  const html = `<div class=\"flex gap-4\">
+    <div class=\"w-60 flex-shrink-0\">
+      <div class=\"text-xs font-semibold text-slate-500 mb-3 px-3\">分组列表</div>
+      <div class=\"space-y-0.5\">${navHtml}</div>
+    </div>
+    <div class=\"flex-1 min-w-0\">
+      <div class=\"bg-white border border-slate-200 rounded-lg p-3.5\">${editHtml}</div>
+    </div>
+  </div>`;
   $('#set-schema').innerHTML = html;
+  window._schemaSelectedGroupIndex = selectedIndex;
+  setTimeout(() => refreshIcons(), 50);
 }
 
-async function saveSchema(){
+async function saveSchema() {
   try {
-    const schemaRes = await apiGet('/api/schema/user_field');
-    if(!schemaRes || !schemaRes.groups) {
-      toast('无法加载当前 Schema', 'err');
-      return;
-    }
-    document.querySelectorAll('[data-schema-group-label]').forEach(input => {
-      const gi = parseInt(input.dataset.schemaGroupLabel);
-      if(schemaRes.groups[gi]) schemaRes.groups[gi].label = input.value.trim() || schemaRes.groups[gi].label;
-    });
-    document.querySelectorAll('[data-schema-field-label]').forEach(input => {
-      const [gi, fi] = input.dataset.schemaFieldLabel.split('.').map(Number);
-      const group = schemaRes.groups[gi];
-      if(group && group.fields && group.fields[fi]) {
-        group.fields[fi].label = input.value.trim() || group.fields[fi].label;
-      }
-    });
-    document.querySelectorAll('[data-schema-col-label]').forEach(input => {
-      const [gi, ci] = input.dataset.schemaColLabel.split('.').map(Number);
-      const group = schemaRes.groups[gi];
-      if(group && group.columns && group.columns[ci]) {
-        group.columns[ci].label = input.value.trim() || group.columns[ci].label;
-      }
-    });
-    document.querySelectorAll('[data-schema-subfield-label]').forEach(input => {
-      const [gi, fi, sfi] = input.dataset.schemaSubfieldLabel.split('.').map(Number);
-      const group = schemaRes.groups[gi];
-      if(group && group.fields && group.fields[fi] && group.fields[fi].fields && group.fields[fi].fields[sfi]) {
-        group.fields[fi].fields[sfi].label = input.value.trim() || group.fields[fi].fields[sfi].label;
-      }
-    });
-    document.querySelectorAll('[data-schema-subcol-label]').forEach(input => {
-      const [gi, si] = input.dataset.schemaSubcolLabel.split('.').map(Number);
-      const group = schemaRes.groups[gi];
-      if(group && group.columns && group.columns.length > 0 && group.columns[0].columns && group.columns[0].columns[si]) {
-        group.columns[0].columns[si].label = input.value.trim() || group.columns[0].columns[si].label;
-      }
-    });
+    if (!window._schemaEditCache) { toast('缓存数据丢失，请重新加载', 'err'); return; }
+    const schemaRes = JSON.parse(JSON.stringify(window._schemaEditCache));
     const res = await api('PUT', '/api/schema/user_field', schemaRes);
     if(res && !res.error){
       toast('Schema 已保存，即时生效', 'ok');
-      // 局部重渲染，避免整页刷新
+      window._schemaEditCache = JSON.parse(JSON.stringify(schemaRes));
       try { await renderSettings(); } catch(e) {}
       try { await renderSchemaEditor(); } catch(e) {}
     } else {
@@ -2477,6 +2826,64 @@ async function doLogin(e){
   t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 fade-in">👋 你好，我是 JobPilot，你的智能求职助手。我可以帮你完成职位搜索、匹配评分、简历生成、市场调研全流程。在下方输入指令或点击「一键找工作」即可开始。</div>`;
   refreshIcons();
 })();
+
+function updateSaveBar() {
+  const badge = document.getElementById('dirty-badge');
+  const saveBtn = document.getElementById('save-bar-btn');
+  if (badge) badge.classList.toggle('hidden', !STATE.dirty);
+  if (saveBtn) {
+    saveBtn.classList.toggle('bg-indigo-600', STATE.dirty);
+    saveBtn.classList.toggle('hover:bg-indigo-700', STATE.dirty);
+    saveBtn.classList.toggle('text-white', STATE.dirty);
+    saveBtn.classList.toggle('bg-slate-200', !STATE.dirty);
+    saveBtn.classList.toggle('text-slate-400', !STATE.dirty);
+    saveBtn.classList.toggle('cursor-not-allowed', !STATE.dirty);
+  }
+}
+
+function validateForm() {
+  const fields = document.querySelectorAll('#set-profile [data-validate]');
+  let allValid = true;
+  fields.forEach(el => {
+    const type = el.getAttribute('data-validate');
+    const val = el.value.trim();
+    let ok = true;
+    if (type === 'email') ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+    else if (type === 'phone') ok = /^[+\d][\d\s\-]{6,}$/.test(val);
+    if (!ok) { allValid = false; el.classList.add('border-rose-400'); }
+    else { el.classList.remove('border-rose-400'); }
+  });
+  return allValid;
+}
+
+function handleSaveBarClick() {
+  if (!STATE.dirty) return;
+  if (STATE.settingsTab === 'profile' && !validateForm()) {
+    toast('请修正红色标记的字段', 'warn'); return;
+  }
+  const tab = STATE.settingsTab;
+  if (tab === 'profile') saveYaml('me');
+  else if (tab === 'job') saveJobConfig();
+  else if (tab === 'market') saveMarketConfig();
+}
+
+document.addEventListener('input', e => {
+  if (e.target.closest('#set-profile, #set-job, #set-market')) {
+    checkDirtyState();
+  }
+});
+document.addEventListener('change', e => {
+  if (e.target.closest('#set-profile, #set-job, #set-market')) {
+    checkDirtyState();
+  }
+});
+
+function checkDirtyState() {
+  if (!STATE._originalData) { STATE.dirty = true; updateSaveBar(); return; }
+  const current = collectFormData();
+  const changed = JSON.stringify(current) !== JSON.stringify(STATE._originalData);
+  if (STATE.dirty !== changed) { STATE.dirty = changed; updateSaveBar(); }
+}
 </script>
 </body>
 </html>

@@ -146,7 +146,7 @@ _LLM_PRESETS = {
 
 
 def _init_llm_client():
-    """从 SQLite search_config 表读取 llm 配置（带回退到 YAML），创建 OpenAI client"""
+    """从 SQLite search_config 表读取 llm 配置，创建 OpenAI client"""
     try:
         cfg, _ = load_search_config_dict()
         llm_cfg = (cfg or {}).get("llm", {})
@@ -287,16 +287,6 @@ def switch_model(provider, model=None):
     except Exception:
         pass  # SQL 更新失败不阻塞，内存 client 已切换
 
-    # 同步更新 yaml（保持兼容）
-    import re
-    filepath = os.path.join(PROFILES_DIR, "search_config.yaml")
-    with open(filepath, "r", encoding="utf-8") as f:
-        text = f.read()
-    text = re.sub(r'(provider:\s*)\S+', rf'\g<1>{provider}', text, count=1)
-    text = re.sub(r'(model:\s*)\S+', rf'\g<1>{model}', text, count=1)
-    with open(filepath, "w", encoding="utf-8") as f:
-        f.write(text)
-
     return {"provider": provider, "model": MODEL_NAME}
 
 
@@ -318,30 +308,20 @@ def get_model_info():
 def get_current_user():
     """
     读取当前活跃的用户名。
-    优先从 SQLite user_profiles 表查询 is_current=1 的记录。
-    数据库读取失败时回退到读 .current_user 文件。
+    从 SQLite user_profiles 表查询 is_current=1 的记录。
     """
     row = _db_fetch_one(
         "SELECT u.username FROM user_profiles p JOIN users u ON p.user_id = u.id WHERE p.is_current = 1"
     )
     if row:
         return row["username"]
-    # 回退：读 .current_user 文件
-    import os
-    user_file = os.path.join(os.path.dirname(__file__), "profiles", ".current_user")
-    if os.path.exists(user_file):
-        with open(user_file, "r", encoding="utf-8") as f:
-            name = f.read().strip()
-            if name:
-                return name
-    raise RuntimeError("无法确定当前用户：数据库无活跃画像，且 .current_user 文件不存在或为空")
+    raise RuntimeError("无法确定当前用户：数据库无活跃画像")
 
 
 def load_profile():
     """
     加载当前活跃用户的画像。
-    优先从 SQLite user_profiles 表读取 is_current=1 的 data 字段（JSON）。
-    数据库读取失败时回退到读 YAML 文件。
+    从 SQLite user_profiles 表读取 is_current=1 的 data 字段（JSON）。
     """
     import json as _json
     row = _db_fetch_one(
@@ -352,27 +332,13 @@ def load_profile():
             return _json.loads(row["data"])
         except _json.JSONDecodeError:
             pass
-    # 回退：读 YAML 文件
-    import os
-    user_name = get_current_user()
-    user_dir = os.path.join(os.path.dirname(__file__), "instances", "users")
-    filepath = os.path.join(user_dir, f"{user_name}.yaml")
-    if not os.path.exists(filepath):
-        raise RuntimeError(
-            f"用户画像文件不存在: {filepath}"
-            f"（profiles/.current_user 内容为 \"{user_name}\"）"
-        )
-    data, err = load_yaml(f"{user_name}.yaml", directory=user_dir)
-    if err:
-        raise RuntimeError(f"加载用户画像失败: {err}")
-    return data
+    raise RuntimeError("无法加载用户画像：数据库无活跃画像数据")
 
 
 def load_search_config_dict():
     """
     加载系统配置。
-    优先从 SQLite search_config 表读取 data 字段（JSON）。
-    数据库读取失败时回退到读 YAML 文件。
+    从 SQLite search_config 表读取 data 字段（JSON）。
     返回 (dict, None) 或 (None, error_msg)，保持与 load_yaml 相同的返回值格式。
     """
     import json as _json
@@ -382,8 +348,7 @@ def load_search_config_dict():
             return _json.loads(row["data"]), None
         except _json.JSONDecodeError:
             pass
-    # 回退：读 YAML 文件
-    return load_yaml("search_config.yaml")
+    return None, "系统配置读取失败：数据库无配置数据"
 
 
 # ── JSON 解析工具 ──
