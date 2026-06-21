@@ -3110,7 +3110,7 @@ function setTab(t){
     if(btn) btn.className = 'px-4 py-1.5 rounded-md ' + (t===tab?'bg-indigo-600 text-white font-medium shadow-sm':'text-slate-600 hover:bg-slate-100');
   });
   if(t==='schema') renderSchemaEditor();
-  else { window._schemaEditCache = null; window._schemaSelectedGroupIndex = 0; }
+  else { window._schemaSelectedGroupIndex = 0; }
   if (t === 'profile') { setTimeout(initCharCounters, 400); setTimeout(initListSortable, 500); }
   else { disconnectScrollSpy(); }
   // 切换 Tab 后：根据当前 Tab 独立恢复 dirty 状态（不丢失其他 Tab 的脏数据）
@@ -3123,7 +3123,11 @@ function setTab(t){
     STATE.dirty = window._marketDirtyPaths ? window._marketDirtyPaths.size > 0 : false;
     if (STATE.dirty) setTimeout(markMarketDirtyFields, 50);
   } else if (t === 'schema') {
-    STATE.dirty = false;
+    if (window._schemaEditCache && window._schemaOriginal) {
+      STATE.dirty = JSON.stringify(window._schemaEditCache) !== JSON.stringify(window._schemaOriginal);
+    } else {
+      STATE.dirty = false;
+    }
   }
   updateSaveBar();
   refreshIcons();
@@ -3137,8 +3141,8 @@ function updateSchemaCache(path, value) {
   const gi = parseInt(parts[0]);
   const group = groups[gi];
   if (!group) return;
-  if (parts[1] === 'label') { group.label = value; return; }
-  if (parts.length === 2) {
+  if (parts[1] === 'label') { group.label = value; }
+  else if (parts.length === 2) {
     const idx = parseInt(parts[1]);
     if (group.fields && group.fields[idx]) { group.fields[idx].label = value; }
     else if (group.columns && group.columns[idx]) { group.columns[idx].label = value; }
@@ -3149,6 +3153,11 @@ function updateSchemaCache(path, value) {
     } else if (group.columns && group.columns.length > 0 && group.columns[0].columns && group.columns[0].columns[b]) {
       group.columns[0].columns[b].label = value;
     }
+  }
+  // 与原始快照比对，更新脏状态
+  if (window._schemaOriginal) {
+    STATE.dirty = JSON.stringify(window._schemaEditCache) !== JSON.stringify(window._schemaOriginal);
+    updateSaveBar();
   }
 }
 
@@ -3166,6 +3175,7 @@ async function renderSchemaEditor(){
   // 首次加载或缓存被清空时初始化
   if (!window._schemaEditCache) {
     window._schemaEditCache = JSON.parse(JSON.stringify(schemaRes));
+    window._schemaOriginal = JSON.parse(JSON.stringify(schemaRes));
   }
   const groups = window._schemaEditCache.groups;
   let selectedIndex = window._schemaSelectedGroupIndex || 0;
@@ -3267,6 +3277,9 @@ async function saveSchema() {
     if(res && !res.error){
       toast('Schema 已保存，即时生效', 'ok');
       window._schemaEditCache = JSON.parse(JSON.stringify(schemaRes));
+      window._schemaOriginal = JSON.parse(JSON.stringify(schemaRes));
+      STATE.dirty = false;
+      updateSaveBar();
       try { await renderSettings(); } catch(e) {}
       try { await renderSchemaEditor(); } catch(e) {}
     } else {
@@ -3351,8 +3364,8 @@ function updateSaveBar() {
   const isSchema = STATE.settingsTab === 'schema';
 
   if (badge) {
-    badge.classList.toggle('hidden', !STATE.dirty || isSchema);
-    if (STATE.dirty && !isSchema) {
+    badge.classList.toggle('hidden', !STATE.dirty);
+    if (STATE.dirty) {
       var count = 0;
       if (isProfile && window._dirtyPaths) count = window._dirtyPaths.size;
       else if (STATE.settingsTab === 'job' && window._jobDirtyPaths) count = window._jobDirtyPaths.size;
@@ -3368,10 +3381,10 @@ function updateSaveBar() {
   const undoAllBtn = document.getElementById('undo-all-btn');
   if (undoAllBtn) undoAllBtn.classList.toggle('hidden', !STATE.dirty || isSchema);
 
-  // 保存按钮：所有 Tab 统一仅在 dirty 时可点击（schema 隐藏）
-  const active = isSchema ? false : STATE.dirty;
+  // 保存按钮：仅在 dirty 时可点击
+  const active = STATE.dirty;
   if (saveBtn) {
-    saveBtn.classList.toggle('hidden', isSchema);
+    saveBtn.classList.toggle('hidden', false);
     saveBtn.classList.toggle('bg-indigo-600', active);
     saveBtn.classList.toggle('hover:bg-indigo-700', active);
     saveBtn.classList.toggle('text-white', active);
