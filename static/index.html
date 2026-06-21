@@ -456,6 +456,8 @@
 <script>
 /* ===================== STATE ===================== */
 const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, userRole:'user', sid:null, settingsTab:'profile', dirty:false };
+window._jobDirty = false;
+window._marketDirty = false;
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
 const DIR_META = {
   payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
@@ -2513,6 +2515,7 @@ async function saveJobConfig(){
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
       toast('已保存找工作配置','ok');
+      window._jobDirty = false;
       STATE.dirty = false; updateSaveBar();
       STATE.sort = newCfg.sort_mode || 'date';
       document.querySelectorAll('.sortbtn').forEach(x=>{
@@ -2550,6 +2553,7 @@ async function saveMarketConfig(){
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
       toast('已保存市场调研配置','ok');
+      window._marketDirty = false;
       STATE.dirty = false; updateSaveBar();
       renderMarketPresets();
     } else {
@@ -2903,17 +2907,17 @@ function setTab(t){
   else { window._schemaEditCache = null; window._schemaSelectedGroupIndex = 0; }
   if (t === 'profile') { setTimeout(initCharCounters, 400); setTimeout(initListSortable, 500); }
   else { disconnectScrollSpy(); }
-  // 切换 Tab 后重置 dirty 状态
-  if (t !== 'profile') {
-    // 离开画像 Tab 时，不清除画像脏数据（切回来时 renderSettings 会重建）
-    // 但需要隐藏画像专用的脏标记 UI
+  // 切换 Tab 后：根据当前 Tab 独立恢复 dirty 状态（不丢失其他 Tab 的脏数据）
+  if (t === 'profile') {
+    STATE.dirty = window._dirtyPaths ? window._dirtyPaths.size > 0 : false;
+  } else if (t === 'job') {
+    STATE.dirty = window._jobDirty || false;
+  } else if (t === 'market') {
+    STATE.dirty = window._marketDirty || false;
+  } else if (t === 'schema') {
     STATE.dirty = false;
-    updateSaveBar();
-  } else if (t === 'profile' && window._dirtyPaths) {
-    // 回到画像 Tab：重新检查是否有未保存的脏字段
-    STATE.dirty = window._dirtyPaths.size > 0;
-    updateSaveBar();
   }
+  updateSaveBar();
   refreshIcons();
 }
 
@@ -3152,8 +3156,8 @@ function updateSaveBar() {
   const undoAllBtn = document.getElementById('undo-all-btn');
   if (undoAllBtn) undoAllBtn.classList.toggle('hidden', !STATE.dirty || !isProfile);
 
-  // 保存按钮：画像 Tab 仅在有脏标记时可点击；其他 Tab 始终可点击（schema 隐藏）
-  const active = isProfile ? STATE.dirty : (!isSchema);
+  // 保存按钮：所有 Tab 统一仅在 dirty 时可点击（schema 隐藏）
+  const active = isSchema ? false : STATE.dirty;
   if (saveBtn) {
     saveBtn.classList.toggle('hidden', isSchema);
     saveBtn.classList.toggle('bg-indigo-600', active);
@@ -3210,8 +3214,11 @@ function checkDirtyState() {
     if (window._dirtyPaths) {
       STATE.dirty = window._dirtyPaths.size > 0;
     }
-  } else if (STATE.settingsTab === 'job' || STATE.settingsTab === 'market') {
-    // 非画像 Tab：任何输入即标记为脏
+  } else if (STATE.settingsTab === 'job') {
+    window._jobDirty = true;
+    STATE.dirty = true;
+  } else if (STATE.settingsTab === 'market') {
+    window._marketDirty = true;
     STATE.dirty = true;
   }
   updateSaveBar();
