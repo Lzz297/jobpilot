@@ -1772,11 +1772,13 @@ function tableField(fieldDef, dataArray) {
       } else if (col.widget === 'list') {
         html += `<td class="pr-2 py-1">${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}</td>`;
       } else if (col.widget === 'textarea') {
-        html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
+        var taPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+        html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${taPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
       } else if (col.widget === 'select') {
         html += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></td>`;
       } else if (col.widget === 'number') {
-        html += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}" value="${cellValue||''}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+        var nPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+        html += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}" value="${cellValue||''}"${nPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       } else if (col.widget === 'subtable') {
         // 子表格：在主单元格内渲染
         const subTableData = Array.isArray(cellValue) ? cellValue : [];
@@ -1785,7 +1787,8 @@ function tableField(fieldDef, dataArray) {
       } else if (col.widget === 'modal_text') {
         html += `<td class="pr-2 py-1">${modalTextField(cellId, col.label, cellValue)}</td>`;
       } else {
-        html += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" value="${escapeHtml(cellValue)}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+        var iPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+        html += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" value="${escapeHtml(cellValue)}"${iPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       }
     });
     html += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
@@ -1809,18 +1812,21 @@ function addTableRow(btn, tableKey, columns) {
     } else if (col.widget === 'list') {
       rowHtml += `<td class="pr-2 py-1">${listField(cellId, [])}</td>`;
     } else if (col.widget === 'textarea') {
-      rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
+      var rPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+      rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${rPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
     } else if (col.widget === 'select') {
       rowHtml += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></td>`;
     } else if (col.widget === 'number') {
-      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+      var arnPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}"${arnPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     } else if (col.widget === 'subtable') {
       const subTableDef = { key: cellId, columns: col.columns || [] };
       rowHtml += `<td class="pr-2 py-1">${tableField(subTableDef, [])}</td>`;
     } else if (col.widget === 'modal_text') {
       rowHtml += `<td class="pr-2 py-1">${modalTextField(cellId, col.label, '')}</td>`;
     } else {
-      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+      var ariPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${ariPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     }
   });
   rowHtml += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
@@ -1870,7 +1876,8 @@ function buildCardHTML(key, rowIdx, columns, row) {
       if (col.widget === 'tags') {
         html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
       } else {
-        html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
+        var gPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+        html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}"${gPh} class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
       }
     }
     html += `</div>`;
@@ -1883,12 +1890,16 @@ function buildCardHTML(key, rowIdx, columns, row) {
     if (col.widget === 'textarea') {
       const ml = col.maxlength || '';
       const mlAttr = ml ? ` maxlength="${ml}" data-max="${ml}"` : '';
+      const phAttr = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+      const hintHtml = col.hint ? `<p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(col.hint)}</p>` : '';
       const ccHtml = ml ? `<span class="char-count text-xs text-slate-400 mt-1 block text-right"></span>` : '';
-      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><textarea data-key="${cellId}" rows="${col.rows || 3}" oninput="updateProfileCache('${cellId}', this.value)"${mlAttr} class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${escapeHtml(cellValue)}</textarea>${ccHtml}</label>`;
+      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><textarea data-key="${cellId}" rows="${col.rows || 3}" oninput="updateProfileCache('${cellId}', this.value)"${mlAttr}${phAttr} class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${escapeHtml(cellValue)}</textarea>${hintHtml}${ccHtml}</label>`;
     } else if (col.widget === 'tags') {
-      html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''} <span class="font-normal text-slate-400">· 回车添加</span></span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
+      var tgHint = col.hint ? `<p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(col.hint)}</p>` : '';
+      html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''} <span class="font-normal text-slate-400">· 回车添加</span></span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}${tgHint}</div>`;
     } else if (col.widget === 'list') {
-      html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
+      var lsHint = col.hint ? `<p class="text-[10px] text-slate-400 mt-0.5">${escapeHtml(col.hint)}</p>` : '';
+      html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}${lsHint}</div>`;
     } else if (col.widget === 'subtable') {
       const subTableData = Array.isArray(cellValue) ? cellValue : [];
       const subTableDef = { key: cellId, columns: col.columns || [] };
@@ -1899,7 +1910,8 @@ function buildCardHTML(key, rowIdx, columns, row) {
     } else if (col.widget === 'modal_text') {
       html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${modalTextField(cellId, col.label, cellValue)}</div>`;
     } else {
-      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
+      var inPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
+      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}"${inPh} class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
     }
   }
   html += `</div></div>`;
