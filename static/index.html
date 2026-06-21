@@ -460,6 +460,7 @@ window._jobDirtyPaths = new Set();
 window._marketDirtyPaths = new Set();
 window._jobOriginalData = null;
 window._marketOriginalData = null;
+window._schemaDirtyPaths = new Set();
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
 const DIR_META = {
   payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
@@ -2377,6 +2378,18 @@ function markMarketDirtyFields() {
   });
 }
 
+function markSchemaDirtyFields() {
+  if (!window._schemaDirtyPaths || window._schemaDirtyPaths.size === 0) return;
+  window._schemaDirtyPaths.forEach(function(path) {
+    var el = document.querySelector('[data-key="' + path + '"]');
+    if (!el) return;
+    var wrapper = getDirtyWrapper(el);
+    if (wrapper && !wrapper.classList.contains('dirty-field')) {
+      addDirtyMark(wrapper, path);
+    }
+  });
+}
+
 function markMarketDirtyFieldUI(containerId) {
   var container = document.getElementById(containerId);
   if (!container || !window._marketDirtyPaths) return;
@@ -2453,6 +2466,19 @@ function undoField(dataKey, event) {
     return;
   }
 
+  // ── schema Tab：从 _schemaOriginal 恢复 ──
+  if (STATE.settingsTab === 'schema' && window._schemaOriginal && window._schemaDirtyPaths) {
+    var origVal = getValueByPath(window._schemaOriginal, 'groups.' + dataKey);
+    setValueByPath(window._schemaEditCache, 'groups.' + dataKey, origVal);
+    var el3 = document.querySelector('[data-key="' + dataKey + '"]');
+    if (el3) el3.value = origVal !== undefined ? origVal : '';
+    window._schemaDirtyPaths.delete(dataKey);
+    if (el3) { var w3 = el3.closest('.dirty-field'); if (w3) removeDirtyMark(w3); }
+    STATE.dirty = window._schemaDirtyPaths.size > 0;
+    updateSaveBar();
+    return;
+  }
+
   // ── profile Tab：原有逻辑 ──
   if (!window._profileDataCache || !window._dirtyPaths) return;
   var cachePath = flattenDataKey(dataKey);
@@ -2519,6 +2545,15 @@ function undoAll() {
   if (STATE.settingsTab === 'market' && window._marketDirtyPaths && window._marketDirtyPaths.size > 0) {
     var mpaths = Array.from(window._marketDirtyPaths);
     mpaths.forEach(function(path) { undoField(path, null); });
+    return;
+  }
+  // ── schema Tab ──
+  if (STATE.settingsTab === 'schema' && window._schemaDirtyPaths && window._schemaDirtyPaths.size > 0) {
+    window._schemaEditCache = JSON.parse(JSON.stringify(window._schemaOriginal));
+    window._schemaDirtyPaths = new Set();
+    STATE.dirty = false;
+    updateSaveBar();
+    renderSchemaEditor();
     return;
   }
   // ── profile Tab ──
@@ -3123,11 +3158,8 @@ function setTab(t){
     STATE.dirty = window._marketDirtyPaths ? window._marketDirtyPaths.size > 0 : false;
     if (STATE.dirty) setTimeout(markMarketDirtyFields, 50);
   } else if (t === 'schema') {
-    if (window._schemaEditCache && window._schemaOriginal) {
-      STATE.dirty = JSON.stringify(window._schemaEditCache) !== JSON.stringify(window._schemaOriginal);
-    } else {
-      STATE.dirty = false;
-    }
+    STATE.dirty = window._schemaDirtyPaths ? window._schemaDirtyPaths.size > 0 : false;
+    if (STATE.dirty) setTimeout(markSchemaDirtyFields, 50);
   }
   updateSaveBar();
   refreshIcons();
@@ -3154,9 +3186,29 @@ function updateSchemaCache(path, value) {
       group.columns[0].columns[b].label = value;
     }
   }
-  // 与原始快照比对，更新脏状态
-  if (window._schemaOriginal) {
-    STATE.dirty = JSON.stringify(window._schemaEditCache) !== JSON.stringify(window._schemaOriginal);
+  // 字段级追踪：与原始值逐字段比对
+  if (window._schemaOriginal && window._schemaDirtyPaths) {
+    var fullPath = 'groups.' + path;
+    var origVal = getValueByPath(window._schemaOriginal, fullPath);
+    var curVal = getValueByPath(window._schemaEditCache, fullPath);
+    if (JSON.stringify(curVal) !== JSON.stringify(origVal)) {
+      window._schemaDirtyPaths.add(path);
+    } else {
+      window._schemaDirtyPaths.delete(path);
+    }
+    STATE.dirty = window._schemaDirtyPaths.size > 0;
+    // UI 标记（竖线 + 撤销按钮）
+    var el = document.querySelector('[data-key="' + path + '"]');
+    if (el) {
+      var wrapper = getDirtyWrapper(el);
+      if (wrapper) {
+        if (window._schemaDirtyPaths.has(path)) {
+          addDirtyMark(wrapper, path);
+        } else {
+          removeDirtyMark(wrapper);
+        }
+      }
+    }
     updateSaveBar();
   }
 }
@@ -3176,6 +3228,7 @@ async function renderSchemaEditor(){
   if (!window._schemaEditCache) {
     window._schemaEditCache = JSON.parse(JSON.stringify(schemaRes));
     window._schemaOriginal = JSON.parse(JSON.stringify(schemaRes));
+    window._schemaDirtyPaths = new Set();
   }
   const groups = window._schemaEditCache.groups;
   let selectedIndex = window._schemaSelectedGroupIndex || 0;
@@ -3204,7 +3257,7 @@ async function renderSchemaEditor(){
     </div>`;
     editHtml += `<div class=\"mb-4\">
       <label class=\"text-xs font-medium text-slate-500 mb-1 block\">分组显示名称</label>
-      <input type=\"text\" value=\"${escapeHtml(group.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.label', this.value)\" class=\"w-full max-w-md border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-200 outline-none\">
+      <input type=\"text\" value=\"${escapeHtml(group.label || '')}\" data-key=\"${selectedIndex}.label\" oninput=\"updateSchemaCache('${selectedIndex}.label', this.value)\" class=\"w-full max-w-md border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-200 outline-none\">
     </div>`;
     const typeLabel = group.type === 'array' ? '数组' : group.type === 'map' ? '映射' : '分组';
     editHtml += `<div class=\"text-xs text-slate-500 mb-3\">类型：${typeLabel} &nbsp;|&nbsp; 标识：${escapeHtml(group.key)}</div>`;
@@ -3214,13 +3267,13 @@ async function renderSchemaEditor(){
         editHtml += '<div class=\"text-xs font-medium text-slate-600 mb-2\">列定义</div><div class=\"space-y-2 ml-2\">';
         group.columns.forEach((col, ci) => {
           editHtml += `<div class=\"flex items-center gap-2\">
-            <input type=\"text\" value=\"${escapeHtml(col.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${ci}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+            <input type=\"text\" value=\"${escapeHtml(col.label || '')}\" data-key=\"${selectedIndex}.${ci}\" oninput=\"updateSchemaCache('${selectedIndex}.${ci}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
             <span class=\"text-[10px] text-slate-400 w-20 flex-shrink-0\">${formatWidget(col.widget || 'input')}</span>
           </div>`;
           if (col.columns) {
             col.columns.forEach((sub, si) => {
               editHtml += `<div class=\"flex items-center gap-2 ml-4\">
-                <input type=\"text\" value=\"${escapeHtml(sub.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${si}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+                <input type=\"text\" value=\"${escapeHtml(sub.label || '')}\" data-key=\"${selectedIndex}.${si}\" oninput=\"updateSchemaCache('${selectedIndex}.${si}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
                 <span class=\"text-[10px] text-slate-400 w-20 flex-shrink-0\">${sub.widget || '文本'}</span>
               </div>`;
             });
@@ -3234,14 +3287,14 @@ async function renderSchemaEditor(){
         group.fields.forEach((field, fi) => {
           editHtml += `<div class=\"flex items-center gap-2\">
             <span class=\"text-[10px] text-slate-400 w-24 flex-shrink-0 truncate\" title=\"${escapeHtml(field.key)}\">${escapeHtml(field.key)}</span>
-            <input type=\"text\" value=\"${escapeHtml(field.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${fi}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+            <input type=\"text\" value=\"${escapeHtml(field.label || '')}\" data-key=\"${selectedIndex}.${fi}\" oninput=\"updateSchemaCache('${selectedIndex}.${fi}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
             <span class=\"text-[10px] text-slate-400 w-16 flex-shrink-0\">${formatWidget(field.widget || 'input')}</span>
           </div>`;
           if (field.fields) {
             field.fields.forEach((sub, sfi) => {
               editHtml += `<div class=\"flex items-center gap-2 ml-4\">
                 <span class=\"text-[10px] text-slate-400 w-20 flex-shrink-0 truncate\" title=\"${escapeHtml(sub.key)}\">${escapeHtml(sub.key)}</span>
-                <input type=\"text\" value=\"${escapeHtml(sub.label || '')}\" oninput=\"updateSchemaCache('${selectedIndex}.${fi}.${sfi}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
+                <input type=\"text\" value=\"${escapeHtml(sub.label || '')}\" data-key=\"${selectedIndex}.${fi}.${sfi}\" oninput=\"updateSchemaCache('${selectedIndex}.${fi}.${sfi}', this.value)\" class=\"flex-1 max-w-sm border border-slate-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-indigo-200 outline-none\">
                 <span class=\"text-[10px] text-slate-400 w-16 flex-shrink-0\">${sub.widget || 'input'}</span>
               </div>`;
             });
@@ -3278,6 +3331,7 @@ async function saveSchema() {
       toast('Schema 已保存，即时生效', 'ok');
       window._schemaEditCache = JSON.parse(JSON.stringify(schemaRes));
       window._schemaOriginal = JSON.parse(JSON.stringify(schemaRes));
+      window._schemaDirtyPaths = new Set();
       STATE.dirty = false;
       updateSaveBar();
       try { await renderSettings(); } catch(e) {}
@@ -3370,6 +3424,7 @@ function updateSaveBar() {
       if (isProfile && window._dirtyPaths) count = window._dirtyPaths.size;
       else if (STATE.settingsTab === 'job' && window._jobDirtyPaths) count = window._jobDirtyPaths.size;
       else if (STATE.settingsTab === 'market' && window._marketDirtyPaths) count = window._marketDirtyPaths.size;
+      else if (isSchema && window._schemaDirtyPaths) count = window._schemaDirtyPaths.size;
       if (count > 0) {
         badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>已修改 ' + count + ' 个字段';
       } else {
@@ -3379,7 +3434,7 @@ function updateSaveBar() {
   }
 
   const undoAllBtn = document.getElementById('undo-all-btn');
-  if (undoAllBtn) undoAllBtn.classList.toggle('hidden', !STATE.dirty || isSchema);
+  if (undoAllBtn) undoAllBtn.classList.toggle('hidden', !STATE.dirty);
 
   // 保存按钮：仅在 dirty 时可点击
   const active = STATE.dirty;
