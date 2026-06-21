@@ -2105,14 +2105,6 @@ function renderWidget(fieldDef, value) {
 function renderSchemaForm(schema, data) {
   let html = '';
   (schema.groups || []).forEach(group => {
-    // core_modules 数据源特殊处理：从 work_experience[0].core_modules 取值
-    if (group.key === 'core_modules') {
-      const we = data && data.work_experience ? data.work_experience : [];
-      const groupData = (we.length > 0 && we[0].core_modules) ? we[0].core_modules : {};
-      html += card(group.label, renderWidget(group, groupData), group.key);
-      return;
-    }
-
     // profile_summary 数据源特殊处理：从顶层字段 strategic_positioning 和 summary 取值
     if (group.key === 'profile_summary') {
       const spData = data && data.strategic_positioning ? data.strategic_positioning : '';
@@ -2134,6 +2126,22 @@ function renderSchemaForm(schema, data) {
     if (group.type === 'array' || group.type === 'map') {
       const groupData = data ? (data[group.key] || (group.type === 'map' ? {} : [])) : (group.type === 'map' ? {} : []);
       html += card(group.label, renderWidget(group, groupData), group.key);
+      // work_experience 下方内联核心模块面板
+      if (group.key === 'work_experience') {
+        const cmGroup = schema.groups.find(g => g.key === 'core_modules');
+        if (cmGroup) {
+          const we = data && data.work_experience ? data.work_experience : [];
+          const cmData = (we.length > 0 && we[0].core_modules) ? we[0].core_modules : {};
+          const cmWithPath = Object.assign({}, cmGroup, { key: 'work_experience.0.core_modules' });
+          html += '<details class="mt-2 border border-slate-200 rounded-lg bg-white" open>'
+            + '<summary class="cursor-pointer px-3.5 py-3 text-sm font-semibold text-slate-700 select-none hover:bg-slate-50 rounded-lg">'
+            + escapeHtml(cmGroup.label) + ' <span class="text-xs text-slate-400 font-normal ml-1">— 当前展示最近一段工作经历</span>'
+            + '<i data-lucide="chevron-down" class="w-4 h-4 inline-block ml-2 det-caret"></i>'
+            + '</summary>'
+            + '<div class="px-3.5 pb-3.5">' + renderWidget(cmWithPath, cmData) + '</div>'
+            + '</details>';
+        }
+      }
     } else {
       // fields 分组：从 data[group.key] 获取本分组的数据源（如 job_intent → data.job_intent）
       const groupData = (group.key && data && data[group.key]) ? data[group.key] : data;
@@ -2783,6 +2791,7 @@ async function saveYaml(name){
       if (window._profileDataCache) {
         delete window._profileDataCache.basic_info;
         delete window._profileDataCache.profile_summary;
+        delete window._profileDataCache.core_modules;  // 防止旧 bug 造成的顶层残留
       }
 
       const res = await api('PUT', '/api/config/yaml/me', {content: window._profileDataCache});
