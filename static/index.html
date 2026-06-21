@@ -3535,6 +3535,8 @@ function updateUserDisplay(){
       + '</div>'
       + '<button onclick="doLogout()" class="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] border border-slate-200 hover:border-red-200 hover:text-red-500 text-slate-400 rounded-lg py-1.5 transition-colors"><i data-lucide="log-out" class="w-3.5 h-3.5"></i> 退出登录</button>';
     refreshIcons();
+  } else {
+    infoEl.innerHTML = '';
   }
 }
 
