@@ -2377,6 +2377,21 @@ function markMarketDirtyFields() {
   });
 }
 
+function markMarketDirtyFieldUI(containerId) {
+  var container = document.getElementById(containerId);
+  if (!container || !window._marketDirtyPaths) return;
+  var card = container.closest('.bg-white.border.border-slate-200');
+  if (!card) return;
+  if (window._marketDirtyPaths.has(containerId)) {
+    addDirtyMark(card, containerId);
+  } else {
+    // cfg-cats / cfg-cls 共享同一张卡片，只有两者都干净才移除标记
+    if (!window._marketDirtyPaths.has('cfg-cats') && !window._marketDirtyPaths.has('cfg-cls')) {
+      removeDirtyMark(card);
+    }
+  }
+}
+
 function getOriginalValue(dataKey) {
   var cachePath = flattenDataKey(dataKey);
   return getValueByPath(STATE._originalData, cachePath);
@@ -3423,6 +3438,9 @@ function checkDirtyState() {
       if (curCls !== window._marketOriginalData['cfg-cls']) window._marketDirtyPaths.add('cfg-cls');
       else window._marketDirtyPaths.delete('cfg-cls');
       STATE.dirty = window._marketDirtyPaths.size > 0;
+      // 动态列表没有 oninput，需在此补 UI 标记
+      markMarketDirtyFieldUI('cfg-cats');
+      markMarketDirtyFieldUI('cfg-cls');
     }
   }
   updateSaveBar();
