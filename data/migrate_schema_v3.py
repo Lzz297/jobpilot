@@ -124,6 +124,25 @@ for row in profiles:
                   (json.dumps(profile, ensure_ascii=False), row['id']))
         migrated += 1
 
+# ============================================================
+# PART 3: v3.1 — revert tags to textarea
+# ============================================================
+job = [g for g in new_groups if g['key'] == 'job_intent'][0]
+for f in job['fields']:
+    if f['key'] == 'target_titles':
+        f['widget'] = 'textarea'; f['rows'] = 3
+        f['placeholder'] = '每行一个职位，如：\n后端开发工程师\n数据分析师'
+    elif f['key'] == 'target_industries':
+        f['widget'] = 'textarea'; f['rows'] = 3
+        f['placeholder'] = '每行一个行业，如：\n金融\n互联网'
+    elif f['key'] == 'location_preference':
+        f['widget'] = 'textarea'; f['rows'] = 1
+        f['placeholder'] = '每行一个城市，如：\nHong Kong'
+
+c.execute("UPDATE field_schemas SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE name = 'user_field'",
+          (json.dumps(schema, ensure_ascii=False),))
+
 conn.commit()
 conn.close()
 print(f"\nData migration complete. {migrated} profile(s) updated.")
+print("v3.1: job_intent tags → textarea (target_titles, target_industries, location_preference)")
