@@ -44,6 +44,12 @@
   .undo-btn{opacity:0;position:absolute;right:0;top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 6px;font-size:11px;color:#64748b;cursor:pointer;transition:opacity .15s;white-space:nowrap;z-index:1}
   td .undo-btn{right:2px;top:2px}
   .undo-btn:hover{background:#fef3c7;border-color:#f59e0b;color:#b45309}
+  #view-login{background:#fff}
+  .login-left{background:linear-gradient(135deg,#4338ca,#1e3a5f)}
+  .login-blob{position:absolute;border-radius:50%;filter:blur(80px);opacity:.15}
+  .login-input-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none}
+  .login-pw-toggle{position:absolute;right:4px;top:50%;transform:translateY(-50%);padding:6px 8px;color:#94a3b8;cursor:pointer;border-radius:6px;transition:color .15s}
+  .login-pw-toggle:hover{color:#475569}
 </style>
 </head>
 <body class="bg-slate-100 text-slate-800">
@@ -125,6 +131,7 @@
       <div id="status-pill" class="flex items-center gap-2 text-xs px-2 py-1.5 rounded-lg bg-emerald-50 text-emerald-700">
         <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
         <span id="status-text">Agent 空闲</span></div>
+      <div id="login-user-info" class="border-t border-slate-100 pt-3 mt-3"></div>
     </div>
   </aside>
 
@@ -138,31 +145,84 @@
     <div class="flex-1 overflow-hidden relative">
 
       <!-- ===== LOGIN ===== -->
-      <section id="view-login" class="view h-full overflow-y-auto">
-        <div class="min-h-full flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-          <div class="max-w-md w-full space-y-8">
-            <div>
-              <div class="w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center mx-auto">
-                <i data-lucide="compass" class="w-9 h-9 text-white"></i></div>
-              <h2 class="mt-6 text-center text-3xl font-extrabold text-slate-900">JobPilot</h2>
-              <p class="mt-2 text-center text-sm text-slate-600">请登录以继续</p>
+      <section id="view-login" class="view h-full">
+        <div class="flex min-h-screen">
+          <!-- ===== 左侧 Branding ===== -->
+          <div class="hidden lg:flex lg:w-1/2 login-left relative overflow-hidden items-center justify-center">
+            <div class="login-blob" style="width:500px;height:500px;top:-200px;right:-200px;background:#818cf8"></div>
+            <div class="login-blob" style="width:400px;height:400px;bottom:-150px;left:-150px;background:#6366f1"></div>
+            <div class="relative z-10 px-16 max-w-lg">
+              <div class="flex items-center gap-3 mb-10">
+                <div class="w-11 h-11 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
+                  <i data-lucide="compass" class="w-6 h-6 text-white"></i></div>
+                <span class="text-2xl font-bold text-white tracking-tight">JobPilot</span>
+              </div>
+              <h1 class="text-4xl font-bold text-white leading-tight mb-5">AI 驱动的<br>智能求职助手</h1>
+              <p class="text-lg text-indigo-200 leading-relaxed">搜索职位 · 智能匹配 · 生成简历 · 市场调研，一站式完成求职全流程。</p>
+              <div class="mt-12 grid grid-cols-3 gap-6">
+                <div><div class="text-3xl font-bold text-white">一站式</div><div class="text-indigo-200/70 text-sm mt-1">搜索→匹配→简历</div></div>
+                <div><div class="text-3xl font-bold text-white">3 模型</div><div class="text-indigo-200/70 text-sm mt-1">DeepSeek·Qwen·GLM</div></div>
+                <div><div class="text-3xl font-bold text-white">实时</div><div class="text-indigo-200/70 text-sm mt-1">SSE 流式反馈</div></div>
+              </div>
             </div>
-            <form id="login-form" class="mt-8 space-y-6" onsubmit="doLogin(event)">
-              <div class="rounded-md shadow-sm -space-y-px">
-                <div>
-                  <label for="login-username" class="sr-only">用户名</label>
-                  <input id="login-username" type="text" required autocomplete="username" class="appearance-none rounded-none relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" placeholder="用户名">
-                </div>
-                <div>
-                  <label for="login-password" class="sr-only">密码</label>
-                  <input id="login-password" type="password" required autocomplete="current-password" class="appearance-none rounded-none relative block w-full px-3 py-2 border border-slate-300 placeholder-slate-500 text-slate-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" placeholder="密码">
-                </div>
+          </div>
+
+          <!-- ===== 右侧 登录表单 ===== -->
+          <div class="flex w-full lg:w-1/2 items-center justify-center bg-white px-6 py-12 lg:px-8">
+            <div class="w-full max-w-sm">
+              <div class="lg:hidden mb-10 text-center">
+                <div class="w-14 h-14 rounded-2xl bg-indigo-600 flex items-center justify-center mx-auto">
+                  <i data-lucide="compass" class="w-8 h-8 text-white"></i></div>
+                <h2 class="mt-4 text-2xl font-bold text-slate-900">JobPilot</h2>
+                <p class="mt-1 text-sm text-slate-500">智能求职助手</p>
               </div>
-              <div>
-                <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">登录</button>
+
+              <div class="mb-8 hidden lg:block">
+                <h2 class="text-2xl font-bold text-slate-900">欢迎回来</h2>
+                <p class="mt-1.5 text-sm text-slate-500">请输入账号信息以继续</p>
               </div>
-            </form>
-            <p id="login-error" class="text-sm text-red-500 text-center hidden"></p>
+
+              <form id="login-form" class="space-y-5" onsubmit="doLogin(event)" autocomplete="on">
+                <div>
+                  <label for="login-username" class="block text-xs font-medium text-slate-600 mb-1.5">用户名</label>
+                  <div style="position:relative">
+                    <span class="login-input-icon"><i data-lucide="user" class="w-4 h-4"></i></span>
+                    <input id="login-username" name="username" type="text" required autocomplete="username"
+                      class="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
+                      placeholder="输入用户名">
+                  </div>
+                </div>
+
+                <div>
+                  <label for="login-password" class="block text-xs font-medium text-slate-600 mb-1.5">密码</label>
+                  <div style="position:relative">
+                    <span class="login-input-icon"><i data-lucide="lock" class="w-4 h-4"></i></span>
+                    <input id="login-password" name="password" type="password" required autocomplete="current-password"
+                      class="block w-full rounded-lg border border-slate-300 py-2.5 pl-10 pr-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
+                      placeholder="输入密码">
+                    <span class="login-pw-toggle" onclick="togglePassword()" title="显示/隐藏密码" tabindex="0" role="button">
+                      <i data-lucide="eye" class="w-4 h-4" id="pw-toggle-icon"></i></span>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <label class="flex items-center gap-2 cursor-pointer select-none">
+                    <input id="login-remember" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                    <span class="text-sm text-slate-600">记住用户名</span>
+                  </label>
+                </div>
+
+                <button type="submit" id="login-btn"
+                  class="flex w-full items-center justify-center rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed">
+                  登录
+                </button>
+              </form>
+
+              <div id="login-error" class="mt-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 hidden flex items-start gap-2">
+                <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+                <span id="login-error-text"></span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -3378,27 +3438,103 @@ async function saveSchema() {
 
 
 /* ===================== LOGIN ===================== */
+
+function togglePassword(){
+  var pw = document.getElementById('login-password');
+  var icon = document.getElementById('pw-toggle-icon');
+  if(pw.type==='password'){ pw.type='text'; icon.setAttribute('data-lucide','eye-off'); }
+  else { pw.type='password'; icon.setAttribute('data-lucide','eye'); }
+  refreshIcons();
+}
+
 async function doLogin(e){
   e.preventDefault();
-  const username = document.getElementById('login-username').value.trim();
-  const password = document.getElementById('login-password').value;
-  const errorEl = document.getElementById('login-error');
+  var btn = document.getElementById('login-btn');
+  var errorEl = document.getElementById('login-error');
+  var errorText = document.getElementById('login-error-text');
+  var username = document.getElementById('login-username').value.trim();
+  var password = document.getElementById('login-password').value;
+  var remember = document.getElementById('login-remember').checked;
+
   if(!username || !password){
-    errorEl.textContent = '请输入用户名和密码';
+    errorText.textContent = '请输入用户名和密码';
     errorEl.classList.remove('hidden');
     return;
   }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin mr-2 inline-block"><i data-lucide="loader-2" class="w-4 h-4"></i></span>登录中...';
+  refreshIcons();
+  errorEl.classList.add('hidden');
+
   try {
-    const res = await apiPost('/api/auth/login', {username, password});
+    var res = await apiPost('/api/auth/login', {username:username, password:password});
     if(res && res.status === 'ok'){
-      location.reload();
+      // 记住用户名
+      if(remember){ try{ localStorage.setItem('jobpilot_remember_username', username); } catch(e){} }
+      else { try{ localStorage.removeItem('jobpilot_remember_username'); } catch(e){} }
+
+      STATE.user = res.username;
+      STATE.userRole = res.role;
+      updateUserDisplay();
+      document.getElementById('view-login').classList.add('hidden');
+      document.getElementById('sidebar').classList.remove('hidden');
+      document.getElementById('sidebar').classList.add('flex');
+      await initSession();
+      await loadModelConfig();
+      await loadUserList();
+      await loadCampaignList();
+      document.getElementById('status-text').textContent = 'Agent 空闲';
+      renderSuggests();
+      renderMarketPresets();
+      renderResume();
+      renderSettings();
+      switchView('workspace');
+      refreshIcons();
     } else {
-      errorEl.textContent = res?.error || '登录失败';
+      errorText.textContent = res?.error || '登录失败，请检查用户名和密码';
       errorEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = '登录';
     }
   } catch(e){
-    errorEl.textContent = '网络错误，请检查后端是否运行';
+    errorText.textContent = '网络错误，请检查后端是否运行';
     errorEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = '登录';
+  }
+}
+
+async function doLogout(){
+  if(!confirm('确定要退出登录吗？')) return;
+  try {
+    await apiPost('/api/auth/logout', {});
+  } catch(e){}
+  STATE.user = null;
+  STATE.userRole = 'user';
+  updateUserDisplay();
+  document.querySelectorAll('.view').forEach(function(el){ el.classList.add('hidden'); });
+  document.getElementById('sidebar').classList.add('hidden');
+  document.getElementById('sidebar').classList.remove('flex');
+  document.getElementById('view-login').classList.remove('hidden');
+  try { window._profileDataCache = null; window._dirtyPaths = new Set(); STATE.dirty = false; } catch(e){}
+}
+
+function updateUserDisplay(){
+  var infoEl = document.getElementById('login-user-info');
+  if(!infoEl) return;
+  if(STATE.user){
+    var initial = STATE.user.charAt(0).toUpperCase();
+    var roleBadge = STATE.userRole === 'admin'
+      ? '<span class="ml-auto text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">管理员</span>'
+      : '';
+    infoEl.innerHTML = '<div class="flex items-center gap-2.5">'
+      + '<div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-sm font-bold text-indigo-600">' + initial + '</div>'
+      + '<div class="flex-1 min-w-0"><div class="text-sm font-medium text-slate-700 truncate">' + escapeHtml(STATE.user) + '</div><div class="text-[11px] text-slate-400">已登录</div></div>'
+      + roleBadge
+      + '</div>'
+      + '<button onclick="doLogout()" class="mt-2 w-full flex items-center justify-center gap-1.5 text-[11px] border border-slate-200 hover:border-red-200 hover:text-red-500 text-slate-400 rounded-lg py-1.5 transition-colors"><i data-lucide="log-out" class="w-3.5 h-3.5"></i> 退出登录</button>';
+    refreshIcons();
   }
 }
 
@@ -3408,13 +3544,23 @@ async function doLogin(e){
   try {
     const statusRes = await apiGet('/api/auth/status');
     if(!statusRes || !statusRes.username){
+      document.getElementById('sidebar').classList.add('hidden');
+      document.getElementById('sidebar').classList.remove('flex');
       document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
       document.getElementById('view-login').classList.remove('hidden');
+      // 恢复记住的用户名
+      try {
+        var saved = localStorage.getItem('jobpilot_remember_username');
+        if(saved){ document.getElementById('login-username').value = saved; document.getElementById('login-remember').checked = true; }
+      } catch(e){}
       return;
     }
     STATE.user = statusRes.username;
     STATE.userRole = statusRes.role;
+    updateUserDisplay();
   } catch(e){
+    document.getElementById('sidebar').classList.add('hidden');
+    document.getElementById('sidebar').classList.remove('flex');
     document.querySelectorAll('.view').forEach(el => el.classList.add('hidden'));
     document.getElementById('view-login').classList.remove('hidden');
     return;
