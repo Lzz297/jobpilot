@@ -2396,6 +2396,7 @@ function undoAll() {
 }
 
 function updateProfileCache(path, value) {
+  if (STATE.settingsTab !== 'profile') return;  // 非画像 Tab 不写 profile 缓存
   if (!window._profileDataCache || !STATE._originalData) return;
   // 保存原始 data-key 用于 DOM 查找（在剥离前缀前）
   var rawDataKey = path;
