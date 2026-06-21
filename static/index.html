@@ -3516,6 +3516,8 @@ async function doLogout(){
   document.getElementById('sidebar').classList.add('hidden');
   document.getElementById('sidebar').classList.remove('flex');
   document.getElementById('view-login').classList.remove('hidden');
+  var loginBtn = document.getElementById('login-btn');
+  if(loginBtn){ loginBtn.disabled = false; loginBtn.textContent = '登录'; }
   try { window._profileDataCache = null; window._dirtyPaths = new Set(); STATE.dirty = false; } catch(e){}
 }
 
