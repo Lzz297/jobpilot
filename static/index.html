@@ -456,8 +456,10 @@
 <script>
 /* ===================== STATE ===================== */
 const STATE = { view:'workspace', busy:false, model:'glm', sort:'date', campaign:null, user:null, userRole:'user', sid:null, settingsTab:'profile', dirty:false };
-window._jobDirty = false;
-window._marketDirty = false;
+window._jobDirtyPaths = new Set();
+window._marketDirtyPaths = new Set();
+window._jobOriginalData = null;
+window._marketOriginalData = null;
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
 const DIR_META = {
   payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
@@ -2192,6 +2194,15 @@ async function renderSettings(){
         ${field('JD 抓取上限','job-max-results',searchCfg.max_total_results||200,'number','','1')}
         ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','发给 LLM 前截断','1')}
       </div>`)}`;
+      // ── 捕获 job 表单字段初始值（用于 dirty 比对 & 撤销）──
+      window._jobOriginalData = {
+        'c-sort': ($('#c-sort')?.value || '').trim(),
+        'c-exclude': ($('#c-exclude')?.value || ''),
+        'job-max-pages': ($('#job-max-pages')?.value || ''),
+        'job-max-results': ($('#job-max-results')?.value || ''),
+        'job-jd-chars': ($('#job-jd-chars')?.value || ''),
+      };
+      window._jobDirtyPaths = new Set();
 
     // ── 市场调研配置面板 ──
     let catsHtml = `<div id="cfg-cats">`;
@@ -2215,6 +2226,16 @@ async function renderSettings(){
         ${field('LLM 每批','c-mbatch',marketCfg.batch_size||5,'number')}
         ${field('JD 截断字数','c-mchars',marketCfg.jd_max_chars||6000,'number')}
       </div>`)}`;
+      // ── 捕获 market 表单字段初始值 ──
+      window._marketOriginalData = {
+        'c-mpages': ($('#c-mpages')?.value || ''),
+        'c-mjd': ($('#c-mjd')?.value || ''),
+        'c-mbatch': ($('#c-mbatch')?.value || ''),
+        'c-mchars': ($('#c-mchars')?.value || ''),
+        'cfg-cats': JSON.stringify([...document.querySelectorAll('#cfg-cats .cat-in')].map(i => i.value.trim()).filter(Boolean)),
+        'cfg-cls': JSON.stringify([...document.querySelectorAll('#cfg-cls .cls-in')].map(i => i.value.trim()).filter(Boolean)),
+      };
+      window._marketDirtyPaths = new Set();
   } else {
     $('#set-job').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
     $('#set-market').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
@@ -2395,8 +2416,38 @@ function undoAll() {
   });
 }
 
+function updateJobCache(path, value) {
+  if (!window._jobOriginalData) return;
+  window._jobDirtyPaths = window._jobDirtyPaths || new Set();
+  var original = window._jobOriginalData[path];
+  if (original === undefined) return;  // 不是 job 的字段，忽略
+  if (String(value) !== String(original)) {
+    window._jobDirtyPaths.add(path);
+  } else {
+    window._jobDirtyPaths.delete(path);
+  }
+  STATE.dirty = window._jobDirtyPaths.size > 0;
+  updateSaveBar();
+}
+
+function updateMarketCache(path, value) {
+  if (!window._marketOriginalData) return;
+  window._marketDirtyPaths = window._marketDirtyPaths || new Set();
+  var original = window._marketOriginalData[path];
+  if (original === undefined) return;
+  if (String(value) !== String(original)) {
+    window._marketDirtyPaths.add(path);
+  } else {
+    window._marketDirtyPaths.delete(path);
+  }
+  STATE.dirty = window._marketDirtyPaths.size > 0;
+  updateSaveBar();
+}
+
 function updateProfileCache(path, value) {
-  if (STATE.settingsTab !== 'profile') return;  // 非画像 Tab 不写 profile 缓存
+  // 非画像 Tab：路由到各自的字段级追踪
+  if (STATE.settingsTab === 'job') { updateJobCache(path, value); return; }
+  if (STATE.settingsTab === 'market') { updateMarketCache(path, value); return; }
   if (!window._profileDataCache || !STATE._originalData) return;
   // 保存原始 data-key 用于 DOM 查找（在剥离前缀前）
   var rawDataKey = path;
@@ -2516,7 +2567,7 @@ async function saveJobConfig(){
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
       toast('已保存找工作配置','ok');
-      window._jobDirty = false;
+      window._jobDirtyPaths = new Set();
       STATE.dirty = false; updateSaveBar();
       STATE.sort = newCfg.sort_mode || 'date';
       document.querySelectorAll('.sortbtn').forEach(x=>{
@@ -2554,7 +2605,7 @@ async function saveMarketConfig(){
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
       toast('已保存市场调研配置','ok');
-      window._marketDirty = false;
+      window._marketDirtyPaths = new Set();
       STATE.dirty = false; updateSaveBar();
       renderMarketPresets();
     } else {
@@ -2912,9 +2963,9 @@ function setTab(t){
   if (t === 'profile') {
     STATE.dirty = window._dirtyPaths ? window._dirtyPaths.size > 0 : false;
   } else if (t === 'job') {
-    STATE.dirty = window._jobDirty || false;
+    STATE.dirty = window._jobDirtyPaths ? window._jobDirtyPaths.size > 0 : false;
   } else if (t === 'market') {
-    STATE.dirty = window._marketDirty || false;
+    STATE.dirty = window._marketDirtyPaths ? window._marketDirtyPaths.size > 0 : false;
   } else if (t === 'schema') {
     STATE.dirty = false;
   }
@@ -3146,8 +3197,12 @@ function updateSaveBar() {
   if (badge) {
     badge.classList.toggle('hidden', !STATE.dirty || isSchema);
     if (STATE.dirty && !isSchema) {
-      if (isProfile && window._dirtyPaths) {
-        badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>已修改 ' + window._dirtyPaths.size + ' 个字段';
+      var count = 0;
+      if (isProfile && window._dirtyPaths) count = window._dirtyPaths.size;
+      else if (STATE.settingsTab === 'job' && window._jobDirtyPaths) count = window._jobDirtyPaths.size;
+      else if (STATE.settingsTab === 'market' && window._marketDirtyPaths) count = window._marketDirtyPaths.size;
+      if (count > 0) {
+        badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>已修改 ' + count + ' 个字段';
       } else {
         badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>有未保存的更改';
       }
@@ -3187,8 +3242,8 @@ function validateForm() {
 
 function handleSaveBarClick() {
   const tab = STATE.settingsTab;
-  // 画像 Tab 需要 dirty 才允许保存；其他 Tab 始终允许
-  if (tab === 'profile' && !STATE.dirty) return;
+  // 所有 Tab 统一：dirty 才允许保存
+  if (!STATE.dirty) return;
   if (tab === 'profile' && !validateForm()) {
     toast('请修正红色标记的字段', 'warn'); return;
   }
@@ -3215,12 +3270,19 @@ function checkDirtyState() {
     if (window._dirtyPaths) {
       STATE.dirty = window._dirtyPaths.size > 0;
     }
-  } else if (STATE.settingsTab === 'job') {
-    window._jobDirty = true;
-    STATE.dirty = true;
+    // job/market 的字段级追踪已由 updateJobCache/updateMarketCache 接管
+    // 此处仅处理动态列表（cat-in/cls-in）的增删改
   } else if (STATE.settingsTab === 'market') {
-    window._marketDirty = true;
-    STATE.dirty = true;
+    // market 的动态列表：比对当前 DOM 与原始快照
+    if (window._marketOriginalData && window._marketDirtyPaths) {
+      var curCats = JSON.stringify([...document.querySelectorAll('#cfg-cats .cat-in')].map(i => i.value.trim()).filter(Boolean));
+      var curCls = JSON.stringify([...document.querySelectorAll('#cfg-cls .cls-in')].map(i => i.value.trim()).filter(Boolean));
+      if (curCats !== window._marketOriginalData['cfg-cats']) window._marketDirtyPaths.add('cfg-cats');
+      else window._marketDirtyPaths.delete('cfg-cats');
+      if (curCls !== window._marketOriginalData['cfg-cls']) window._marketDirtyPaths.add('cfg-cls');
+      else window._marketDirtyPaths.delete('cfg-cls');
+      STATE.dirty = window._marketDirtyPaths.size > 0;
+    }
   }
   updateSaveBar();
 }
