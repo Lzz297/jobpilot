@@ -2468,8 +2468,14 @@ function undoField(dataKey, event) {
 
   // ── schema Tab：从 _schemaOriginal 恢复 ──
   if (STATE.settingsTab === 'schema' && window._schemaOriginal && window._schemaDirtyPaths) {
-    var origVal = getValueByPath(window._schemaOriginal, 'groups.' + dataKey);
-    setValueByPath(window._schemaEditCache, 'groups.' + dataKey, origVal);
+    var schemaParts = dataKey.split('.');
+    var schemaGi = parseInt(schemaParts[0]);
+    var schemaGroup = window._schemaEditCache.groups[schemaGi];
+    if (!schemaGroup) return;
+    var schemaFullPath = resolveSchemaPath(schemaGi, schemaParts);
+    if (!schemaFullPath) return;
+    var origVal = getValueByPath(window._schemaOriginal, schemaFullPath);
+    setValueByPath(window._schemaEditCache, schemaFullPath, origVal);
     var el3 = document.querySelector('[data-key="' + dataKey + '"]');
     if (el3) el3.value = origVal !== undefined ? origVal : '';
     window._schemaDirtyPaths.delete(dataKey);
@@ -3166,6 +3172,33 @@ function setTab(t){
 }
 
 /* ===================== SCHEMA EDITOR ===================== */
+
+// 将压缩路径（如 "0.0"）解析为完整对象路径（如 "groups.0.fields.0.label"）
+function resolveSchemaPath(gi, parts) {
+  var groups = window._schemaEditCache && window._schemaEditCache.groups;
+  if (!groups) return null;
+  var group = groups[gi];
+  if (!group) return null;
+  if (parts[1] === 'label') {
+    return 'groups.' + gi + '.label';
+  } else if (parts.length === 2) {
+    var idx = parseInt(parts[1]);
+    if (group.fields) {
+      return 'groups.' + gi + '.fields.' + idx + '.label';
+    } else if (group.columns) {
+      return 'groups.' + gi + '.columns.' + idx + '.label';
+    }
+  } else if (parts.length === 3) {
+    var a = parseInt(parts[1]), b = parseInt(parts[2]);
+    if (group.fields && group.fields[a] && group.fields[a].fields) {
+      return 'groups.' + gi + '.fields.' + a + '.fields.' + b + '.label';
+    } else if (group.columns && group.columns.length > 0 && group.columns[0].columns) {
+      return 'groups.' + gi + '.columns.0.columns.' + b + '.label';
+    }
+  }
+  return null;
+}
+
 function updateSchemaCache(path, value) {
   if (!window._schemaEditCache) return;
   const groups = window._schemaEditCache.groups;
@@ -3188,7 +3221,8 @@ function updateSchemaCache(path, value) {
   }
   // 字段级追踪：与原始值逐字段比对
   if (window._schemaOriginal && window._schemaDirtyPaths) {
-    var fullPath = 'groups.' + path;
+    var fullPath = resolveSchemaPath(gi, parts);
+    if (!fullPath) return;
     var origVal = getValueByPath(window._schemaOriginal, fullPath);
     var curVal = getValueByPath(window._schemaEditCache, fullPath);
     if (JSON.stringify(curVal) !== JSON.stringify(origVal)) {
