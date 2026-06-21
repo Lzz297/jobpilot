@@ -35,6 +35,15 @@
   .anchor-link{border-left:2px solid transparent;transition:all .15s ease}
   .anchor-link.active{border-left-color:#4f46e5;background:#eef2ff;color:#4338ca;font-weight:600}
   #view-settings{scroll-behavior:smooth}
+  /* ── 脏字段标记 ── */
+  .dirty-field{padding-left:8px;margin-left:-10px;padding-right:56px;position:relative}
+  .dirty-field::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:2px;background:#f59e0b;border-radius:1px}
+  td.dirty-field{padding-left:6px;padding-right:48px;margin-left:0}
+  td.dirty-field::before{left:0;top:2px;bottom:2px}
+  .dirty-field:hover .undo-btn{opacity:1}
+  .undo-btn{opacity:0;position:absolute;right:0;top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 6px;font-size:11px;color:#64748b;cursor:pointer;transition:opacity .15s;white-space:nowrap;z-index:1}
+  td .undo-btn{right:2px;top:2px}
+  .undo-btn:hover{background:#fef3c7;border-color:#f59e0b;color:#b45309}
 </style>
 </head>
 <body class="bg-slate-100 text-slate-800">
@@ -384,11 +393,13 @@
               <div id="set-market" class="hidden"></div>
               <div id="set-schema" class="hidden"></div>
             </div>
-            <div id="save-bar" class="sticky bottom-0 z-10 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3 pr-[calc(1.5rem+15px)]">
+            <div id="save-bar" class="sticky bottom-0 z-10 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3">
               <div class="flex items-center gap-2 text-xs">
                 <span id="dirty-badge" class="hidden items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
                   <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>有未保存的更改
                 </span>
+                <button id="undo-all-btn" onclick="undoAll()"
+                  class="hidden text-amber-600 hover:text-amber-700 font-medium text-xs">撤销全部</button>
               </div>
               <button id="save-bar-btn" onclick="handleSaveBarClick()" class="cursor-not-allowed rounded-md bg-slate-200 px-5 py-2 text-sm font-medium text-slate-400">保存</button>
             </div>
@@ -1554,13 +1565,13 @@ function field(label,id,val,type='text',hint='',min='',max='',maxlength='',patte
   const patternAttr = pattern ? ` pattern="${escapeHtml(pattern)}"` : '';
   const placeholderAttr = placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : '';
   const validateAttr = validate ? ` data-validate="${validate}"` : '';
-  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><input id="${id}" type="${type}" data-key="${id}" value="${escapeHtml(String(val||''))}"${minAttr}${maxAttr}${maxlengthAttr}${patternAttr}${placeholderAttr}${validateAttr} class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
+  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><input id="${id}" type="${type}" data-key="${id}" value="${escapeHtml(String(val||''))}"${minAttr}${maxAttr}${maxlengthAttr}${patternAttr}${placeholderAttr}${validateAttr} oninput="updateProfileCache('${id}', this.value)" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-indigo-200 outline-none">${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
 }
 function areaField(label,id,val,rows=3,hint='',maxlength='',placeholder=''){
   const maxlengthAttr = maxlength ? ` maxlength="${maxlength}" data-max="${maxlength}"` : '';
   const placeholderAttr = placeholder ? ` placeholder="${escapeHtml(placeholder)}"` : '';
   const ccHtml = maxlength ? `<span class="char-count text-xs text-slate-400 mt-1 block text-right"></span>` : '';
-  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><textarea id="${id}" data-key="${id}" rows="${rows}"${maxlengthAttr}${placeholderAttr} class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none">${escapeHtml(String(val||''))}</textarea>${ccHtml}${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
+  return `<div><label class="text-xs font-medium text-slate-500">${label}</label><textarea id="${id}" data-key="${id}" rows="${rows}"${maxlengthAttr}${placeholderAttr} oninput="updateProfileCache('${id}', this.value)" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none">${escapeHtml(String(val||''))}</textarea>${ccHtml}${hint?`<p class="text-[10px] text-slate-400 mt-0.5">${hint}</p>`:''}</div>`;
 }
 function card(title, body, id){ const idAttr = id ? ` id="sec-${id}"` : ''; return `<div${idAttr} class="bg-white border border-slate-200 rounded-lg p-3.5 mb-2.5 scroll-mt-6"><div class="text-sm font-semibold text-slate-700 mb-2.5">${title}</div>${body}</div>`; }
 
@@ -1600,7 +1611,7 @@ function formatWidget(widget) {
 function toggleField(id, value) {
   const checked = value === true || value === 'true' || value === 1;
   return `<label class="relative inline-flex items-center cursor-pointer">
-    <input type="checkbox" id="${id}" class="sr-only peer" ${checked ? 'checked' : ''} data-key="${id}">
+    <input type="checkbox" id="${id}" class="sr-only peer" ${checked ? 'checked' : ''} data-key="${id}" onchange="updateProfileCache('${id}', this.checked)">
     <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
     <span class="ml-2 text-sm text-slate-600">${checked ? '是' : '否'}</span>
   </label>`;
@@ -1608,16 +1619,23 @@ function toggleField(id, value) {
 
 function selectField(id, value, options) {
   const opts = options.map(opt => `<option value="${opt}" ${value === opt ? 'selected' : ''}>${opt}</option>`).join('');
-  return `<select id="${id}" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" data-key="${id}">
+  return `<select id="${id}" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" data-key="${id}" onchange="updateProfileCache('${id}', this.value)">
     ${opts}
   </select>`;
 }
 
+function syncTagsCache(containerId) {
+  const tags = document.getElementById(containerId + '-tags');
+  if (!tags) return;
+  const values = Array.from(tags.querySelectorAll('.tag-item span:first-child')).map(s => s.textContent);
+  updateProfileCache(containerId, values);
+}
+
 function tagsField(containerId, values) {
-  const tagSpans = (values || []).map(v => `<span class="tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium"><span>${escapeHtml(v)}</span><button type="button" onclick="this.parentElement.remove()" class="text-indigo-400 hover:text-red-500">&times;</button></span>`).join('');
+  const tagSpans = (values || []).map(v => `<span class="tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium"><span>${escapeHtml(v)}</span><button type="button" onclick="this.parentElement.remove();syncTagsCache('${containerId}')" class="text-indigo-400 hover:text-red-500">&times;</button></span>`).join('');
   return `<div class="mt-1" data-key="${containerId}">
     <div class="flex flex-wrap gap-1 mb-1" id="${containerId}-tags">${tagSpans}</div>
-    <input type="text" class="w-full max-w-[280px] border border-slate-300 rounded-lg px-3 py-1.5 text-sm" placeholder="输入后按回车添加" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const val=this.value.trim(); if(val){ const span=document.createElement('span'); span.className='tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium'; span.innerHTML='<span>'+escapeHtml(val)+'</span><button type=button onclick=this.parentElement.remove() class=text-indigo-400 hover:text-red-500>&times;</button>'; document.getElementById('${containerId}-tags').appendChild(span); this.value='';}}">
+    <input type="text" class="w-full max-w-[280px] border border-slate-300 rounded-lg px-3 py-1.5 text-sm" placeholder="输入后按回车添加" onkeydown="if(event.key==='Enter'){ event.preventDefault(); const val=this.value.trim(); if(val){ const span=document.createElement('span'); span.className='tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium'; span.innerHTML='<span>'+escapeHtml(val)+'</span><button type=button onclick=this.parentElement.remove();syncTagsCache(\\'${containerId}\\') class=text-indigo-400 hover:text-red-500>&times;</button>'; document.getElementById('${containerId}-tags').appendChild(span); this.value='';syncTagsCache('${containerId}');}}">
   </div>`;
 }
 
@@ -1641,13 +1659,25 @@ function chipsField(id, values) { return tagsField(id, values); }
 
 function objectField(fieldDef, data) {
   const prefix = fieldDef.key;
-  let html = '<div class="space-y-3">';
-  (fieldDef.fields || []).forEach(subField => {
-    const subKey = `${prefix}.${subField.key}`;
-    const value = data ? (data[subField.key] || '') : '';
-    html += `<div>${renderWidget({...subField, key: subKey}, value)}</div>`;
-  });
-  html += '</div>';
+  const layout = fieldDef.layout;
+  let html;
+  if (layout === 'grid-2') {
+    html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">';
+    (fieldDef.fields || []).forEach(subField => {
+      const subKey = `${prefix}.${subField.key}`;
+      const value = data ? (data[subField.key] || '') : '';
+      html += renderWidget({...subField, key: subKey}, value);
+    });
+    html += '</div>';
+  } else {
+    html = '<div class="space-y-3">';
+    (fieldDef.fields || []).forEach(subField => {
+      const subKey = `${prefix}.${subField.key}`;
+      const value = data ? (data[subField.key] || '') : '';
+      html += `<div>${renderWidget({...subField, key: subKey}, value)}</div>`;
+    });
+    html += '</div>';
+  }
   return html;
 }
 
@@ -1677,11 +1707,11 @@ function tableField(fieldDef, dataArray) {
       } else if (col.widget === 'list') {
         html += `<td class="pr-2 py-1">${listField(cellId, Array.isArray(cellValue) ? cellValue : [])}</td>`;
       } else if (col.widget === 'textarea') {
-        html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
+        html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
       } else if (col.widget === 'select') {
         html += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></td>`;
       } else if (col.widget === 'number') {
-        html += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" min="${col.min||0}" step="${col.step||0.5}" value="${cellValue||''}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+        html += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}" value="${cellValue||''}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       } else if (col.widget === 'subtable') {
         // 子表格：在主单元格内渲染
         const subTableData = Array.isArray(cellValue) ? cellValue : [];
@@ -1690,7 +1720,7 @@ function tableField(fieldDef, dataArray) {
       } else if (col.widget === 'modal_text') {
         html += `<td class="pr-2 py-1">${modalTextField(cellId, col.label, cellValue)}</td>`;
       } else {
-        html += `<td class="pr-2 py-1"><input data-key="${cellId}" value="${escapeHtml(cellValue)}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+        html += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" value="${escapeHtml(cellValue)}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       }
     });
     html += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
@@ -1714,18 +1744,18 @@ function addTableRow(btn, tableKey, columns) {
     } else if (col.widget === 'list') {
       rowHtml += `<td class="pr-2 py-1">${listField(cellId, [])}</td>`;
     } else if (col.widget === 'textarea') {
-      rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
+      rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
     } else if (col.widget === 'select') {
       rowHtml += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></td>`;
     } else if (col.widget === 'number') {
-      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" min="${col.min||0}" step="${col.step||0.5}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     } else if (col.widget === 'subtable') {
       const subTableDef = { key: cellId, columns: col.columns || [] };
       rowHtml += `<td class="pr-2 py-1">${tableField(subTableDef, [])}</td>`;
     } else if (col.widget === 'modal_text') {
       rowHtml += `<td class="pr-2 py-1">${modalTextField(cellId, col.label, '')}</td>`;
     } else {
-      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
+      rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     }
   });
   rowHtml += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
@@ -1775,7 +1805,7 @@ function buildCardHTML(key, rowIdx, columns, row) {
       if (col.widget === 'tags') {
         html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
       } else {
-        html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
+        html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
       }
     }
     html += `</div>`;
@@ -1789,7 +1819,7 @@ function buildCardHTML(key, rowIdx, columns, row) {
       const ml = col.maxlength || '';
       const mlAttr = ml ? ` maxlength="${ml}" data-max="${ml}"` : '';
       const ccHtml = ml ? `<span class="char-count text-xs text-slate-400 mt-1 block text-right"></span>` : '';
-      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><textarea data-key="${cellId}" rows="${col.rows || 3}"${mlAttr} class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${escapeHtml(cellValue)}</textarea>${ccHtml}</label>`;
+      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><textarea data-key="${cellId}" rows="${col.rows || 3}" oninput="updateProfileCache('${cellId}', this.value)"${mlAttr} class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${escapeHtml(cellValue)}</textarea>${ccHtml}</label>`;
     } else if (col.widget === 'tags') {
       html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''} <span class="font-normal text-slate-400">· 回车添加</span></span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
     } else if (col.widget === 'list') {
@@ -1804,7 +1834,7 @@ function buildCardHTML(key, rowIdx, columns, row) {
     } else if (col.widget === 'modal_text') {
       html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${modalTextField(cellId, col.label, cellValue)}</div>`;
     } else {
-      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
+      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
     }
   }
   html += `</div></div>`;
@@ -1991,8 +2021,11 @@ function renderWidget(fieldDef, value) {
     case 'input': return field(label, key, value, 'text', fieldDef.hint || '', '', fieldDef.max || '', fieldDef.maxlength || '', fieldDef.pattern || '', fieldDef.placeholder || '', fieldDef.validate || '');
     case 'textarea': return areaField(label, key, value, fieldDef.rows || 3, fieldDef.hint || '', fieldDef.maxlength || '', fieldDef.placeholder || '');
     case 'number': return field(label, key, value, 'number', fieldDef.hint || '', fieldDef.min || '', fieldDef.max || '', '', '', fieldDef.placeholder || '', fieldDef.validate || '');
-    case 'toggle': return toggleField(key, value);
-    case 'select': return selectField(key, value, fieldDef.options || []);
+    case 'toggle': {
+      const toggleHtml = toggleField(key, value);
+      return `<div><span class=\"text-xs font-medium text-slate-500\">${escapeHtml(fieldDef.label || '')}</span><div class=\"mt-1\">${toggleHtml}</div></div>`;
+    }
+    case 'select': return '<div>' + selectField(key, value, fieldDef.options || []) + '</div>';
     case 'object': return objectField(fieldDef, value);
     case 'table': return tableField(fieldDef, value || []);
     case 'tags': return tagsField(key, value || []);
@@ -2014,6 +2047,24 @@ function renderSchemaForm(schema, data) {
       html += card(group.label, renderWidget(group, groupData), group.key);
       return;
     }
+
+    // profile_summary 数据源特殊处理：从顶层字段 strategic_positioning 和 summary 取值
+    if (group.key === 'profile_summary') {
+      const spData = data && data.strategic_positioning ? data.strategic_positioning : '';
+      const suData = data && data.summary ? data.summary : '';
+      const groupData = {
+        strategic_positioning: typeof spData === 'string' ? spData : (spData.strategic_positioning || ''),
+        summary: typeof suData === 'string' ? suData : (suData.summary || '')
+      };
+      let pHtml = '';
+      (group.fields || []).forEach(fieldDef => {
+        const value = groupData[fieldDef.key] || '';
+        pHtml += `<div class="mb-3">${renderWidget({...fieldDef, key: fieldDef.key}, value)}</div>`;
+      });
+      html += card(group.label, pHtml, group.key);
+      return;
+    }
+
     // array/map 类型：统一走 renderWidget 分发（由 widget 字段路由到 tableField / categoriesField / chipsField）
     if (group.type === 'array' || group.type === 'map') {
       const groupData = data ? (data[group.key] || (group.type === 'map' ? {} : [])) : (group.type === 'map' ? {} : []);
@@ -2022,13 +2073,29 @@ function renderSchemaForm(schema, data) {
       // fields 分组：从 data[group.key] 获取本分组的数据源（如 job_intent → data.job_intent）
       const groupData = (group.key && data && data[group.key]) ? data[group.key] : data;
       let groupHtml = '';
-      (group.fields || []).forEach(fieldDef => {
-        // 从 groupData 中取值
-        const value = groupData ? (fieldDef.key.includes('.') ? getValueByPath(groupData, fieldDef.key) : groupData[fieldDef.key]) : '';
-        // 拼接完整 data-key 路径（如 target_titles → job_intent.target_titles）
-        const fullKey = (group.key && !fieldDef.key.includes('.')) ? `${group.key}.${fieldDef.key}` : fieldDef.key;
-        groupHtml += `<div class="mb-3">${renderWidget({...fieldDef, key: fullKey}, value)}</div>`;
-      });
+
+      // 支持 layout 属性：grid-2 两列网格布局
+      if (group.layout === 'grid-2') {
+        groupHtml = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">';
+        (group.fields || []).forEach(fieldDef => {
+          const value = groupData ? (fieldDef.key.includes('.') ? getValueByPath(groupData, fieldDef.key) : groupData[fieldDef.key]) : '';
+          const fullKey = (group.key && !fieldDef.key.includes('.')) ? `${group.key}.${fieldDef.key}` : fieldDef.key;
+          // textarea 和 object 类型自动跨两列
+          if (fieldDef.widget === 'textarea' || fieldDef.widget === 'object') {
+            groupHtml += `<div class="col-span-1 sm:col-span-2">${renderWidget({...fieldDef, key: fullKey}, value)}</div>`;
+          } else {
+            groupHtml += renderWidget({...fieldDef, key: fullKey}, value);
+          }
+        });
+        groupHtml += '</div>';
+      } else {
+        (group.fields || []).forEach(fieldDef => {
+          const value = groupData ? (fieldDef.key.includes('.') ? getValueByPath(groupData, fieldDef.key) : groupData[fieldDef.key]) : '';
+          const fullKey = (group.key && !fieldDef.key.includes('.')) ? `${group.key}.${fieldDef.key}` : fieldDef.key;
+          groupHtml += `<div class="mb-3">${renderWidget({...fieldDef, key: fullKey}, value)}</div>`;
+        });
+      }
+
       html += card(group.label, groupHtml, group.key);
     }
   });
@@ -2046,46 +2113,65 @@ async function renderSettings(){
   else {
     const schemaRes = await apiGet('/api/schema/user_field');
     if (schemaRes) {
-      const formHtml = renderSchemaForm(schemaRes, me);
-      // 管理员可见：显示字段配置 Tab
+      // 缓存 Schema 和画像数据供切换使用
+      window._schemaRes = schemaRes;
+      window._profileDataCache = JSON.parse(JSON.stringify(me));
+
+      // 默认选中第一个 group
+      const selectedKey = window._profileSelectedGroup || schemaRes.groups[0]?.key || 'basic_info';
+      window._profileSelectedGroup = selectedKey;
+
+      // ── 左侧导航列表（固定容器，仅渲染一次）──
+      let navHtml = '<div class="text-xs font-semibold text-slate-500 mb-3 px-3">画像内容</div>';
+      schemaRes.groups.forEach((g, i) => {
+        const isActive = g.key === selectedKey;
+        navHtml += `
+          <div class="profile-nav-item flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors
+                      text-xs ${isActive ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-slate-600 hover:bg-slate-50'}"
+               onclick="switchProfileCard('${g.key}')">
+            <span class="flex-1 truncate">${escapeHtml(g.label || g.key)}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full ${isActive ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}">
+              ${g.fields ? g.fields.length + ' 字段' : (g.columns ? g.columns.length + ' 列' : '')}
+            </span>
+          </div>`;
+      });
+
+      // ── 右侧卡片编辑区 ──
+      const selectedGroup = schemaRes.groups.find(g => g.key === selectedKey) || schemaRes.groups[0];
+      const singleCardHtml = renderSchemaForm({groups: [selectedGroup]}, window._profileDataCache);
+
+      // ── 组装双栏布局（左右独立容器）──
+      $('#set-profile').innerHTML = `
+        <div class="flex gap-4">
+          <div class="w-44 flex-shrink-0" id="profile-left">${navHtml}</div>
+          <div class="flex-1 min-w-0" id="profile-right">${singleCardHtml}</div>
+        </div>`;
+
+      // 管理员可见
       const schemaTabBtn = document.getElementById('set-tab-schema');
-      if (schemaTabBtn) {
-        schemaTabBtn.classList.toggle('hidden', STATE.userRole !== 'admin');
-      }
-      const pc = calcCompleteness();
-      const progressBarHtml = `<div class="rounded-xl border border-indigo-100 bg-indigo-50 p-4 mb-3">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-sm font-semibold text-slate-900">画像完整度</p>
-            <p class="text-xs text-indigo-700">${pc.pct >= 80 ? '画像已很完善 — Agent 匹配更精准' : '完善的画像能让 Agent 匹配更精准'}</p>
-          </div>
-          <span class="text-2xl font-bold text-indigo-600">${pc.pct}%</span>
-        </div>
-        <div class="mt-3 h-2 w-full overflow-hidden rounded-full bg-white">
-          <div class="h-full rounded-full bg-indigo-600 transition-all" style="width:${pc.pct}%"></div>
-        </div>
-      </div>`;
-      const anchorGroups = schemaRes.groups;
-      const anchorNavWrap = document.getElementById('anchor-nav-wrap');
-      if (anchorNavWrap) {
-        anchorNavWrap.innerHTML = `<nav id="anchor-nav" class="space-y-0.5">
-          <p class="mb-2 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">页面导航</p>
-          ${anchorGroups.map(g => `<a href="#sec-${g.key}" class="anchor-link flex items-center gap-2 rounded-md py-2 pl-3 pr-3 text-sm text-slate-600 hover:bg-slate-50">${g.label}</a>`).join('')}
-        </nav>`;
-      }
-      $('#set-profile').innerHTML = `${progressBarHtml}${formHtml}
-        <button onclick="saveYaml('me')" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存画像</button>`;
+      if (schemaTabBtn) { schemaTabBtn.classList.toggle('hidden', STATE.userRole !== 'admin'); }
+      // 清除旧脏标记并重建基准快照
+      setTimeout(() => {
+        window._dirtyPaths = new Set();
+        STATE._originalData = JSON.parse(JSON.stringify(window._profileDataCache));
+        STATE.dirty = false;
+        refreshIcons();
+        markDirtyFields();
+        updateSaveBar();
+      }, 50);
     } else {
       $('#set-profile').innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">无法加载 Schema 配置</div>';
     }
   }
 
-  // 存储表单原始快照，用于 dirty 状态恢复检测
-  setTimeout(() => {
-    STATE._originalData = collectFormData();
-    STATE.dirty = false;
-    updateSaveBar();
-  }, 500);
+  // 延迟捕获画像原始快照用于 dirty 检测（schema 不可用时回退）
+  if (!window._schemaRes) {
+    setTimeout(() => {
+      window._dirtyPaths = new Set();
+      STATE._originalData = JSON.parse(JSON.stringify(window._profileDataCache || {}));
+      STATE.dirty = false; updateSaveBar();
+    }, 500);
+  }
 
   const cfg = await loadYaml('search_config');
   if(cfg){
@@ -2103,8 +2189,7 @@ async function renderSettings(){
         ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','','1')}
         ${field('JD 抓取上限','job-max-results',searchCfg.max_total_results||200,'number','','1')}
         ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','发给 LLM 前截断','1')}
-      </div>`)}
-      <button onclick="saveJobConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存配置</button>`;
+      </div>`)}`;
 
     // ── 市场调研配置面板 ──
     let catsHtml = `<div id="cfg-cats">`;
@@ -2127,8 +2212,7 @@ async function renderSettings(){
         ${field('最多抓取 JD','c-mjd',marketCfg.max_fetch_jd||100,'number')}
         ${field('LLM 每批','c-mbatch',marketCfg.batch_size||5,'number')}
         ${field('JD 截断字数','c-mchars',marketCfg.jd_max_chars||6000,'number')}
-      </div>`)}
-      <button onclick="saveMarketConfig()" class="agent-trigger px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> 保存配置</button>`;
+      </div>`)}`;
   } else {
     $('#set-job').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
     $('#set-market').innerHTML = `<div class="text-sm text-slate-400 py-8 text-center">无法加载 search_config.yaml</div>`;
@@ -2136,75 +2220,270 @@ async function renderSettings(){
   refreshIcons();
 }
 
+/* ===================== PROFILE DUAL-PANE ===================== */
+
+// ── 脏字段标记 ──
+window._dirtyPaths = new Set();
+
+function flattenDataKey(dataKey) {
+  if (dataKey.startsWith('basic_info.')) return dataKey.replace('basic_info.', '');
+  if (dataKey.startsWith('profile_summary.')) return dataKey.replace('profile_summary.', '');
+  return dataKey;
+}
+
+// ── 辅助：根据扁平路径找 DOM 元素 ──
+function findElByPath(cachePath) {
+  // 1. 直接匹配
+  let el = document.querySelector('[data-key="' + cachePath + '"]');
+  if (el) return el;
+  // 2. 尝试 basic_info 和 profile_summary 前缀
+  el = document.querySelector('[data-key="basic_info.' + cachePath + '"]');
+  if (el) return el;
+  el = document.querySelector('[data-key="profile_summary.' + cachePath + '"]');
+  if (el) return el;
+  // 3. 遍历所有 [data-key] 查找匹配
+  var all = document.querySelectorAll('[data-key]');
+  for (var i = 0; i < all.length; i++) {
+    if (flattenDataKey(all[i].getAttribute('data-key')) === cachePath) return all[i];
+  }
+  return null;
+}
+
+// ── 辅助：找到适合添加脏标记的容器 ──
+function getDirtyWrapper(el) {
+  if (!el) return null;
+  // 表格单元格 → 使用所在单元格 <td>（tr 不支持 padding/margin）
+  var td = el.closest('td, th');
+  if (td) return td;
+  // 卡片表格内的元素 → 使用 label.block 或 .block
+  var cardBlock = el.closest('label.block') || el.closest('.block');
+  if (cardBlock && el.closest('.card-item')) return cardBlock;
+  // 标准 .mb-3 包装器
+  var mb3 = el.closest('.mb-3');
+  if (mb3) return mb3;
+  // 父元素，避免过大容器
+  var p = el.parentElement;
+  if (!p || p.tagName === 'BODY' || p.id === 'profile-right' ||
+      p.classList.contains('grid') || p.getAttribute('data-card-container') ||
+      p.classList.contains('card-body') || p.classList.contains('space-y-3') ||
+      p.classList.contains('space-y-4')) {
+    return el;
+  }
+  return p;
+}
+
+// ── 辅助：给容器加脏标记 + 撤销按钮 ──
+function addDirtyMark(wrapper, dataKey) {
+  if (!wrapper || wrapper.classList.contains('dirty-field')) return;
+  var cs = getComputedStyle(wrapper);
+  if (cs.position === 'static') wrapper.style.position = 'relative';
+  wrapper.classList.add('dirty-field');
+  if (!wrapper.querySelector('.undo-btn')) {
+    var btn = document.createElement('button');
+    btn.className = 'undo-btn';
+    btn.textContent = '↺ 撤销';
+    btn.setAttribute('data-undo', dataKey);
+    btn.onclick = function(e) { undoField(this.getAttribute('data-undo'), e); };
+    wrapper.appendChild(btn);
+  }
+}
+
+// ── 辅助：清除容器上的脏标记 ──
+function removeDirtyMark(wrapper) {
+  if (!wrapper) return;
+  wrapper.classList.remove('dirty-field');
+  var btn = wrapper.querySelector('.undo-btn');
+  if (btn) btn.remove();
+}
+
+// ── 重绘当前卡片所有脏标记 ──
+function markDirtyFields() {
+  var container = document.getElementById('profile-right');
+  if (!container || !window._dirtyPaths) return;
+
+  // 清除旧标记
+  container.querySelectorAll('.dirty-field').forEach(function(el) { el.classList.remove('dirty-field'); });
+  container.querySelectorAll('.undo-btn').forEach(function(el) { el.remove(); });
+
+  if (window._dirtyPaths.size === 0) return;
+
+  var processed = new Set();
+  container.querySelectorAll('[data-key]').forEach(function(el) {
+    var dataKey = el.getAttribute('data-key');
+    var cachePath = flattenDataKey(dataKey);
+    if (!window._dirtyPaths.has(cachePath)) return;
+
+    var wrapper = getDirtyWrapper(el);
+    if (!wrapper || processed.has(wrapper)) return;
+    processed.add(wrapper);
+    addDirtyMark(wrapper, dataKey);
+  });
+}
+
+function getOriginalValue(dataKey) {
+  var cachePath = flattenDataKey(dataKey);
+  return getValueByPath(STATE._originalData, cachePath);
+}
+
+function undoField(dataKey, event) {
+  if (event) event.stopPropagation();
+  if (!window._profileDataCache || !window._dirtyPaths) return;
+  var cachePath = flattenDataKey(dataKey);
+
+  // 恢复缓存中的值
+  var originalValue = getOriginalValue(dataKey);
+  setValueByPath(window._profileDataCache, cachePath, originalValue);
+
+  // 查找 DOM 元素（dataKey 可能是扁平路径，使用 findElByPath 解决）
+  var el = findElByPath(dataKey);
+  if (el) {
+    if (el.type === 'checkbox') {
+      el.checked = !!originalValue;
+      var label = el.closest('label');
+      if (label) {
+        var statusSpan = label.querySelector('span:last-child');
+        if (statusSpan) statusSpan.textContent = originalValue ? '是' : '否';
+      }
+    } else if (el.tagName === 'SELECT') {
+      el.value = originalValue !== undefined ? String(originalValue) : '';
+    } else if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+      el.value = originalValue !== undefined ? originalValue : '';
+    }
+
+    // 恢复 tags 组件
+    var tagsInner = el.querySelector('.tag-item');
+    if (tagsInner && Array.isArray(originalValue)) {
+      var containerId = el.getAttribute('data-key') || flattenDataKey(dataKey);
+      var tagsDiv = document.getElementById(containerId + '-tags');
+      if (tagsDiv) {
+        tagsDiv.innerHTML = originalValue.map(function(v) {
+          return '<span class="tag-item inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs font-medium"><span>' + escapeHtml(v) + '</span><button type="button" onclick="this.parentElement.remove();syncTagsCache(\'' + containerId + '\')" class="text-indigo-400 hover:text-red-500">&times;</button></span>';
+        }).join('');
+      }
+    }
+
+    // 重置 list 组件（将 sortable-list 中每个 input 恢复）
+    if (el.classList.contains('sortable-list') && Array.isArray(originalValue)) {
+      var items = el.querySelectorAll('[data-list-item]');
+      items.forEach(function(item, i) {
+        var inp = item.querySelector('input.list-item');
+        if (inp && originalValue[i] !== undefined) inp.value = originalValue[i];
+      });
+    }
+  }
+
+  // 清除脏记录 + 移除 DOM 标记
+  window._dirtyPaths.delete(cachePath);
+  if (el) {
+    var wrapper = el.closest('.dirty-field');
+    if (wrapper) removeDirtyMark(wrapper);
+  }
+  checkDirtyState();
+}
+
+function undoAll() {
+  if (!window._dirtyPaths || window._dirtyPaths.size === 0) return;
+  // 复制一份避免迭代中修改
+  var paths = Array.from(window._dirtyPaths);
+  paths.forEach(function(cachePath) {
+    // cachePath 是扁平键，需要找到对应的 data-key 传给 undoField
+    var el = findElByPath(cachePath);
+    var dataKey = el ? el.getAttribute('data-key') : cachePath;
+    undoField(dataKey, null);
+  });
+}
+
+function updateProfileCache(path, value) {
+  if (!window._profileDataCache || !STATE._originalData) return;
+  // 保存原始 data-key 用于 DOM 查找（在剥离前缀前）
+  var rawDataKey = path;
+  if (path.startsWith('basic_info.')) {
+    path = path.replace('basic_info.', '');
+  } else if (path.startsWith('profile_summary.')) {
+    path = path.replace('profile_summary.', '');
+  }
+  setValueByPath(window._profileDataCache, path, value);
+  if (window._dirtyPaths) {
+    var originalValue = getValueByPath(STATE._originalData, path);
+    var currentValue = getValueByPath(window._profileDataCache, path);
+    if (JSON.stringify(currentValue) === JSON.stringify(originalValue)) {
+      // 值已恢复为原始 → 移除脏标记
+      window._dirtyPaths.delete(path);
+      var el1 = findElByPath(rawDataKey) || findElByPath(path);
+      if (el1) {
+        var w1 = el1.closest('.dirty-field');
+        if (w1) removeDirtyMark(w1);
+      }
+    } else {
+      // 值与原始不同 → 添加脏标记
+      window._dirtyPaths.add(path);
+      var el2 = findElByPath(rawDataKey) || findElByPath(path);
+      if (el2) {
+        var w2 = getDirtyWrapper(el2);
+        addDirtyMark(w2, el2.getAttribute('data-key'));
+      }
+    }
+  }
+}
+
+function switchProfileCard(groupKey) {
+  if (!window._profileDataCache || !window._schemaRes) return;
+  if (window._profileSelectedGroup === groupKey) return;
+
+  // 更新左侧导航高亮
+  const oldKey = window._profileSelectedGroup;
+  window._profileSelectedGroup = groupKey;
+  document.querySelectorAll('#profile-left .profile-nav-item').forEach(el => {
+    const onclick = el.getAttribute('onclick') || '';
+    if (onclick.includes(`'${groupKey}'`)) {
+      el.classList.add('bg-emerald-50', 'text-emerald-700', 'font-medium');
+      el.classList.remove('text-slate-600', 'hover:bg-slate-50');
+      const badge = el.querySelector('span:last-child');
+      if (badge) { badge.classList.remove('bg-slate-100', 'text-slate-400'); badge.classList.add('bg-emerald-100', 'text-emerald-600'); }
+    } else if (onclick.includes(`'${oldKey}'`)) {
+      el.classList.remove('bg-emerald-50', 'text-emerald-700', 'font-medium');
+      el.classList.add('text-slate-600', 'hover:bg-slate-50');
+      const badge = el.querySelector('span:last-child');
+      if (badge) { badge.classList.remove('bg-emerald-100', 'text-emerald-600'); badge.classList.add('bg-slate-100', 'text-slate-400'); }
+    }
+  });
+
+  // 渲染新卡片（缓存已通过 oninput 保持最新，直接读取）
+  const selectedGroup = window._schemaRes.groups.find(g => g.key === groupKey);
+  if (selectedGroup) {
+    document.activeElement?.blur();
+    document.getElementById('profile-right').innerHTML =
+      renderSchemaForm({groups: [selectedGroup]}, window._profileDataCache);
+    markDirtyFields();
+    setTimeout(() => refreshIcons(), 50);
+  }
+}
+
 async function saveYaml(name){
   if(name==='me'){
     try {
-      const orig = await loadYaml('me') || {};
-
-      // 清理 orig 中可能被污染的数组字段（字符索引 dict → 字符串）
-      const arrayFieldsToClean = {
-        'job_intent.target_titles': true,
-        'job_intent.target_industries': true,
-        'job_intent.location_preference': true,
-      };
-      for (const objPath of Object.keys(arrayFieldsToClean)) {
-        const parts = objPath.split('.');
-        let obj = orig;
-        let valid = true;
-        for (let i = 0; i < parts.length - 1; i++) {
-          if (!obj || typeof obj !== 'object') { valid = false; break; }
-          obj = obj[parts[i]];
-        }
-        const lastKey = parts[parts.length - 1];
-        if (valid && obj && Array.isArray(obj[lastKey]) && obj[lastKey].length > 0
-            && typeof obj[lastKey][0] === 'object' && obj[lastKey][0] !== null
-            && '0' in obj[lastKey][0]) {
-          obj[lastKey] = obj[lastKey].map(dict => Object.values(dict).join(''));
-        }
-      }
-      // 清理 salary_expectation.note
-      if (orig.job_intent && orig.job_intent.salary_expectation
-          && Array.isArray(orig.job_intent.salary_expectation.note)
-          && orig.job_intent.salary_expectation.note.length > 0
-          && typeof orig.job_intent.salary_expectation.note[0] === 'object'
-          && '0' in orig.job_intent.salary_expectation.note[0]) {
-        orig.job_intent.salary_expectation.note = orig.job_intent.salary_expectation.note
-          .map(dict => Object.values(dict).join('')).join('\n');
-      }
-
-      // Schema 驱动：从表单收集数据，深度合并到原始对象
-      let collected = collectFormData();
-
-      // 扁平化纯 UI 分组：将 basic_info.name→name，避免 Schema group key 注入 YAML
-      const FLAT_GROUPS = ['basic_info', 'strategic_positioning', 'summary'];
-      const flatCollected = {};
-      Object.assign(flatCollected, collected);
-      FLAT_GROUPS.forEach(groupKey => {
-        if (collected[groupKey] && typeof collected[groupKey] === 'object') {
-          const groupData = collected[groupKey];
-          Object.keys(groupData).forEach(subKey => {
-            flatCollected[subKey] = groupData[subKey];
-          });
-          delete flatCollected[groupKey];
-        }
-      });
-      collected = flatCollected;
-
-      const newMe = deepMerge(orig, collected);  // deepMerge 已递归处理数组逐行合并
-
       // 处理 core_modules 删除标记
       document.querySelectorAll('[data-delete-module]').forEach(el => {
         const moduleName = el.getAttribute('data-delete-module');
-        if (newMe.work_experience && newMe.work_experience[0] && newMe.work_experience[0].core_modules) {
-          delete newMe.work_experience[0].core_modules[moduleName];
+        if (window._profileDataCache?.work_experience?.[0]?.core_modules) {
+          delete window._profileDataCache.work_experience[0].core_modules[moduleName];
         }
       });
 
-      const res = await api('PUT', '/api/config/yaml/me', {content: newMe});
+      // 清理可能残留的展平前嵌套数据
+      if (window._profileDataCache) {
+        delete window._profileDataCache.basic_info;
+        delete window._profileDataCache.profile_summary;
+      }
+
+      const res = await api('PUT', '/api/config/yaml/me', {content: window._profileDataCache});
       if(res && !res.error) {
-        toast('已保存用户画像','ok');
+        window._profileDataCache = JSON.parse(JSON.stringify(res.content || window._profileDataCache));
+        STATE._originalData = JSON.parse(JSON.stringify(window._profileDataCache));
+        window._dirtyPaths = new Set();
         STATE.dirty = false; updateSaveBar();
-        await loadUserList(); // 刷新侧边栏下拉框
+        toast('已保存用户画像','ok');
+        await loadUserList();
       } else {
         toast('保存失败: ' + (res?.error || '未知错误'), 'err');
       }
@@ -2384,7 +2663,14 @@ function collectFormData() {
           if (dotIdx === -1) { rowData[colRelPath] = items; }
           else { setValueByPath(rowData, colRelPath, items); }
         });
-        if (Object.keys(rowData).length > 0) rows.push(rowData);
+        if (Object.keys(rowData).length > 0) {
+          const hasContent = Object.values(rowData).some(v => {
+            if (Array.isArray(v)) return v.length > 0;
+            if (typeof v === 'number') return true;
+            return v !== '' && v !== null && v !== undefined;
+          });
+          if (hasContent) rows.push(rowData);
+        }
       });
     } else {
       // ── 原有表格模式收集 ──
@@ -2444,7 +2730,14 @@ function collectFormData() {
           if (dotIdx === -1) { rowData[colRelPath] = items; }
           else { setValueByPath(rowData, colRelPath, items); }
         });
-        if (Object.keys(rowData).length > 0) rows.push(rowData);
+        if (Object.keys(rowData).length > 0) {
+          const hasContent = Object.values(rowData).some(v => {
+            if (Array.isArray(v)) return v.length > 0;
+            if (typeof v === 'number') return true;
+            return v !== '' && v !== null && v !== undefined;
+          });
+          if (hasContent) rows.push(rowData);
+        }
       });
     }
     // 🔧 记录结果：紧凑化数组消除空槽
@@ -2590,6 +2883,7 @@ async function openYamlModal(which){
 }
 
 /* ===================== SETTINGS TABS ===================== */
+
 function setTab(t){
   STATE.settingsTab = t;
   $('#set-profile').classList.toggle('hidden',t!=='profile');
@@ -2598,7 +2892,7 @@ function setTab(t){
   $('#set-schema').classList.toggle('hidden',t!=='schema');
   const anchorWrap = document.getElementById('anchor-nav-wrap');
   if (anchorWrap) {
-    const show = t === 'profile' && window.innerWidth >= 1024;
+    const show = t !== 'profile' && t !== 'schema' && window.innerWidth >= 1024;
     anchorWrap.style.display = show ? 'block' : 'none';
   }
   ['profile','job','market','schema'].forEach(tab => {
@@ -2607,8 +2901,19 @@ function setTab(t){
   });
   if(t==='schema') renderSchemaEditor();
   else { window._schemaEditCache = null; window._schemaSelectedGroupIndex = 0; }
-  if (t === 'profile') { setTimeout(initScrollSpy, 300); setTimeout(initCharCounters, 400); setTimeout(initListSortable, 500); }
+  if (t === 'profile') { setTimeout(initCharCounters, 400); setTimeout(initListSortable, 500); }
   else { disconnectScrollSpy(); }
+  // 切换 Tab 后重置 dirty 状态
+  if (t !== 'profile') {
+    // 离开画像 Tab 时，不清除画像脏数据（切回来时 renderSettings 会重建）
+    // 但需要隐藏画像专用的脏标记 UI
+    STATE.dirty = false;
+    updateSaveBar();
+  } else if (t === 'profile' && window._dirtyPaths) {
+    // 回到画像 Tab：重新检查是否有未保存的脏字段
+    STATE.dirty = window._dirtyPaths.size > 0;
+    updateSaveBar();
+  }
   refreshIcons();
 }
 
@@ -2830,14 +3135,33 @@ async function doLogin(e){
 function updateSaveBar() {
   const badge = document.getElementById('dirty-badge');
   const saveBtn = document.getElementById('save-bar-btn');
-  if (badge) badge.classList.toggle('hidden', !STATE.dirty);
+  const isProfile = STATE.settingsTab === 'profile';
+  const isSchema = STATE.settingsTab === 'schema';
+
+  if (badge) {
+    badge.classList.toggle('hidden', !STATE.dirty || isSchema);
+    if (STATE.dirty && !isSchema) {
+      if (isProfile && window._dirtyPaths) {
+        badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>已修改 ' + window._dirtyPaths.size + ' 个字段';
+      } else {
+        badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>有未保存的更改';
+      }
+    }
+  }
+
+  const undoAllBtn = document.getElementById('undo-all-btn');
+  if (undoAllBtn) undoAllBtn.classList.toggle('hidden', !STATE.dirty || !isProfile);
+
+  // 保存按钮：画像 Tab 仅在有脏标记时可点击；其他 Tab 始终可点击（schema 隐藏）
+  const active = isProfile ? STATE.dirty : (!isSchema);
   if (saveBtn) {
-    saveBtn.classList.toggle('bg-indigo-600', STATE.dirty);
-    saveBtn.classList.toggle('hover:bg-indigo-700', STATE.dirty);
-    saveBtn.classList.toggle('text-white', STATE.dirty);
-    saveBtn.classList.toggle('bg-slate-200', !STATE.dirty);
-    saveBtn.classList.toggle('text-slate-400', !STATE.dirty);
-    saveBtn.classList.toggle('cursor-not-allowed', !STATE.dirty);
+    saveBtn.classList.toggle('hidden', isSchema);
+    saveBtn.classList.toggle('bg-indigo-600', active);
+    saveBtn.classList.toggle('hover:bg-indigo-700', active);
+    saveBtn.classList.toggle('text-white', active);
+    saveBtn.classList.toggle('bg-slate-200', !active);
+    saveBtn.classList.toggle('text-slate-400', !active);
+    saveBtn.classList.toggle('cursor-not-allowed', !active);
   }
 }
 
@@ -2857,14 +3181,16 @@ function validateForm() {
 }
 
 function handleSaveBarClick() {
-  if (!STATE.dirty) return;
-  if (STATE.settingsTab === 'profile' && !validateForm()) {
+  const tab = STATE.settingsTab;
+  // 画像 Tab 需要 dirty 才允许保存；其他 Tab 始终允许
+  if (tab === 'profile' && !STATE.dirty) return;
+  if (tab === 'profile' && !validateForm()) {
     toast('请修正红色标记的字段', 'warn'); return;
   }
-  const tab = STATE.settingsTab;
   if (tab === 'profile') saveYaml('me');
   else if (tab === 'job') saveJobConfig();
   else if (tab === 'market') saveMarketConfig();
+  else if (tab === 'schema') saveSchema();
 }
 
 document.addEventListener('input', e => {
@@ -2879,10 +3205,16 @@ document.addEventListener('change', e => {
 });
 
 function checkDirtyState() {
-  if (!STATE._originalData) { STATE.dirty = true; updateSaveBar(); return; }
-  const current = collectFormData();
-  const changed = JSON.stringify(current) !== JSON.stringify(STATE._originalData);
-  if (STATE.dirty !== changed) { STATE.dirty = changed; updateSaveBar(); }
+  if (STATE.settingsTab === 'profile') {
+    // 画像 Tab：使用 _dirtyPaths 集合精准追踪每个字段
+    if (window._dirtyPaths) {
+      STATE.dirty = window._dirtyPaths.size > 0;
+    }
+  } else if (STATE.settingsTab === 'job' || STATE.settingsTab === 'market') {
+    // 非画像 Tab：任何输入即标记为脏
+    STATE.dirty = true;
+  }
+  updateSaveBar();
 }
 </script>
 </body>
