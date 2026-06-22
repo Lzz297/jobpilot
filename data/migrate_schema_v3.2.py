@@ -74,11 +74,11 @@ for col in proj['columns']:
     if col['key'] == 'period':
         add_placeholder(col, '如：2024.08 - 2026.05')
     elif col['key'] == 'description':
-        add_hint(col, '项目背景、目标和技术亮点。2-3 句即可。')
+        add_hint(col, '项目的背景、目标和主要内容。')
     elif col['key'] == 'resume_bullets':
         for sub in col.get('columns', []):
             if sub['key'] == 'text':
-                add_hint(sub, '用 STAR 法则写简历要点。')
+                add_hint(sub, '用 STAR 法则撰写，LLM 直接用于生成简历。')
 
 # ============================================================
 # 5. languages

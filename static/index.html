@@ -1862,10 +1862,10 @@ function buildCardHTML(key, rowIdx, columns, row) {
     </div>
     <div class="card-body space-y-4 border-t border-slate-100 p-4">`;
   // 前3列短字段并排
-  if (columns.length >= 3) {
-    const end = Math.min(3, columns.length);
-    html += `<div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3">`;
-    for (let ci = 0; ci < end; ci++) {
+  const gridEnd = Math.min(3, columns.length);
+  if (gridEnd > 0) {
+    html += `<div class="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-${gridEnd}">`;
+    for (let ci = 0; ci < gridEnd; ci++) {
       const col = columns[ci];
       const cellId = `${key}.${rowIdx}.${col.key}`;
       const cellValue = row ? (row[col.key] || '') : '';
@@ -1873,6 +1873,8 @@ function buildCardHTML(key, rowIdx, columns, row) {
         html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
       } else if (col.widget === 'select') {
         html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><select data-key="${cellId}" onchange="updateProfileCache('${cellId}', this.value)" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></label>`;
+      } else if (col.widget === 'textarea') {
+        html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><textarea data-key="${cellId}" rows="${col.rows || 3}" oninput="updateProfileCache('${cellId}', this.value)" class="w-full rounded-md border border-slate-300 px-3 py-2 text-sm resize-none focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${escapeHtml(cellValue)}</textarea></label>`;
       } else {
         var gPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
         html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}"${gPh} class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
@@ -1881,7 +1883,7 @@ function buildCardHTML(key, rowIdx, columns, row) {
     html += `</div>`;
   }
   // 剩余列重型控件各占一整行
-  for (let ci = 3; ci < columns.length; ci++) {
+  for (let ci = gridEnd; ci < columns.length; ci++) {
     const col = columns[ci];
     const cellId = `${key}.${rowIdx}.${col.key}`;
     const cellValue = row ? (row[col.key] || '') : '';
