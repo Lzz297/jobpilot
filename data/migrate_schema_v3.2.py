@@ -23,9 +23,11 @@ def add_placeholder(obj, ph_text):
 ps = group_map['profile_summary']
 for f in ps['fields']:
     if f['key'] == 'strategic_positioning':
-        add_hint(f, '一句话定义你的职业定位，如"Web3 支付基础设施工程师"。LLM 用于匹配 JD 方向。')
+        f['rows'] = 10
+        add_hint(f, '定义你的职业定位，如 Web3 支付基础设施工程师。LLM 用于匹配 JD 方向。')
     elif f['key'] == 'summary':
-        add_hint(f, '个人能力总结，突出核心竞争力。建议 3-5 句。LLM 用于评估岗位匹配度。')
+        f['rows'] = 12
+        add_hint(f, '总结你的核心竞争力和优势。LLM 用于判断岗位匹配度。')
 
 # ============================================================
 # 2. job_intent
