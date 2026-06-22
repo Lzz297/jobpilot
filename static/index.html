@@ -2794,7 +2794,6 @@ function collectListDirty(containerId) {
   }
   var path = containerId;
   updateProfileCache(path, items);
-  flagDirty(path);
 }
 
 function switchProfileCard(groupKey) {
@@ -2826,7 +2825,7 @@ function switchProfileCard(groupKey) {
     document.getElementById('profile-right').innerHTML =
       renderSchemaForm({groups: [selectedGroup]}, window._profileDataCache);
     markDirtyFields();
-    setTimeout(() => refreshIcons(), 50);
+    setTimeout(() => { initListSortable(); initCharCounters(); refreshIcons(); }, 200);
   }
 }
 
