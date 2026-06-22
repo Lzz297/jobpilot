@@ -2531,15 +2531,12 @@ function markSchemaDirtyFields() {
 function markMarketDirtyFieldUI(containerId) {
   var container = document.getElementById(containerId);
   if (!container || !window._marketDirtyPaths) return;
-  var card = container.closest('.bg-white.border.border-slate-200');
-  if (!card) return;
+  var section = container.parentElement;
+  if (!section) return;
   if (window._marketDirtyPaths.has(containerId)) {
-    addDirtyMark(card, containerId);
+    addDirtyMark(section, containerId);
   } else {
-    // cfg-cats / cfg-cls 共享同一张卡片，只有两者都干净才移除标记
-    if (!window._marketDirtyPaths.has('cfg-cats') && !window._marketDirtyPaths.has('cfg-cls')) {
-      removeDirtyMark(card);
-    }
+    removeDirtyMark(section);
   }
 }
 
