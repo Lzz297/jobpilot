@@ -1710,13 +1710,13 @@ function listField(containerId, values) {
       <span class="drag-handle cursor-grab text-slate-300 hover:text-slate-500 flex items-center justify-center w-5 shrink-0 select-none" title="拖拽排序">
         <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
       </span>
-      <input class="list-item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" value="${escapeHtml(v)}">
-      <button type="button" onclick="this.closest('[data-list-item]').remove()" class="text-red-400 text-xs">&times;</button>
+      <input class="list-item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" value="${escapeHtml(v)}" oninput="collectListDirty('${containerId}')">
+      <button type="button" onclick="this.closest('[data-list-item]').remove();collectListDirty('${containerId}')" class="text-red-400 text-xs">&times;</button>
     </div>`
   ).join('');
   return `<div id="${containerId}" data-key="${containerId}" class="sortable-list">
     ${items}
-    <button type="button" onclick="addDynamicRow('${containerId}','list-item')" class="text-xs text-indigo-600 mt-1">+ 添加</button>
+    <button type="button" onclick="addDynamicRow('${containerId}','list-item');collectListDirty('${containerId}')" class="text-xs text-indigo-600 mt-1">+ 添加</button>
   </div>`;
 }
 
@@ -1775,7 +1775,7 @@ function tableField(fieldDef, dataArray) {
         var taPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
         html += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${taPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none">${escapeHtml(cellValue)}</textarea></td>`;
       } else if (col.widget === 'select') {
-        html += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></td>`;
+        html += `<td class="pr-2 py-1"><select data-key="${cellId}" onchange="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></td>`;
       } else if (col.widget === 'number') {
         var nPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
         html += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}" value="${cellValue||''}"${nPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
@@ -1791,7 +1791,7 @@ function tableField(fieldDef, dataArray) {
         html += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" value="${escapeHtml(cellValue)}"${iPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       }
     });
-    html += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
+    html += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove();flagDirty('${key}')" class="text-red-400 text-xs">&times;</button></td></tr>`;
   });
   html += `</tbody></table>
     <button type="button" onclick="addTableRow(this, '${key}', ${JSON.stringify(columns).replace(/"/g, '&quot;')})" class="text-xs text-indigo-600 mt-2">+ 添加</button>
@@ -1815,7 +1815,7 @@ function addTableRow(btn, tableKey, columns) {
       var rPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
       rowHtml += `<td class="pr-2 py-1"><textarea data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${rPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm resize-none"></textarea></td>`;
     } else if (col.widget === 'select') {
-      rowHtml += `<td class="pr-2 py-1"><select data-key="${cellId}" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></td>`;
+      rowHtml += `<td class="pr-2 py-1"><select data-key="${cellId}" onchange="updateProfileCache('${cellId}', this.value)" class="w-full border border-slate-200 rounded px-2 py-1 text-sm bg-white"><option value="">--</option>${(col.options||[]).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('')}</select></td>`;
     } else if (col.widget === 'number') {
       var arnPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
       rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" type="number" oninput="updateProfileCache('${cellId}', this.value)" min="${col.min||0}" step="${col.step||0.5}"${arnPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
@@ -1829,7 +1829,7 @@ function addTableRow(btn, tableKey, columns) {
       rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${ariPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     }
   });
-  rowHtml += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove()" class="text-red-400 text-xs">&times;</button></td></tr>`;
+  rowHtml += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove();flagDirty('${tableKey}')" class="text-red-400 text-xs">&times;</button></td></tr>`;
   tbody.insertAdjacentHTML('beforeend', rowHtml);
 }
 
@@ -1982,7 +1982,11 @@ function initListSortable() {
     Sortable.create(list, {
       handle: '.drag-handle',
       animation: 150,
-      onEnd: () => { checkDirtyState(); }
+      onEnd: function(evt) {
+        var listEl = evt.target;
+        var containerId = listEl.getAttribute('data-key') || listEl.id;
+        if (containerId) collectListDirty(containerId);
+      }
     });
   });
 }
@@ -1991,6 +1995,9 @@ function categoriesField(fieldDef, data) {
   const prefix = fieldDef.key;
   const schema = fieldDef.item_schema;
   let html = '<div class="space-y-4">';
+  if (fieldDef.description) {
+    html += `<div class="bg-indigo-50 border border-indigo-100 rounded-lg p-3 mb-3 text-xs text-indigo-700">${escapeHtml(fieldDef.description)}</div>`;
+  }
   if (data && typeof data === 'object') {
     Object.entries(data).forEach(([category, items]) => {
       const label = formatLabel(category);
@@ -2767,6 +2774,27 @@ function updateProfileCache(path, value) {
       }
     }
   }
+}
+
+function flagDirty(path) {
+  if (!window._dirtyPaths) return;
+  window._dirtyPaths.add(path);
+  STATE.dirty = true;
+  updateSaveBar();
+}
+
+function collectListDirty(containerId) {
+  var items = [];
+  var container = document.getElementById(containerId);
+  if (container) {
+    container.querySelectorAll('input.list-item').forEach(function(inp) {
+      var v = inp.value.trim();
+      if (v) items.push(v);
+    });
+  }
+  var path = containerId;
+  updateProfileCache(path, items);
+  flagDirty(path);
 }
 
 function switchProfileCard(groupKey) {
