@@ -2971,15 +2971,16 @@ function calcCompleteness() {
 /* ===================== MODAL TEXT EDITOR ===================== */
 function modalTextField(id, label, currentValue) {
   const escaped = escapeHtml(currentValue || '');
-  const short = escaped.length > 100 ? escaped.substring(0, 100) + '...' : escaped;
+  const short = escaped.length > 300 ? escaped.substring(0, 300) + '…' : escaped;
   return `<div class="flex items-center gap-2">
     <span class="text-xs text-slate-500 flex-1 truncate">${short || '(空)'}</span>
-    <button type="button" onclick="openTextModal('${id}', '${escapeHtml(label)}', this)" class="text-xs text-indigo-600 hover:text-indigo-800 shrink-0">编辑</button>
+    <button type="button" onclick="openTextViewModal('${id}', '${escapeHtml(label)}')" class="text-xs text-slate-400 hover:text-indigo-600 shrink-0">查看</button>
+    <button type="button" onclick="openTextModal('${id}', '${escapeHtml(label)}')" class="text-xs text-indigo-600 hover:text-indigo-800 shrink-0">编辑</button>
     <textarea id="${id}" data-key="${id}" class="hidden">${escaped}</textarea>
   </div>`;
 }
 
-function openTextModal(id, label, btn) {
+function openTextModal(id, label) {
   const textarea = document.getElementById(id);
   if(!textarea) return;
   const overlay = document.createElement('div');
@@ -2990,11 +2991,27 @@ function openTextModal(id, label, btn) {
       <h3 class="text-lg font-semibold text-slate-800">编辑：${escapeHtml(label)}</h3>
       <button type="button" onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
     </div>
-    <textarea id="modal-textarea-${id}" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none" rows="15">${escapeHtml(textarea.value)}</textarea>
+    <textarea id="modal-textarea-${id}" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none" rows="20">${escapeHtml(textarea.value)}</textarea>
     <div class="flex justify-end gap-2 mt-4">
       <button type="button" onclick="this.closest('.fixed').remove()" class="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">取消</button>
-      <button type="button" onclick="document.getElementById('${id}').value = document.getElementById('modal-textarea-${id}').value; this.closest('.fixed').remove();" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">确定</button>
+      <button type="button" onclick="var v=document.getElementById('modal-textarea-${id}').value; document.getElementById('${id}').value=v; updateProfileCache('${id}', v); this.closest('.fixed').remove();" class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">确定</button>
     </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+function openTextViewModal(id, label) {
+  const textarea = document.getElementById(id);
+  if (!textarea) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  overlay.innerHTML = `<div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] flex flex-col" onclick="event.stopPropagation()">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-semibold text-slate-800">${escapeHtml(label)}</h3>
+      <button type="button" onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+    </div>
+    <div class="flex-1 overflow-y-auto text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">${escapeHtml(textarea.value)}</div>
   </div>`;
   document.body.appendChild(overlay);
 }
