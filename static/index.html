@@ -1138,7 +1138,8 @@ async function viewCurrentCampaign(){
     const current = data ? data.find(c => c.name === campaignName) : null;
     if(!current){ toast('未找到当前方向配置','err'); return; }
     let html = `<div class="space-y-3"><h3 class="font-semibold text-sm">当前方向：${current.name} · ${current.strategy}</h3>`;
-    html += `<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">用户</span><div class="text-slate-700 font-medium">${STATE.user || '未选择'}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">策略</span><div class="text-slate-700 font-medium">${current.strategy}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">搜索词</span><div class="text-slate-700 font-medium">${current.queries} 组</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">关键词</span><div class="text-slate-700 font-medium">${current.keywords ? current.keywords.join('、') : '无'}</div></div></div></div>`;
+    html += `<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">用户</span><div class="text-slate-700 font-medium">${STATE.user || '未选择'}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">策略</span><div class="text-slate-700 font-medium">${current.strategy}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">搜索词</span><div class="text-slate-700 font-medium">${current.queries} 组</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">关键词</span><div class="text-slate-700 font-medium">${current.keywords ? current.keywords.join('、') : '无'}</div></div></div>`;
+    html += `<p class="text-[11px] text-slate-400 flex items-start gap-1.5 mt-3"><i data-lucide="info" class="w-3.5 h-3.5 shrink-0 mt-0.5"></i> 可能有多个求职方向，请前往设置页查看全部</p></div>`;
     showModal('当前 Campaign 配置', html);
     const editBtn = document.getElementById('modal-edit');
     editBtn.classList.remove('hidden');
@@ -3220,44 +3221,20 @@ async function openYamlModal(which){
   // Friendly view
   let friendlyHtml = '';
   if(which==='me'){
-    const intent = data.job_intent || {};
-    const skills = data.skills || {};
-    const exp = data.work_experience || [];
-    const header = `<div class="flex items-center gap-3.5 pb-4 mb-5 border-b border-slate-100"><div class="w-14 h-14 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0">${escapeHtml((data.name||'?').slice(0,1))}</div><div class="min-w-0"><div class="font-bold text-slate-800 text-lg leading-tight">${escapeHtml(data.name||'')}</div><div class="text-xs text-indigo-600 mt-0.5">${escapeHtml((data.strategic_positioning||'').split('，')[0])}</div></div></div>`;
-    const contact = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="user-round" class="w-3.5 h-3.5"></i> 联系方式</div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2">${[['map-pin',data.location],['phone',data.phone],['mail',data.email],['linkedin',data.linkedin],['github',data.github]].map(([ic,v])=>`<div class="flex items-center gap-2 text-sm text-slate-600"><i data-lucide="${ic}" class="w-3.5 h-3.5 text-slate-400 shrink-0"></i><span class="truncate">${escapeHtml(v||'')}</span></div>`).join('')}</div></section>`;
-    const titlesHtml = (intent.target_titles||[]).map((t,i)=>`<div class="flex items-center gap-2 text-sm text-slate-700"><span class="w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] flex items-center justify-center font-medium shrink-0">${i+1}</span> ${escapeHtml(t)}</div>`).join('');
-    const salaryDisplay = intent.salary_expectation && typeof intent.salary_expectation === 'object'
-      ? `${intent.salary_expectation.min || '?'}-${intent.salary_expectation.max || '?'} ${intent.salary_expectation.currency || ''}`
-      : (intent.salary_expectation || '');
-    const industriesDisplay = (intent.target_industries||[]).map(item =>
-      typeof item === 'object' && item !== null ? (item.title || item.name || Object.values(item).join('')) : item
-    ).join('、');
-    const intentSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="target" class="w-3.5 h-3.5"></i> 求职意向</div><div class="space-y-1.5 mb-3">${titlesHtml}</div><div class="grid grid-cols-1 sm:grid-cols-3 gap-2">${[['薪资期望',salaryDisplay],['到岗时间',intent.notice_period],['目标行业',industriesDisplay]].map(([k,v])=>`<div class="bg-slate-50 rounded-lg px-3 py-2"><div class="text-[10px] text-slate-400">${k}</div><div class="text-sm text-slate-700 font-medium mt-0.5">${escapeHtml(v||'—')}</div></div>`).join('')}</div></section>`;
-    const pos = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="compass" class="w-3.5 h-3.5"></i> 战略定位</div><div class="bg-indigo-50 border-l-2 border-indigo-400 rounded-r-lg px-3 py-2.5 text-sm text-slate-700 leading-relaxed">${escapeHtml(data.strategic_positioning||'')}</div></section>`;
-    const skillsSec = (() => {
-      const skillEntries = Object.entries(data.skills||{});
-      if (skillEntries.length === 0) return '';
-      let shtml = '<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="cpu" class="w-3.5 h-3.5"></i> 专业技能</div>';
-      skillEntries.forEach(([key, arr]) => {
-        if (!Array.isArray(arr) || arr.length === 0) return;
-        const label = formatLabel(key);
-        shtml += '<div class="mb-2"><span class="text-xs font-medium text-slate-500">'+label+'</span><div class="text-sm text-slate-600 mt-0.5">';
-        if (typeof arr[0] === 'object' && arr[0] !== null) {
-          shtml += arr.map(item => (item.name||item.skill||'')).join(' · ');
-        } else {
-          shtml += arr.join(' · ');
-        }
-        shtml += '</div></div>';
-      });
-      shtml += '</section>';
-      return shtml;
-    })();
-    const expSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="briefcase" class="w-3.5 h-3.5"></i> 工作经历</div>${exp.map(e=>`<div class="border-l-2 border-slate-200 pl-3 mb-3"><div class="flex items-baseline justify-between gap-2 flex-wrap"><div class="font-medium text-slate-800 text-sm">${escapeHtml(e.title||'')} · ${escapeHtml(e.company||'')}</div><div class="text-[11px] text-slate-400">${escapeHtml(e.period||'')}</div></div><ul class="mt-1.5 space-y-1">${(e.highlights||[]).map(h=>`<li class="text-xs text-slate-600 flex gap-1.5"><span class="text-indigo-400">•</span> ${escapeHtml(h)}</li>`).join('')}</ul></div>`).join('')}</section>`;
-    const selfSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="quote" class="w-3.5 h-3.5"></i> 自我评价</div><p class="text-sm text-slate-600 leading-relaxed bg-slate-50 rounded-lg px-3 py-2.5">${escapeHtml(data.summary||'')}</p></section>`;
-    const eduSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="graduation-cap" class="w-3.5 h-3.5"></i> 教育背景</div>${(data.education||[]).length ? data.education.map(e => `<div class="bg-slate-50 rounded-lg px-3 py-2 mb-1.5"><div class="text-sm text-slate-700 font-medium">${escapeHtml(e.degree||'')} · ${escapeHtml(e.major||'')}</div><div class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(e.school||'')}${e.school_en ? ' (' + escapeHtml(e.school_en) + ')' : ''} · ${escapeHtml(e.period||'')}</div></div>`).join('') : '<p class="text-sm text-slate-400">未填写</p>'}</section>`;
-    const projSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="folder" class="w-3.5 h-3.5"></i> 项目经历</div>${(data.projects||[]).length ? data.projects.map(p => `<div class="bg-slate-50 rounded-lg px-3 py-2 mb-1.5"><div class="text-sm text-slate-700 font-medium">${escapeHtml(p.name||'')}</div><div class="text-[11px] text-slate-400 mt-0.5">${escapeHtml(p.role||'')} · 技术栈：${(p.tech_stack||[]).join(', ') || '无'}</div>${p.description ? '<p class="text-xs text-slate-500 mt-1">'+escapeHtml(p.description)+'</p>' : ''}</div>`).join('') : '<p class="text-sm text-slate-400">未填写</p>'}</section>`;
-    const certSec = `<section class="mb-5"><div class="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2"><i data-lucide="award" class="w-3.5 h-3.5"></i> 证书</div>${(data.certifications||[]).length ? data.certifications.map(c => `<span class="text-xs bg-slate-50 text-slate-600 rounded-full px-2.5 py-1 mr-1">${escapeHtml(c)}</span>`).join('') : '<p class="text-sm text-slate-400">未填写</p>'}</section>`;
-    friendlyHtml = header+contact+intentSec+pos+skillsSec+expSec+eduSec+projSec+certSec+selfSec;
+    const name = data.name || '';
+    const nameEn = data.name_en || '';
+    const location = data.location || '';
+    const phone = data.phone || '';
+    friendlyHtml = `<div class="space-y-3">
+      <h3 class="font-semibold text-sm">个人画像</h3>
+      <div class="grid grid-cols-2 gap-2 text-xs">
+        <div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">姓名</span><div class="text-slate-700 font-medium mt-0.5">${escapeHtml(name || '—')}</div></div>
+        <div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">英文名</span><div class="text-slate-700 font-medium mt-0.5">${escapeHtml(nameEn || '—')}</div></div>
+        <div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">所在地</span><div class="text-slate-700 font-medium mt-0.5">${escapeHtml(location || '—')}</div></div>
+        <div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">电话</span><div class="text-slate-700 font-medium mt-0.5">${escapeHtml(phone || '—')}</div></div>
+      </div>
+      <p class="text-[11px] text-slate-400 flex items-start gap-1.5"><i data-lucide="info" class="w-3.5 h-3.5 shrink-0 mt-0.5"></i> 详细信息请前往设置页面查看</p>
+    </div>`;
   } else {
     const s = data.search || {};
     const ma = data.market_analysis || {};
