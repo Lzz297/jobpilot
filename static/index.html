@@ -36,10 +36,10 @@
   .anchor-link.active{border-left-color:#4f46e5;background:#eef2ff;color:#4338ca;font-weight:600}
   #view-settings{scroll-behavior:smooth}
   /* ── 脏字段标记 ── */
-  .dirty-field{padding-left:6px;margin-left:-6px;padding-right:56px;position:relative}
-  .dirty-field::before{content:'';position:absolute;left:0;top:0;height:1rem;width:2px;background:#f59e0b;border-radius:1px}
-  td.dirty-field{padding-left:6px;padding-right:48px;margin-left:0}
-  td.dirty-field::before{left:0;top:2px;bottom:2px}
+  .dirty-field{padding-right:56px;position:relative}
+  .dirty-field label{color:#b45309}
+  td.dirty-field{padding-left:6px;padding-right:48px;margin-left:0;position:relative}
+  td.dirty-field::before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:2px;background:#f59e0b;border-radius:1px}
   .dirty-field:hover .undo-btn{opacity:1}
   .undo-btn{opacity:0;position:absolute;right:0;top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 6px;font-size:11px;color:#64748b;cursor:pointer;transition:opacity .15s;white-space:nowrap;z-index:1}
   td .undo-btn{right:2px;top:2px}
