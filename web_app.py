@@ -930,18 +930,19 @@ def set_session_campaign():
     if not sid:
         return jsonify({"error": "Missing sid"}), 400
 
-    session = _get_or_create_session(sid)
+    user_id = session.get("user_id")
+    sess = _get_or_create_session(sid)
 
     # 验证 Campaign 存在（查数据库）
     if campaign is not None:
         row = _db_fetch_one(
             "SELECT name FROM campaigns WHERE name = ? AND owner_id = ?",
-            (campaign, session.get("user_id"))
+            (campaign, user_id)
         )
         if not row:
             return jsonify({"error": f"Campaign '{campaign}' 不存在"}), 400
 
-    session["campaign"] = campaign
+    sess["campaign"] = campaign
     return jsonify({"status": "ok", "campaign": campaign})
 
 
