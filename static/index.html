@@ -36,7 +36,7 @@
   #view-settings{scroll-behavior:smooth}
   /* ── 脏字段标记 ── */
   .dirty-field{padding-right:56px;position:relative}
-  .dirty-field label{color:#b45309}
+  .dirty-field label,.dirty-field>span{color:#b45309}
   td.dirty-field{padding-left:6px;padding-right:48px;margin-left:0;position:relative}
   td.dirty-field::before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:2px;background:#f59e0b;border-radius:1px}
   .dirty-field:hover .undo-btn{opacity:1}
@@ -2761,6 +2761,11 @@ function updateProfileCache(path, value) {
   // 归一化：如果原始值是数组，将 textarea 字符串转为数组（支持换行和逗号分隔）
   if (Array.isArray(getValueByPath(STATE._originalData, path)) && typeof value === 'string') {
     value = value.split('\n').flatMap(s => s.split(',')).map(s => s.trim()).filter(Boolean);
+  }
+  // 归一化：原始值为数字时，将字符串转回数字（如 select 返回的 "20" → 20）
+  var origVal = getValueByPath(STATE._originalData, path);
+  if (typeof origVal === 'number' && typeof value === 'string' && !isNaN(value)) {
+    value = Number(value);
   }
   setValueByPath(window._profileDataCache, path, value);
   if (window._dirtyPaths) {
