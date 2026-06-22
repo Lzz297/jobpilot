@@ -3000,6 +3000,15 @@ async function saveMarketConfig(){
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
       toast('已保存市场调研配置','ok');
+      // 同步快照为当前保存的值
+      if (window._marketOriginalData) {
+        window._marketOriginalData['cfg-cats'] = JSON.stringify(jobCategories);
+        window._marketOriginalData['cfg-cls'] = JSON.stringify(classifications);
+        window._marketOriginalData['c-mpages'] = ($('#c-mpages')?.value || '');
+        window._marketOriginalData['c-mjd'] = ($('#c-mjd')?.value || '');
+        window._marketOriginalData['c-mbatch'] = ($('#c-mbatch')?.value || '');
+        window._marketOriginalData['c-mchars'] = ($('#c-mchars')?.value || '');
+      }
       window._marketDirtyPaths = new Set();
       markMarketDirtyFields();
       STATE.dirty = false; updateSaveBar();
