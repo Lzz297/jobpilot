@@ -52,11 +52,11 @@ for col in we['columns']:
     if col['key'] == 'period':
         add_placeholder(col, '如：2024.08 - 2026.05')
     elif col['key'] == 'overview':
-        add_hint(col, '公司业务背景、系统架构、你的角色定位。LLM 用于理解岗位上下文。')
+        add_hint(col, '让 LLM 理解你的职责范围和技术环境')
     elif col['key'] == 'company_description':
-        add_hint(col, '公司业务简介，帮助 LLM 评估行业匹配度。一句话即可。')
+        add_hint(col, '让 LLM 了解你的公司背景，评估行业匹配度')
     elif col['key'] == 'highlights':
-        add_hint(col, '你的关键贡献和量化成果。LLM 直接用于生成简历 bullet。')
+        add_hint(col, 'LLM 直接从这里提取素材生成简历 bullet')
     elif col['key'] == 'key_achievements':
         for sub in col.get('columns', []):
             if sub['key'] == 'resume_bullet':
