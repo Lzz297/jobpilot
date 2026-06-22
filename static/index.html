@@ -1847,7 +1847,7 @@ function buildCardHTML(key, rowIdx, columns, row) {
   const title2 = (row && columns[1] && row[columns[1].key]) || (columns[1] && columns[1].label) || '';
   const period = (row && columns[2] && row[columns[2].key]) || '';
   const cardId = `${key.replace(/\./g, '_')}_${rowIdx}`;
-  let html = `<div class="card-item overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-row-index="${rowIdx}">
+  let html = `<div class="card-item card-collapsed overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm" data-row-index="${rowIdx}">
     <div class="flex items-center justify-between gap-2 px-4 py-3">
       <button type="button" onclick="toggleCard(this)" class="flex min-w-0 items-center gap-2 text-left">
         <svg class="caret h-4 w-4 shrink-0 text-slate-400 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
