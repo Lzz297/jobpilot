@@ -1855,7 +1855,7 @@ function buildCardHTML(key, rowIdx, columns, row) {
       </button>
       <div class="flex shrink-0 items-center gap-3">
         <span class="hidden text-xs text-slate-400 sm:inline">${escapeHtml(period)}</span>
-        <button type="button" onclick="event.preventDefault(); this.closest('.card-item').remove()" class="text-slate-300 transition hover:text-rose-500">
+        <button type="button" onclick="event.preventDefault(); removeCardItem(this, '${key}')" class="text-slate-300 transition hover:text-rose-500">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
       </div>
@@ -1921,6 +1921,18 @@ function addCardRow(btn, tableKey, columns) {
   const rowCount = container.querySelectorAll('.card-item').length;
   const newCard = buildCardHTML(tableKey, rowCount, columns, {});
   container.insertAdjacentHTML('beforeend', newCard);
+}
+
+function removeCardItem(btn, tableKey) {
+  var card = btn.closest('.card-item');
+  card.remove();
+  flagDirty(tableKey);
+  var details = card.closest('details');
+  if (details) {
+    var count = details.querySelectorAll('.card-item').length;
+    var summary = details.querySelector('summary');
+    if (summary) summary.innerHTML = summary.innerHTML.replace(/（\d+）/, '（' + count + '）');
+  }
 }
 
 function toggleCard(btn) {
