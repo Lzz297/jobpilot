@@ -2902,6 +2902,15 @@ async function saveYaml(name){
         STATE.dirty = false; updateSaveBar();
         toast('已保存用户画像','ok');
         await loadUserList();
+        // 刷新当前卡片 DOM，使编辑后的数据即时反映
+        if (window._profileSelectedGroup && window._schemaRes) {
+          var sg = window._schemaRes.groups.find(g => g.key === window._profileSelectedGroup);
+          if (sg) {
+            document.getElementById('profile-right').innerHTML = renderSchemaForm({groups: [sg]}, window._profileDataCache);
+            markDirtyFields();
+            setTimeout(() => { initCharCounters(); refreshIcons(); }, 200);
+          }
+        }
       } else {
         toast('保存失败: ' + (res?.error || '未知错误'), 'err');
       }
