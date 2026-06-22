@@ -2425,6 +2425,11 @@ function markDirtyFields() {
 }
 
 function markJobDirtyFields() {
+  var container = document.getElementById('set-job');
+  if (container) {
+    container.querySelectorAll('.dirty-field').forEach(function(el) { el.classList.remove('dirty-field'); });
+    container.querySelectorAll('.undo-btn').forEach(function(el) { el.remove(); });
+  }
   if (!window._jobDirtyPaths || window._jobDirtyPaths.size === 0) return;
   window._jobDirtyPaths.forEach(function(path) {
     var el = document.getElementById(path);
@@ -2437,6 +2442,11 @@ function markJobDirtyFields() {
 }
 
 function markMarketDirtyFields() {
+  var container = document.getElementById('set-market');
+  if (container) {
+    container.querySelectorAll('.dirty-field').forEach(function(el) { el.classList.remove('dirty-field'); });
+    container.querySelectorAll('.undo-btn').forEach(function(el) { el.remove(); });
+  }
   if (!window._marketDirtyPaths || window._marketDirtyPaths.size === 0) return;
   window._marketDirtyPaths.forEach(function(path) {
     if (path === 'cfg-cats' || path === 'cfg-cls') {
@@ -2815,6 +2825,7 @@ async function saveYaml(name){
         window._profileDataCache = JSON.parse(JSON.stringify(res.content || window._profileDataCache));
         STATE._originalData = JSON.parse(JSON.stringify(window._profileDataCache));
         window._dirtyPaths = new Set();
+        markDirtyFields();
         STATE.dirty = false; updateSaveBar();
         toast('已保存用户画像','ok');
         await loadUserList();
@@ -2848,6 +2859,7 @@ async function saveJobConfig(){
     if(res && !res.error){
       toast('已保存找工作配置','ok');
       window._jobDirtyPaths = new Set();
+      markJobDirtyFields();
       STATE.dirty = false; updateSaveBar();
       STATE.sort = newCfg.sort_mode || 'date';
       document.querySelectorAll('.sortbtn').forEach(x=>{
@@ -2886,6 +2898,7 @@ async function saveMarketConfig(){
     if(res && !res.error){
       toast('已保存市场调研配置','ok');
       window._marketDirtyPaths = new Set();
+      markMarketDirtyFields();
       STATE.dirty = false; updateSaveBar();
       renderMarketPresets();
     } else {
