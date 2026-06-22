@@ -32,7 +32,7 @@ def _validate_weight_profile(strategy_name: str, weight_profile: dict):
         print(f"[config_assembler] 策略 '{strategy_name}' weight_profile 总和验证通过 (100)")
 
 
-def load_campaign(campaign_name: str) -> dict:
+def load_campaign(campaign_name: str, user_id: int = None) -> dict:
     """
     加载一个 campaign，返回合并后的完整配置字典。
 
@@ -46,7 +46,13 @@ def load_campaign(campaign_name: str) -> dict:
     """
     # ── 1. 加载 campaign ──
     from config import _db_fetch_one
-    row = _db_fetch_one("SELECT data FROM campaigns WHERE name = ?", (campaign_name,))
+    if user_id is not None:
+        row = _db_fetch_one(
+            "SELECT data FROM campaigns WHERE name = ? AND owner_id = ?",
+            (campaign_name, user_id)
+        )
+    else:
+        row = _db_fetch_one("SELECT data FROM campaigns WHERE name = ?", (campaign_name,))
     if not row:
         raise FileNotFoundError(f"Campaign 不存在: {campaign_name}")
     campaign = json.loads(row["data"])

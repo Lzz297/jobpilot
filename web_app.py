@@ -141,7 +141,7 @@ def _run_agent_turn(sid, user_message):
             try:
                 from config_assembler import load_campaign
                 from config import set_campaign_config
-                cfg = load_campaign(session["campaign"])
+                cfg = load_campaign(session["campaign"], user_id=session.get("user_id"))
                 set_campaign_config(cfg)
                 q.put({"type": "status", "text": f"当前求职方向: {session['campaign']} (策略: {cfg['strategy_name']})"})
             except Exception as e:
@@ -228,7 +228,7 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
         if session.get("campaign"):
             try:
                 from config_assembler import load_campaign
-                cfg = load_campaign(session["campaign"])
+                cfg = load_campaign(session["campaign"], user_id=session.get("user_id"))
                 from config import set_campaign_config
                 set_campaign_config(cfg)
                 q.put({"type": "status", "text": f"当前求职方向: {session['campaign']} (策略: {cfg['strategy_name']})"})
@@ -583,7 +583,7 @@ def api_resume():
                 try:
                     from config_assembler import load_campaign
                     from config import set_campaign_config
-                    cfg = load_campaign(session["campaign"])
+                    cfg = load_campaign(session["campaign"], user_id=session.get("user_id"))
                     set_campaign_config(cfg)
                 except Exception as e:
                     q.put({"type": "progress", "text": f"⚠️ Campaign 加载失败: {e}"})
@@ -892,11 +892,16 @@ def set_model_config():
 # ── Campaign 配置 API ──
 
 @app.route("/api/campaigns", methods=["GET"])
+@login_required
 def list_campaigns():
-    """列出所有可用 Campaign。优先从 SQLite 读取。"""
-    rows = _db_fetch_all("SELECT name, data FROM campaigns")
+    """列出当前用户自己的 Campaign。"""
+    user_id = session.get("user_id")
+    rows = _db_fetch_all(
+        "SELECT id, name, data, created_at FROM campaigns WHERE owner_id = ?",
+        (user_id,)
+    )
+    result = []
     if rows:
-        result = []
         for r in rows:
             try:
                 data = json.loads(r["data"])
@@ -904,13 +909,14 @@ def list_campaigns():
                 continue
             sq = data.get("search_queries", [])
             result.append({
+                "id": r["id"],
                 "name": r["name"],
                 "strategy": data.get("strategy", ""),
                 "queries": len(sq),
                 "keywords": [q.get("keywords", "") for q in sq if q.get("keywords")],
+                "created_at": r["created_at"],
             })
-        return jsonify(result)
-    return jsonify([])
+    return jsonify(result)
 
 
 @app.route("/api/session/campaign", methods=["POST"])
@@ -928,12 +934,151 @@ def set_session_campaign():
 
     # 验证 Campaign 存在（查数据库）
     if campaign is not None:
-        row = _db_fetch_one("SELECT name FROM campaigns WHERE name = ?", (campaign,))
+        row = _db_fetch_one(
+            "SELECT name FROM campaigns WHERE name = ? AND owner_id = ?",
+            (campaign, session.get("user_id"))
+        )
         if not row:
             return jsonify({"error": f"Campaign '{campaign}' 不存在"}), 400
 
     session["campaign"] = campaign
     return jsonify({"status": "ok", "campaign": campaign})
+
+
+# ── Campaign CRUD API ──
+
+@app.route("/api/campaigns", methods=["POST"])
+@login_required
+def create_campaign():
+    """创建新 Campaign。"""
+    data = request.json or {}
+    name = data.get("name", "").strip()
+    campaign_data = data.get("data", {})
+    if not name:
+        return jsonify({"error": "Campaign 名称不能为空"}), 400
+    if not isinstance(campaign_data, dict):
+        return jsonify({"error": "data 必须是 JSON 对象"}), 400
+    if not campaign_data.get("strategy"):
+        return jsonify({"error": "请选择策略"}), 400
+
+    user_id = session.get("user_id")
+    existing = _db_fetch_one("SELECT id FROM campaigns WHERE name = ?", (name,))
+    if existing:
+        return jsonify({"error": f"Campaign '{name}' 已存在"}), 400
+
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO campaigns (name, data, owner_id) VALUES (?, ?, ?)",
+            (name, json.dumps(campaign_data, ensure_ascii=False), user_id)
+        )
+        conn.commit()
+        new_id = cursor.lastrowid
+        conn.close()
+        return jsonify({"status": "ok", "id": new_id, "name": name}), 201
+    except Exception as e:
+        return jsonify({"error": f"创建失败: {str(e)}"}), 500
+
+
+@app.route("/api/campaigns/<int:id>", methods=["GET"])
+@login_required
+def get_campaign(id):
+    """获取单个 Campaign 完整数据。"""
+    user_id = session.get("user_id")
+    row = _db_fetch_one(
+        "SELECT id, name, data, created_at, updated_at FROM campaigns WHERE id = ? AND owner_id = ?",
+        (id, user_id)
+    )
+    if not row:
+        return jsonify({"error": "Campaign 不存在"}), 404
+    try:
+        data = json.loads(row["data"])
+    except json.JSONDecodeError:
+        return jsonify({"error": "数据损坏"}), 500
+    return jsonify({
+        "id": row["id"],
+        "name": row["name"],
+        "data": data,
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    })
+
+
+@app.route("/api/campaigns/<int:id>", methods=["PUT"])
+@login_required
+def update_campaign(id):
+    """更新 Campaign。"""
+    data = request.json or {}
+    name = data.get("name", "").strip()
+    campaign_data = data.get("data", {})
+    if not name:
+        return jsonify({"error": "Campaign 名称不能为空"}), 400
+    if not isinstance(campaign_data, dict):
+        return jsonify({"error": "data 必须是 JSON 对象"}), 400
+
+    user_id = session.get("user_id")
+    row = _db_fetch_one(
+        "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+        (id, user_id)
+    )
+    if not row:
+        return jsonify({"error": "Campaign 不存在"}), 404
+
+    existing = _db_fetch_one("SELECT id FROM campaigns WHERE name = ? AND id != ?", (name, id))
+    if existing:
+        return jsonify({"error": f"名称 '{name}' 已被其他 Campaign 使用"}), 400
+
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE campaigns SET name = ?, data = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+            (name, json.dumps(campaign_data, ensure_ascii=False), id, user_id)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": f"更新失败: {str(e)}"}), 500
+
+
+@app.route("/api/campaigns/<int:id>", methods=["DELETE"])
+@login_required
+def delete_campaign(id):
+    """删除 Campaign。"""
+    user_id = session.get("user_id")
+    row = _db_fetch_one(
+        "SELECT id FROM campaigns WHERE id = ? AND owner_id = ?",
+        (id, user_id)
+    )
+    if not row:
+        return jsonify({"error": "Campaign 不存在"}), 404
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM campaigns WHERE id = ? AND owner_id = ?", (id, user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": f"删除失败: {str(e)}"}), 500
+
+
+# ── 策略列表 API ──
+
+@app.route("/api/strategies", methods=["GET"])
+def list_strategies():
+    """列出所有可用策略，供 campaign 编辑下拉使用。"""
+    rows = _db_fetch_all("SELECT id, name, data FROM strategies")
+    result = []
+    for r in rows:
+        try:
+            data = json.loads(r["data"])
+        except json.JSONDecodeError:
+            continue
+        result.append({"id": r["id"], "name": r["name"]})
+    return jsonify(result)
 
 
 # ── 用户画像 API ──

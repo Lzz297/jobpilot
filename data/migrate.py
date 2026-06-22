@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS operation_logs (
 print('Step 1: Tables created')
 print(f'Tables: {[r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type=\'table\'").fetchall()]}')
 
+# ===== Step 1.5: 将历史 campaign 归给 admin =====
+c.execute("""
+    UPDATE campaigns SET owner_id = (SELECT id FROM users WHERE role = 'admin' LIMIT 1)
+    WHERE owner_id IS NULL
+""")
+print('\nStep 1.5: Assigned NULL owner_id campaigns to admin')
+print(f'Tables: {[r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type=\'table\'").fetchall()]}')
+
 # ===== Step 2: 确保至少一个管理员用户 =====
 if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
     c.execute("INSERT INTO users (username, role) VALUES ('admin', 'admin')")
