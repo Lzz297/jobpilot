@@ -1833,7 +1833,7 @@ function addTableRow(btn, tableKey, columns) {
 function renderCardTable(fieldDef, dataArray) {
   const key = fieldDef.key;
   const columns = fieldDef.columns;
-  let html = `<div class="space-y-3" data-table="${key}" data-card-container="${key}">`;
+  let html = `<div class="space-y-3" data-table="${key}" data-card-container="${key}" data-columns='${JSON.stringify(columns).replace(/'/g, "\\'")}'>`;
   (dataArray || []).forEach((row, rowIdx) => {
     html += buildCardHTML(key, rowIdx, columns, row);
   });
@@ -2902,15 +2902,22 @@ async function saveYaml(name){
         STATE.dirty = false; updateSaveBar();
         toast('已保存用户画像','ok');
         await loadUserList();
-        // 刷新当前卡片 DOM，使编辑后的数据即时反映
-        if (window._profileSelectedGroup && window._schemaRes) {
-          var sg = window._schemaRes.groups.find(g => g.key === window._profileSelectedGroup);
-          if (sg) {
-            document.getElementById('profile-right').innerHTML = renderSchemaForm({groups: [sg]}, window._profileDataCache);
-            markDirtyFields();
-            setTimeout(() => { initCharCounters(); refreshIcons(); }, 200);
-          }
-        }
+        // 精准更新卡片标题（仅文字，保持展开状态）
+        document.querySelectorAll('#profile-right [data-card-container]').forEach(function(ct) {
+          var tableKey = ct.getAttribute('data-card-container');
+          var cols;
+          try { cols = JSON.parse(ct.getAttribute('data-columns')); } catch(e) { return; }
+          if (!cols || cols.length < 2) return;
+          var arr = getValueByPath(window._profileDataCache, tableKey);
+          if (!Array.isArray(arr)) return;
+          ct.querySelectorAll('.card-item').forEach(function(card) {
+            var idx = parseInt(card.getAttribute('data-row-index'));
+            var row = arr[idx];
+            if (!row) return;
+            var span = card.querySelector('.text-sm.font-semibold');
+            if (span) span.textContent = (row[cols[0].key] || cols[0].label || '') + ' · ' + (row[cols[1].key] || cols[1].label || '');
+          });
+        });
       } else {
         toast('保存失败: ' + (res?.error || '未知错误'), 'err');
       }
