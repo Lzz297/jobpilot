@@ -1926,7 +1926,14 @@ function addCardRow(btn, tableKey, columns) {
 function removeCardItem(btn, tableKey) {
   var card = btn.closest('.card-item');
   var details = card.closest('details');
+  var rowIdx = parseInt(card.getAttribute('data-row-index'));
   card.remove();
+  // 同步删除缓存中的对应行
+  var arr = getValueByPath(window._profileDataCache, tableKey);
+  if (Array.isArray(arr) && !isNaN(rowIdx) && rowIdx < arr.length) {
+    arr.splice(rowIdx, 1);
+    setValueByPath(window._profileDataCache, tableKey, arr);
+  }
   flagDirty(tableKey);
   if (details) {
     details.classList.add('dirty-field');
