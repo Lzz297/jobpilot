@@ -1,10 +1,8 @@
 """
-Migration script: YAML → SQLite
-
-首次部署时从 YAML 种子数据初始化各表。后续日常运行所有配置通过 Web UI / SQLite 管理。
-如需删库重建：先从 SQLite 导出各表数据为 YAML，放入对应目录，再运行本脚本。
+Migration script: 建表 + 确保管理员用户存在。
+日常配置通过 Web UI / SQLite 管理，不再依赖 YAML 种子文件。
 """
-import sqlite3, os, json, yaml
+import sqlite3, os
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB = os.path.join(BASE, 'data', 'job_agent.db')
@@ -80,152 +78,16 @@ CREATE TABLE IF NOT EXISTS operation_logs (
 );
 """)
 print('Step 1: Tables created')
-print(f'Tables: {[r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]}')
+print(f'Tables: {[r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type=\'table\'").fetchall()]}')
 
-# ===== Step 2: Migrate =====
-
-# 2.1 Create admin user (only if table is empty)
-# 获取当前用户名：优先 .current_user 文件，否则取 instances/users/ 下第一个用户
-current_user_path = os.path.join(BASE, 'profiles', '.current_user')
-if os.path.exists(current_user_path):
-    with open(current_user_path, 'r') as f:
-        current_user_name = f.read().strip()
-else:
-    users_dir = os.path.join(BASE, 'instances', 'users')
-    user_files = sorted([f for f in os.listdir(users_dir) if f.endswith('.yaml')])
-    current_user_name = user_files[0].replace('.yaml', '') if user_files else 'admin'
-print(f'\nStep 2.1: Current user = {current_user_name}')
-
+# ===== Step 2: 确保至少一个管理员用户 =====
 if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-    c.execute("INSERT INTO users (username, role) VALUES (?, ?)", (current_user_name, 'admin'))
-    admin_id = c.lastrowid
-    print(f'  Created admin user id={admin_id}')
+    c.execute("INSERT INTO users (username, role) VALUES ('admin', 'admin')")
+    print('\nStep 2: Created default admin user (username=admin, no password)')
 else:
-    row = c.execute("SELECT id FROM users WHERE username = ?", (current_user_name,)).fetchone()
-    admin_id = row["id"] if row else 1
-    print(f'  Admin user already exists, id={admin_id}')
+    print(f'\nStep 2: Users already exist ({c.execute("SELECT COUNT(*) FROM users").fetchone()[0]})')
 
-# 2.2 Import user profiles (only if table is empty)
-print('\nStep 2.2: User profiles')
-users_dir = os.path.join(BASE, 'instances', 'users')
-if c.execute("SELECT COUNT(*) FROM user_profiles").fetchone()[0] == 0:
-    profiles_count = 0
-    for fname in sorted(os.listdir(users_dir)):
-        if not fname.endswith('.yaml'): continue
-        name = fname.replace('.yaml', '')
-        with open(os.path.join(users_dir, fname), 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        data_json = json.dumps(data, ensure_ascii=False)
-        is_cur = 1 if name == current_user_name else 0
-        c.execute("INSERT INTO user_profiles (user_id, name, data, is_current) VALUES (?,?,?,?)",
-                  (admin_id, name, data_json, is_cur))
-        profiles_count += 1
-        print(f'  {name} (is_current={is_cur})')
-    print(f'  Total: {profiles_count}')
-else:
-    count = c.execute("SELECT COUNT(*) FROM user_profiles").fetchone()[0]
-    print(f'  Already populated ({count} rows), skipping')
-
-# 2.3 search_config (only if empty)
-print('\nStep 2.3: search_config')
-if c.execute("SELECT COUNT(*) FROM search_config").fetchone()[0] == 0:
-    with open(os.path.join(BASE, 'profiles', 'search_config.yaml'), 'r', encoding='utf-8') as f:
-        cfg = yaml.safe_load(f)
-    cfg_json = json.dumps(cfg, ensure_ascii=False)
-    c.execute("INSERT INTO search_config (data, updated_by) VALUES (?,?)", (cfg_json, admin_id))
-    print('  1 row imported')
-else:
-    print('  Already populated, skipping')
-
-# 2.4 strategies (only if empty)
-print('\nStep 2.4: Strategies')
-strat_dir = os.path.join(BASE, 'instances', 'strategies')
-if c.execute("SELECT COUNT(*) FROM strategies").fetchone()[0] == 0:
-    strat_count = 0
-    for fname in sorted(os.listdir(strat_dir)):
-        if not fname.endswith('.yaml'): continue
-        name = fname.replace('.yaml', '')
-        with open(os.path.join(strat_dir, fname), 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        c.execute("INSERT INTO strategies (name, data) VALUES (?,?)", (name, json.dumps(data, ensure_ascii=False)))
-        strat_count += 1
-        print(f'  {name}')
-    print(f'  Total: {strat_count}')
-else:
-    count = c.execute("SELECT COUNT(*) FROM strategies").fetchone()[0]
-    print(f'  Already populated ({count} rows), skipping')
-
-# 2.5 campaigns (only if empty)
-# campaigns 日常通过 Web UI / SQLite 管理。此段仅在首次部署、表为空时，
-# 从 instances/campaigns/*.yaml 种子数据导入。重建流程：
-#   1. 从 SQLite 导出 YAML → 2. 放回 instances/campaigns/ → 3. 运行 migrate.py
-print('\nStep 2.5: Campaigns')
-camp_dir = os.path.join(BASE, 'instances', 'campaigns')
-if c.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0] == 0:
-    if not os.path.isdir(camp_dir) or not os.listdir(camp_dir):
-        print('  无种子数据，跳过（后续通过 Web UI 创建或从 SQLite 导出重建）')
-    else:
-        camp_count = 0
-        for fname in sorted(os.listdir(camp_dir)):
-            if not fname.endswith('.yaml'): continue
-            name = fname.replace('.yaml', '')
-            with open(os.path.join(camp_dir, fname), 'r', encoding='utf-8') as f:
-                data = yaml.safe_load(f)
-            c.execute("INSERT INTO campaigns (name, data, owner_id) VALUES (?,?,NULL)", (name, json.dumps(data, ensure_ascii=False)))
-            camp_count += 1
-            print(f'  {name}')
-        print(f'  Total: {camp_count}')
-else:
-    count = c.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0]
-    print(f'  Already populated ({count} rows), skipping')
-
-# 2.6 field_schema (only if empty)
-print('\nStep 2.6: Field schema')
-if c.execute("SELECT COUNT(*) FROM field_schemas").fetchone()[0] == 0:
-    schema_path = os.path.join(BASE, 'profiles', 'user_field_schema.yaml')
-    with open(schema_path, 'r', encoding='utf-8') as f:
-        schema = yaml.safe_load(f)
-    c.execute("INSERT INTO field_schemas (name, data, updated_by) VALUES (?,?,?)",
-              ('user_field', json.dumps(schema, ensure_ascii=False), admin_id))
-    print('  user_field imported')
-else:
-    print('  Already populated, skipping')
-
-# 2.7 Log (only if db_init hasn't been logged)
-print('\nStep 2.7: Operation log')
-if c.execute("SELECT COUNT(*) FROM operation_logs WHERE action = 'db_init'").fetchone()[0] == 0:
-    c.execute("INSERT INTO operation_logs (user_id, action, target_type, detail) VALUES (?,?,?,?)",
-              (admin_id, 'db_init', 'system', 'Initial migration from all YAML files'))
-    print('  db_init logged')
-else:
-    print('  Already logged, skipping')
 conn.commit()
-
-# ===== Step 3: Verify =====
-print('\n===== Step 3: Verification =====')
-for tbl in ['users','user_profiles','search_config','strategies','campaigns','field_schemas','operation_logs']:
-    n = c.execute(f"SELECT count(*) FROM {tbl}").fetchone()[0]
-    print(f'  {tbl}: {n} rows')
-
-print('\n  is_current check:')
-for r in c.execute("SELECT name, is_current FROM user_profiles").fetchall():
-    print(f'    {r["name"]}: is_current={r["is_current"]}')
-
-print('\n  Data roundtrip:')
-row = c.execute("SELECT name, data FROM user_profiles WHERE is_current=1").fetchone()
-restored = json.loads(row['data'])
-with open(os.path.join(BASE, 'instances', 'users', f'{row["name"]}.yaml'), 'r', encoding='utf-8') as f:
-    orig = yaml.safe_load(f)
-ok1 = json.dumps(restored, ensure_ascii=False, sort_keys=True) == json.dumps(orig, ensure_ascii=False, sort_keys=True)
-print(f'    {row["name"]}: roundtrip match = {ok1}')
-
-row2 = c.execute("SELECT data FROM search_config LIMIT 1").fetchone()
-restored2 = json.loads(row2['data'])
-with open(os.path.join(BASE, 'profiles', 'search_config.yaml'), 'r', encoding='utf-8') as f:
-    orig2 = yaml.safe_load(f)
-ok2 = json.dumps(restored2, ensure_ascii=False, sort_keys=True) == json.dumps(orig2, ensure_ascii=False, sort_keys=True)
-print(f'    search_config: roundtrip match = {ok2}')
-
 conn.close()
 print(f'\nDatabase: {DB}')
 print(f'Size: {os.path.getsize(DB):,} bytes')
