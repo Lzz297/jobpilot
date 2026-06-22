@@ -2,11 +2,12 @@
 config_assembler.py — 按变化轴组装配置
 
 将 user、strategy、campaign 三层配置合并为完整配置字典。
-旧路径（profiles/me.yaml + search_config.yaml）保持不动，新旧模式并行。
+campaign / strategy / user_profile / search_config 均从 SQLite 读取，
+prompts / resume_template / resume_guide 保持 YAML 文件加载。
 """
+import json
 import os
 import yaml
-import json
 
 PROFILES_DIR = "profiles"
 
@@ -36,13 +37,12 @@ def load_campaign(campaign_name: str) -> dict:
     加载一个 campaign，返回合并后的完整配置字典。
 
     流程：
-    1. 读取 instances/campaigns/{campaign_name}.yaml
-    2. 获取 user 和 strategy 的值
-    3. 读取 instances/users/{user}.yaml 作为用户画像
-    4. 读取 instances/strategies/{strategy}.yaml 作为策略
-    5. 读取 search_config.yaml 获取通用配置
-    6. 读取 prompts.yaml、resume_guide.yaml、resume_template.yaml
-    7. 按优先级合并：通用配置（search_config.yaml）→ 策略配置（strategy 文件）→ campaign 顶层字段（无 overrides）
+    1. 从 SQLite campaigns 表读取 campaign
+    2. 从 SQLite user_profiles 表读取当前活跃用户画像
+    3. 从 SQLite strategies 表读取对应策略
+    4. 从 SQLite search_config 表读取通用配置
+    5. 从 YAML 文件读取 prompts、resume_template、resume_guide
+    6. 按优先级合并：通用配置 → 策略配置 → campaign 顶层字段
     """
     # ── 1. 加载 campaign ──
     from config import _db_fetch_one
