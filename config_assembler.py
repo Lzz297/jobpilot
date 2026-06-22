@@ -6,8 +6,8 @@ config_assembler.py — 按变化轴组装配置
 """
 import os
 import yaml
+import json
 
-INSTANCES_DIR = "instances"
 PROFILES_DIR = "profiles"
 
 
@@ -45,13 +45,17 @@ def load_campaign(campaign_name: str) -> dict:
     7. 按优先级合并：通用配置（search_config.yaml）→ 策略配置（strategy 文件）→ campaign 顶层字段（无 overrides）
     """
     # ── 1. 加载 campaign ──
-    campaign_path = os.path.join(INSTANCES_DIR, "campaigns", f"{campaign_name}.yaml")
-    campaign = _load_yaml(campaign_path)
-    if not campaign:
-        raise FileNotFoundError(f"Campaign 文件不存在: {campaign_path}")
+    from config import _db_fetch_one
+    row = _db_fetch_one("SELECT data FROM campaigns WHERE name = ?", (campaign_name,))
+    if not row:
+        raise FileNotFoundError(f"Campaign 不存在: {campaign_name}")
+    campaign = json.loads(row["data"])
 
     # ── 4. 加载系统配置（search_config.yaml 中的系统基础设施部分）──
-    search_cfg = _load_yaml(os.path.join(PROFILES_DIR, "search_config.yaml"))
+    from config import load_search_config_dict
+    search_cfg, _ = load_search_config_dict()
+    if not search_cfg:
+        search_cfg = {}
     # user 从 profiles/.current_user 读取
     from config import get_current_user
     user_name = get_current_user()
@@ -64,16 +68,18 @@ def load_campaign(campaign_name: str) -> dict:
     print(f"  strategy: {strategy_name}")
 
     # ── 2. 加载用户画像 ──
-    user_path = os.path.join(INSTANCES_DIR, "users", f"{user_name}.yaml")
-    user_profile = _load_yaml(user_path)
-    if not user_profile:
-        print(f"[config_assembler] 警告: 用户画像为空或不存在: {user_path}")
+    row = _db_fetch_one("SELECT data FROM user_profiles WHERE is_current = 1")
+    if row:
+        user_profile = json.loads(row["data"])
+    else:
+        user_profile = {}
+        print(f"[config_assembler] 警告: 用户画像为空或不存在")
 
     # ── 3. 加载策略 ──
-    strategy_path = os.path.join(INSTANCES_DIR, "strategies", f"{strategy_name}.yaml")
-    strategy = _load_yaml(strategy_path)
-    if not strategy:
-        raise FileNotFoundError(f"策略文件不存在: {strategy_path}")
+    row = _db_fetch_one("SELECT data FROM strategies WHERE name = ?", (strategy_name,))
+    if not row:
+        raise FileNotFoundError(f"策略不存在: {strategy_name}")
+    strategy = json.loads(row["data"])
 
     # 校验 weight_profile
     wp = strategy.get("weight_profile", {})
