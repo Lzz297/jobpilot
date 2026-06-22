@@ -1983,8 +1983,8 @@ function initListSortable() {
       handle: '.drag-handle',
       animation: 150,
       onEnd: function(evt) {
-        var listEl = evt.target;
-        var containerId = listEl.getAttribute('data-key') || listEl.id;
+        var container = evt.to;
+        var containerId = container.getAttribute('data-key') || container.id;
         if (containerId) collectListDirty(containerId);
       }
     });
@@ -2002,7 +2002,7 @@ function categoriesField(fieldDef, data) {
     Object.entries(data).forEach(([category, items]) => {
       const label = formatLabel(category);
       html += `<div class="border border-slate-200 rounded-lg p-3">
-        <div class="text-sm font-medium text-slate-700 mb-2">${label}</div>`;
+        <label class="text-sm font-medium text-slate-700 mb-2 block">${label}</label>`;
       if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object') {
         const tableDef = { key: `${prefix}.${category}`, columns: schema.columns };
         html += tableField(tableDef, items);
