@@ -1139,9 +1139,7 @@ async function viewCurrentCampaign(){
     const current = data ? data.find(c => c.name === campaignName) : null;
     if(!current){ toast('未找到当前方向配置','err'); return; }
     let html = `<div class="space-y-3"><h3 class="font-semibold text-sm">当前方向：${current.name} · ${current.strategy}</h3>`;
-    html += `<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">用户</span><div class="text-slate-700 font-medium">${STATE.user || '未选择'}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">策略</span><div class="text-slate-700 font-medium">${current.strategy}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">排序</span><div class="text-slate-700 font-medium">${current.sort_mode}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">搜索词</span><div class="text-slate-700 font-medium">${current.queries} 组</div></div></div>`;
-    const kws = (current.keywords||[]).join('、') || '（无）';
-    html += `<div class="bg-slate-50 rounded-lg px-3 py-2 text-xs"><span class="text-slate-400">具体关键词</span><div class="text-slate-700 font-medium mt-1">${kws}</div></div></div>`;
+    html += `<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">用户</span><div class="text-slate-700 font-medium">${STATE.user || '未选择'}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">策略</span><div class="text-slate-700 font-medium">${current.strategy}</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">搜索词</span><div class="text-slate-700 font-medium">${current.queries} 组</div></div><div class="bg-slate-50 rounded-lg px-3 py-2"><span class="text-slate-400">关键词</span><div class="text-slate-700 font-medium">${current.keywords ? current.keywords.join('、') : '无'}</div></div></div></div>`;
     showModal('当前 Campaign 配置', html);
   } catch(e){ toast('加载失败: '+e.message,'err'); }
 }

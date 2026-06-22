@@ -86,7 +86,6 @@ c.execute("""
     WHERE owner_id IS NULL
 """)
 print('\nStep 1.5: Assigned NULL owner_id campaigns to admin')
-print(f'Tables: {[r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type=\'table\'").fetchall()]}')
 
 # ===== Step 2: 确保至少一个管理员用户 =====
 if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
