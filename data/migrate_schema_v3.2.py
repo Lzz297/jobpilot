@@ -56,11 +56,11 @@ for col in we['columns']:
     elif col['key'] == 'company_description':
         add_hint(col, '让 LLM 了解你的公司背景，评估行业匹配度')
     elif col['key'] == 'highlights':
-        add_hint(col, 'LLM 直接从这里提取素材生成简历 bullet')
+        add_hint(col, '你的关键贡献清单，让 LLM 快速了解你的经历和成果。')
     elif col['key'] == 'key_achievements':
         for sub in col.get('columns', []):
             if sub['key'] == 'resume_bullet':
-                add_hint(sub, '用 STAR 法则写简历要点。如"Designed X that improved Y by Z%"。LLM 直接用于生成简历。')
+                add_hint(sub, 'STAR 法则打磨好的简历 bullet，LLM 直接植入简历。')
             elif sub['key'] == 'story':
                 add_hint(sub, '面试用详细故事：背景、挑战、行动、结果。用于应对面试追问。')
             elif sub['key'] == 'interview_keywords':
