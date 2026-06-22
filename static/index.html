@@ -97,12 +97,6 @@
     </nav>
 
     <div class="px-3 py-3 border-t border-slate-100 space-y-3">
-      <div class="grid grid-cols-2 gap-2">
-        <button onclick="openYamlModal('me')" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
-          <i data-lucide="eye" class="w-3.5 h-3.5"></i> 查看画像</button>
-        <button onclick="viewCurrentCampaign()" class="flex items-center justify-center gap-1 text-[11px] border border-slate-200 hover:border-indigo-300 hover:text-indigo-600 text-slate-500 rounded-lg py-1.5">
-          <i data-lucide="info" class="w-3.5 h-3.5"></i> 当前方向</button>
-      </div>
       <div>
         <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="cpu" class="w-3 h-3"></i> LLM 模型（实时切换）</label>
         <select id="model-select" class="agent-trigger w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none">
@@ -116,7 +110,7 @@
           <option value="">加载中...</option></select>
       </div>
       <div class="mt-3">
-        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="target" class="w-3 h-3"></i> 求职方向<span class="text-[9px] text-slate-300 font-normal ml-1">点击图标查看或管理</span><button onclick="viewCurrentCampaign()" class="ml-auto text-indigo-400 hover:text-indigo-600" title="查看详情"><i data-lucide="info" class="w-3 h-3"></i></button></label>
+        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="target" class="w-3 h-3"></i> 求职方向<span class="text-[11px] text-slate-300 font-normal ml-auto mr-1">点击查看或管理</span><button onclick="viewCurrentCampaign()" class="ml-auto text-indigo-400 hover:text-indigo-600" title="查看详情"><i data-lucide="info" class="w-3 h-3"></i></button></label>
         <select id="campaign-select" class="agent-trigger w-full text-sm border border-slate-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-indigo-200 outline-none">
           <option value="">加载中...</option></select>
       </div>
