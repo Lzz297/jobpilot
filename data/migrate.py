@@ -1,4 +1,9 @@
-"""Migration script: YAML → SQLite"""
+"""
+Migration script: YAML → SQLite
+
+首次部署时从 YAML 种子数据初始化各表。后续日常运行所有配置通过 Web UI / SQLite 管理。
+如需删库重建：先从 SQLite 导出各表数据为 YAML，放入对应目录，再运行本脚本。
+"""
 import sqlite3, os, json, yaml
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -151,19 +156,25 @@ else:
     print(f'  Already populated ({count} rows), skipping')
 
 # 2.5 campaigns (only if empty)
+# campaigns 日常通过 Web UI / SQLite 管理。此段仅在首次部署、表为空时，
+# 从 instances/campaigns/*.yaml 种子数据导入。重建流程：
+#   1. 从 SQLite 导出 YAML → 2. 放回 instances/campaigns/ → 3. 运行 migrate.py
 print('\nStep 2.5: Campaigns')
 camp_dir = os.path.join(BASE, 'instances', 'campaigns')
 if c.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0] == 0:
-    camp_count = 0
-    for fname in sorted(os.listdir(camp_dir)):
-        if not fname.endswith('.yaml'): continue
-        name = fname.replace('.yaml', '')
-        with open(os.path.join(camp_dir, fname), 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        c.execute("INSERT INTO campaigns (name, data, owner_id) VALUES (?,?,NULL)", (name, json.dumps(data, ensure_ascii=False)))
-        camp_count += 1
-        print(f'  {name}')
-    print(f'  Total: {camp_count}')
+    if not os.path.isdir(camp_dir) or not os.listdir(camp_dir):
+        print('  无种子数据，跳过（后续通过 Web UI 创建或从 SQLite 导出重建）')
+    else:
+        camp_count = 0
+        for fname in sorted(os.listdir(camp_dir)):
+            if not fname.endswith('.yaml'): continue
+            name = fname.replace('.yaml', '')
+            with open(os.path.join(camp_dir, fname), 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            c.execute("INSERT INTO campaigns (name, data, owner_id) VALUES (?,?,NULL)", (name, json.dumps(data, ensure_ascii=False)))
+            camp_count += 1
+            print(f'  {name}')
+        print(f'  Total: {camp_count}')
 else:
     count = c.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0]
     print(f'  Already populated ({count} rows), skipping')
