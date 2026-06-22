@@ -1871,6 +1871,8 @@ function buildCardHTML(key, rowIdx, columns, row) {
       const cellValue = row ? (row[col.key] || '') : '';
       if (col.widget === 'tags') {
         html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${tagsField(cellId, Array.isArray(cellValue) ? cellValue : [])}</div>`;
+      } else if (col.widget === 'select') {
+        html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><select data-key="${cellId}" onchange="updateProfileCache('${cellId}', this.value)" class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></label>`;
       } else {
         var gPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
         html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}"${gPh} class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;
@@ -1905,6 +1907,8 @@ function buildCardHTML(key, rowIdx, columns, row) {
       </details>`;
     } else if (col.widget === 'modal_text') {
       html += `<div class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span>${modalTextField(cellId, col.label, cellValue)}</div>`;
+    } else if (col.widget === 'select') {
+      html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><select data-key="${cellId}" onchange="updateProfileCache('${cellId}', this.value)" class="h-8 max-w-[200px] rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">${(col.options||[]).map(o => `<option value="${escapeHtml(o)}" ${cellValue===o?'selected':''}>${escapeHtml(o)}</option>`).join('')}</select></label>`;
     } else {
       var inPh = col.placeholder ? ` placeholder="${escapeHtml(col.placeholder)}"` : '';
       html += `<label class="block"><span class="mb-1.5 block text-xs font-medium text-slate-500">${col.label}${col.required ? ' <span class="text-rose-500">*</span>' : ''}</span><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${col.validate ? ` data-validate="${col.validate}"` : ''} value="${escapeHtml(cellValue)}"${inPh} class="h-8 w-full rounded-md border border-slate-300 bg-white px-3 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"></label>`;

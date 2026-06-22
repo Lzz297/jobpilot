@@ -94,6 +94,13 @@ for col in lang['columns']:
 skills = group_map['skills']
 skills['item_schema']['columns'] = [c for c in skills['item_schema']['columns'] if c['key'] != 'years']
 
+# ============================================================
+# 7. work_experience: reorder columns — company_description & company_size after period
+# ============================================================
+we_cols = group_map['work_experience']['columns']
+order = ['company','title','period','company_description','company_size','overview','tech_stack','highlights','key_achievements']
+we_cols.sort(key=lambda c: order.index(c['key']) if c['key'] in order else 99)
+
 c.execute("UPDATE field_schemas SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE name = 'user_field'",
           (json.dumps(schema, ensure_ascii=False),))
 conn.commit()
