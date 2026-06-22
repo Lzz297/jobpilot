@@ -1787,7 +1787,7 @@ function tableField(fieldDef, dataArray) {
         html += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)" value="${escapeHtml(cellValue)}"${iPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
       }
     });
-    html += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove();flagDirty('${key}')" class="text-red-400 text-xs">&times;</button></td></tr>`;
+    html += `<td class="py-1"><button type="button" onclick="removeTableRow(this, '${key}')" class="text-red-400 text-xs">&times;</button></td></tr>`;
   });
   html += `</tbody></table>
     <button type="button" onclick="addTableRow(this, '${key}', ${JSON.stringify(columns).replace(/"/g, '&quot;')})" class="text-xs text-indigo-600 mt-2">+ 添加</button>
@@ -1825,7 +1825,7 @@ function addTableRow(btn, tableKey, columns) {
       rowHtml += `<td class="pr-2 py-1"><input data-key="${cellId}" oninput="updateProfileCache('${cellId}', this.value)"${ariPh} class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></td>`;
     }
   });
-  rowHtml += `<td class="py-1"><button type="button" onclick="this.closest('tr').remove();flagDirty('${tableKey}')" class="text-red-400 text-xs">&times;</button></td></tr>`;
+  rowHtml += `<td class="py-1"><button type="button" onclick="removeTableRow(this, '${tableKey}')" class="text-red-400 text-xs">&times;</button></td></tr>`;
   tbody.insertAdjacentHTML('beforeend', rowHtml);
 }
 
@@ -1941,6 +1941,19 @@ function removeCardItem(btn, tableKey) {
     var summary = details.querySelector('summary');
     if (summary) summary.innerHTML = summary.innerHTML.replace(/（\d+）/, '（' + count + '）');
   }
+}
+
+function removeTableRow(btn, tableKey) {
+  var row = btn.closest('tr');
+  var tbody = row.parentElement;
+  var idx = Array.from(tbody.children).indexOf(row);
+  row.remove();
+  var arr = getValueByPath(window._profileDataCache, tableKey);
+  if (Array.isArray(arr) && idx >= 0 && idx < arr.length) {
+    arr.splice(idx, 1);
+    setValueByPath(window._profileDataCache, tableKey, arr);
+  }
+  flagDirty(tableKey);
 }
 
 function toggleCard(btn) {
