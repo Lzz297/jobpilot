@@ -1711,8 +1711,8 @@ function listField(containerId, values) {
     </div>`
   ).join('');
   return `<div id="${containerId}" data-key="${containerId}">
-    ${items}
-    <button type="button" onclick="addDynamicRow('${containerId}','list-item');collectListDirty('${containerId}')" class="text-xs text-indigo-600 mt-1">+ 添加</button>
+    <div id="${containerId}-items">${items}</div>
+    <button type="button" onclick="addDynamicRow('${containerId}-items','list-item');collectListDirty('${containerId}')" class="text-xs text-indigo-600 mt-1">+ 添加</button>
   </div>`;
 }
 
