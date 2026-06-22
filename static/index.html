@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>JobPilot · 智能求职助手</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1/Sortable.min.js"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <style>
   body{font-family:'Inter',system-ui,-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;}
@@ -1707,14 +1706,11 @@ function tagsField(containerId, values) {
 function listField(containerId, values) {
   const items = (values || []).map(v =>
     `<div class="flex gap-1 mb-1" data-list-item>
-      <span class="drag-handle cursor-grab text-slate-300 hover:text-slate-500 flex items-center justify-center w-5 shrink-0 select-none" title="拖拽排序">
-        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="5" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="9" cy="19" r="1.5"/><circle cx="15" cy="5" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="15" cy="19" r="1.5"/></svg>
-      </span>
       <input class="list-item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" value="${escapeHtml(v)}" oninput="collectListDirty('${containerId}')">
       <button type="button" onclick="this.closest('[data-list-item]').remove();collectListDirty('${containerId}')" class="text-red-400 text-xs">&times;</button>
     </div>`
   ).join('');
-  return `<div id="${containerId}" data-key="${containerId}" class="sortable-list">
+  return `<div id="${containerId}" data-key="${containerId}">
     ${items}
     <button type="button" onclick="addDynamicRow('${containerId}','list-item');collectListDirty('${containerId}')" class="text-xs text-indigo-600 mt-1">+ 添加</button>
   </div>`;
@@ -1971,23 +1967,6 @@ function initCharCounters() {
     };
     ta.addEventListener('input', upd);
     upd();
-  });
-}
-
-function initListSortable() {
-  if (typeof Sortable === 'undefined') return;
-  document.querySelectorAll('.sortable-list').forEach(list => {
-    if (list.dataset.sortableInit) return;
-    list.dataset.sortableInit = '1';
-    Sortable.create(list, {
-      handle: '.drag-handle',
-      animation: 150,
-      onEnd: function(evt) {
-        var container = evt.to;
-        var containerId = container.getAttribute('data-key') || container.id;
-        if (containerId) collectListDirty(containerId);
-      }
-    });
   });
 }
 
@@ -2618,8 +2597,8 @@ function undoField(dataKey, event) {
       }
     }
 
-    // 重置 list 组件（将 sortable-list 中每个 input 恢复）
-    if (el.classList.contains('sortable-list') && Array.isArray(originalValue)) {
+    // 重置 list 组件
+    if (Array.isArray(originalValue)) {
       var items = el.querySelectorAll('[data-list-item]');
       items.forEach(function(item, i) {
         var inp = item.querySelector('input.list-item');
@@ -2825,7 +2804,7 @@ function switchProfileCard(groupKey) {
     document.getElementById('profile-right').innerHTML =
       renderSchemaForm({groups: [selectedGroup]}, window._profileDataCache);
     markDirtyFields();
-    setTimeout(() => { initListSortable(); initCharCounters(); refreshIcons(); }, 200);
+    setTimeout(() => { initCharCounters(); refreshIcons(); }, 200);
   }
 }
 
@@ -3085,7 +3064,7 @@ function setTab(t){
   });
   if(t==='schema') renderSchemaEditor();
   else { window._schemaSelectedGroupIndex = 0; }
-  if (t === 'profile') { setTimeout(initCharCounters, 400); setTimeout(initListSortable, 500); }
+  if (t === 'profile') { setTimeout(initCharCounters, 400); }
   else { disconnectScrollSpy(); }
   // 切换 Tab 后：根据当前 Tab 独立恢复 dirty 状态（不丢失其他 Tab 的脏数据）
   if (t === 'profile') {
