@@ -2918,6 +2918,12 @@ async function saveYaml(name){
             if (span) span.textContent = (row[cols[0].key] || cols[0].label || '') + ' · ' + (row[cols[1].key] || cols[1].label || '');
           });
         });
+        // 更新 details summary 计数
+        document.querySelectorAll('#profile-right details').forEach(function(details) {
+          var count = details.querySelectorAll('.card-item').length;
+          var summary = details.querySelector('summary');
+          if (summary) summary.innerHTML = summary.innerHTML.replace(/（\d+）/, '（' + count + '）');
+        });
       } else {
         toast('保存失败: ' + (res?.error || '未知错误'), 'err');
       }
