@@ -2313,7 +2313,7 @@ async function renderSettings(){
     const presets = cfg.market_presets || {};
 
     // ── 找工作配置面板 ──
-    $('#set-job').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">搜索策略和权重方案请在侧边栏「求职方向」中设置。</span></div>
+    $('#set-job').innerHTML = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">找工作的参数独立设置，不受市场调研配置影响。</span></div>
       ${card('基础设置',`
         ${field('全局默认排序','c-sort',cfg.sort_mode||'date','text','date / relevance')}
         ${areaField('排除公司（每行一个）','c-exclude',(cfg.filters?.exclude_companies||[]).join('\n'),4,'大小写不敏感，在基础清洗阶段直接排除')}
