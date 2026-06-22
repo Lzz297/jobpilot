@@ -2731,6 +2731,10 @@ function updateProfileCache(path, value) {
   } else if (path.startsWith('profile_summary.')) {
     path = path.replace('profile_summary.', '');
   }
+  // 归一化：如果原始值是数组，将 textarea 字符串转为数组（支持换行和逗号分隔）
+  if (Array.isArray(getValueByPath(STATE._originalData, path)) && typeof value === 'string') {
+    value = value.split('\n').flatMap(s => s.split(',')).map(s => s.trim()).filter(Boolean);
+  }
   setValueByPath(window._profileDataCache, path, value);
   if (window._dirtyPaths) {
     var originalValue = getValueByPath(STATE._originalData, path);

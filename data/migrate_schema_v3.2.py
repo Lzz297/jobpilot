@@ -35,13 +35,13 @@ for f in ps['fields']:
 ji = group_map['job_intent']
 for f in ji['fields']:
     if f['key'] == 'target_titles':
-        add_hint(f, '每行一个职位，按 Enter 换行')
-        add_placeholder(f, '后端开发工程师\n数据分析师')
+        add_hint(f, '多个用换行或逗号分隔')
+        add_placeholder(f, '后端开发工程师, 数据分析师')
     elif f['key'] == 'target_industries':
-        add_hint(f, '每行一个行业，按 Enter 换行')
-        add_placeholder(f, '金融\n互联网')
+        add_hint(f, '多个用换行或逗号分隔')
+        add_placeholder(f, '金融, 互联网')
     elif f['key'] == 'location_preference':
-        add_hint(f, '每行一个城市，按 Enter 换行')
+        add_hint(f, '多个用换行或逗号分隔')
         add_placeholder(f, 'Hong Kong')
 
 # ============================================================
