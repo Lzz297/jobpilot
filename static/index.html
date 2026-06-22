@@ -36,7 +36,7 @@
   #view-settings{scroll-behavior:smooth}
   /* ── 脏字段标记 ── */
   .dirty-field{padding-right:56px;position:relative}
-  .dirty-field label,.dirty-field>span{color:#b45309}
+  .dirty-field label,.dirty-field>span,.dirty-field summary{color:#b45309}
   td.dirty-field{padding-left:6px;padding-right:48px;margin-left:0;position:relative}
   td.dirty-field::before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:2px;background:#f59e0b;border-radius:1px}
   .dirty-field:hover .undo-btn{opacity:1}
@@ -1925,10 +1925,11 @@ function addCardRow(btn, tableKey, columns) {
 
 function removeCardItem(btn, tableKey) {
   var card = btn.closest('.card-item');
+  var details = card.closest('details');
   card.remove();
   flagDirty(tableKey);
-  var details = card.closest('details');
   if (details) {
+    details.classList.add('dirty-field');
     var count = details.querySelectorAll('.card-item').length;
     var summary = details.querySelector('summary');
     if (summary) summary.innerHTML = summary.innerHTML.replace(/（\d+）/, '（' + count + '）');
