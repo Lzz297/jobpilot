@@ -1153,26 +1153,30 @@ async function viewCurrentCampaign(){
 
 async function renderCampaignList() {
   const data = await apiGet('/api/campaigns');
-  var html = `<div class="flex items-center justify-between mb-4">
-    <div><h3 class="font-semibold text-slate-800 text-sm">我的求职方向</h3>
-    <p class="text-xs text-slate-500 mt-0.5">管理你的求职 Campaign，每个 Campaign 包含策略与搜索关键词。</p></div>
-    <button onclick="showCampaignForm()" class="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm"><i data-lucide="plus" class="w-4 h-4"></i> 新增</button></div>`;
+  var html = '';
   if (!data || data.length === 0) {
-    html += `<div class="text-center py-12 text-slate-400 text-sm bg-white rounded-xl border border-slate-200"><i data-lucide="target" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i><p>还没有求职方向</p><p class="text-xs mt-1">点击上方「新增」创建一个 Campaign</p></div>`;
+    html = card('求职方向', `<div class="text-center py-10 text-slate-400 text-sm"><i data-lucide="target" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i><p>还没有求职方向</p><p class="text-xs mt-1">每个 Campaign 包含策略与搜索关键词</p></div>
+      <button onclick="showCampaignForm()" class="mt-3 w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-sm text-slate-500 hover:border-indigo-400 hover:text-indigo-600 flex items-center justify-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 新增求职方向</button>`);
   } else {
-    html += `<div class="space-y-2">`;
+    var items = '';
     data.forEach(function(c) {
-      html += `<div class="bg-white border border-slate-200 rounded-lg px-4 py-3 flex items-center justify-between">
-        <div class="min-w-0 flex-1"><div class="font-medium text-slate-800 text-sm">${escapeHtml(c.name)}</div>
-        <div class="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
-        <span class="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-[10px]">${escapeHtml(c.strategy)}</span>
-        <span>${c.queries} 组搜索词</span>
-        <span>${c.created_at ? c.created_at.slice(0,10) : ''}</span></div></div>
+      items += `<div class="flex items-center justify-between border-b border-slate-100 last:border-b-0 py-3">
+        <div class="min-w-0 flex-1">
+          <div class="font-medium text-slate-700 text-sm">${escapeHtml(c.name)}</div>
+          <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+            <span class="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-[10px] font-medium">${escapeHtml(c.strategy)}</span>
+            <span>${c.queries} 组搜索词</span>
+            <span>${c.created_at ? c.created_at.slice(0,10) : ''}</span>
+          </div>
+        </div>
         <div class="flex items-center gap-1 shrink-0 ml-3">
-        <button onclick="showCampaignForm(${c.id})" class="text-xs border border-slate-200 rounded px-2 py-1 text-slate-500 hover:text-indigo-600">编辑</button>
-        <button onclick="deleteCampaign(${c.id},'${escapeHtml(c.name)}')" class="text-xs border border-slate-200 rounded px-2 py-1 text-slate-500 hover:text-red-600">删除</button></div></div>`;
+          <button onclick="showCampaignForm(${c.id})" class="text-xs border border-slate-200 rounded-md px-2.5 py-1 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition">编辑</button>
+          <button onclick="deleteCampaign(${c.id},'${escapeHtml(c.name)}')" class="text-xs border border-slate-200 rounded-md px-2.5 py-1 text-slate-500 hover:text-red-600 hover:border-red-300 transition">删除</button>
+        </div>
+      </div>`;
     });
-    html += `</div>`;
+    html = card('求职方向', `<div class="space-y-0">${items}</div>
+      <button onclick="showCampaignForm()" class="mt-3 w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-sm text-slate-500 hover:border-indigo-400 hover:text-indigo-600 flex items-center justify-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 新增求职方向</button>`);
   }
   $('#set-campaign').innerHTML = html;
   refreshIcons();
