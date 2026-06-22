@@ -88,6 +88,12 @@ for col in lang['columns']:
     if col['key'] == 'certificate':
         add_hint(col, '如：IELTS 7.0、CET-6、JLPT N1')
 
+# ============================================================
+# 6. skills: remove years column
+# ============================================================
+skills = group_map['skills']
+skills['item_schema']['columns'] = [c for c in skills['item_schema']['columns'] if c['key'] != 'years']
+
 c.execute("UPDATE field_schemas SET data = ?, updated_at = CURRENT_TIMESTAMP WHERE name = 'user_field'",
           (json.dumps(schema, ensure_ascii=False),))
 conn.commit()
