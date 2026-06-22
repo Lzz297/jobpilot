@@ -36,7 +36,7 @@
   .anchor-link.active{border-left-color:#4f46e5;background:#eef2ff;color:#4338ca;font-weight:600}
   #view-settings{scroll-behavior:smooth}
   /* ── 脏字段标记 ── */
-  .dirty-field{padding-left:8px;margin-left:-10px;padding-right:56px;position:relative}
+  .dirty-field{padding-left:6px;margin-left:-6px;padding-right:56px;position:relative}
   .dirty-field::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:2px;background:#f59e0b;border-radius:1px}
   td.dirty-field{padding-left:6px;padding-right:48px;margin-left:0}
   td.dirty-field::before{left:0;top:2px;bottom:2px}
@@ -2102,7 +2102,7 @@ function renderWidget(fieldDef, value) {
       const toggleHtml = toggleField(key, value);
       return `<div><span class=\"text-xs font-medium text-slate-500\">${escapeHtml(fieldDef.label || '')}</span><div class=\"mt-1\">${toggleHtml}</div></div>`;
     }
-    case 'select': return '<div>' + selectField(key, value, fieldDef.options || []) + '</div>';
+    case 'select': return `<div><label class="text-xs font-medium text-slate-500">${escapeHtml(fieldDef.label || '')}</label>${selectField(key, value, fieldDef.options || [])}</div>`;
     case 'object': return objectField(fieldDef, value);
     case 'table': return tableField(fieldDef, value || []);
     case 'tags': return tagsField(key, value || []);
@@ -2161,7 +2161,7 @@ function renderSchemaForm(schema, data) {
 
       // 支持 layout 属性：grid-2 两列网格布局
       if (group.layout === 'grid-2') {
-        groupHtml = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">';
+        groupHtml = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">';
         (group.fields || []).forEach(fieldDef => {
           const value = groupData ? (fieldDef.key.includes('.') ? getValueByPath(groupData, fieldDef.key) : groupData[fieldDef.key]) : '';
           const fullKey = (group.key && !fieldDef.key.includes('.')) ? `${group.key}.${fieldDef.key}` : fieldDef.key;
