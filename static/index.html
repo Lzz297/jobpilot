@@ -37,8 +37,7 @@
   /* ── 脏字段标记 ── */
   .dirty-field{padding-right:56px;position:relative}
   .dirty-field label,.dirty-field>span,.dirty-field summary{color:#b45309}
-  td.dirty-field{padding-left:6px;padding-right:48px;margin-left:0;position:relative}
-  td.dirty-field::before{content:'';position:absolute;left:0;top:2px;bottom:2px;width:2px;background:#f59e0b;border-radius:1px}
+  td.dirty-field{padding-right:48px}
   .dirty-field:hover .undo-btn{opacity:1}
   .undo-btn{opacity:0;position:absolute;right:0;top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:4px;padding:2px 6px;font-size:11px;color:#64748b;cursor:pointer;transition:opacity .15s;white-space:nowrap;z-index:1}
   td .undo-btn{right:2px;top:2px}
@@ -2809,7 +2808,12 @@ function updateProfileCache(path, value) {
       var el1 = findElByPath(rawDataKey) || findElByPath(path);
       if (el1) {
         var w1 = el1.closest('.dirty-field');
-        if (w1) removeDirtyMark(w1);
+        if (w1) { removeDirtyMark(w1); }
+        if (w1 && w1.tagName === 'TD') {
+          var colIdx = Array.from(w1.parentElement.children).indexOf(w1);
+          var table = w1.closest('table');
+          if (table) { var th = table.querySelectorAll('thead th')[colIdx]; if (th) th.style.color = ''; }
+        }
       }
     } else {
       // 值与原始不同 → 添加脏标记
@@ -2817,6 +2821,11 @@ function updateProfileCache(path, value) {
       var el2 = findElByPath(rawDataKey) || findElByPath(path);
       if (el2) {
         var w2 = getDirtyWrapper(el2);
+        if (w2 && w2.tagName === 'TD') {
+          var colIdx = Array.from(w2.parentElement.children).indexOf(w2);
+          var table = w2.closest('table');
+          if (table) { var th = table.querySelectorAll('thead th')[colIdx]; if (th) th.style.color = '#b45309'; }
+        }
         addDirtyMark(w2, el2.getAttribute('data-key'));
       }
     }
