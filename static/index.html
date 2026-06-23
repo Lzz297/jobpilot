@@ -1454,63 +1454,6 @@ async function saveCampaignInline() {
   }
 }
 
-async function showCampaignForm(id) {
-  var strategies = await apiGet('/api/strategies') || [];
-  var campaign = null;
-  if (id) { campaign = await apiGet('/api/campaigns/' + id); if (!campaign) { toast('加载失败','err'); return; } }
-  var name = campaign ? campaign.name : '';
-  var d = campaign ? campaign.data : {strategy:'', search_queries:[]};
-  var qs = d.search_queries || [];
-  var stratOpts = strategies.map(function(s){ return '<option value="'+escapeHtml(s.name)+'"'+(d.strategy===s.name?' selected':'')+'>'+escapeHtml(s.name)+'</option>'; }).join('');
-  var qHtml = qs.length ? qs.map(function(q,i){ return buildQueryRow(q,i); }).join('') : '';
-  var body = `<div class="space-y-4">
-    <div><label class="text-xs font-medium text-slate-500">Campaign 名称</label>
-    <input id="cf-name" value="${escapeHtml(name)}" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="例如: web3_hunt"></div>
-    <div><label class="text-xs font-medium text-slate-500">策略</label>
-    <select id="cf-strategy" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-200 outline-none"><option value="">-- 请选择 --</option>${stratOpts}</select></div>
-    <div><div class="flex items-center justify-between mb-1"><label class="text-xs font-medium text-slate-500">搜索关键词</label>
-    <button onclick="addQueryRow()" class="text-xs text-indigo-600 flex items-center gap-0.5"><i data-lucide="plus" class="w-3 h-3"></i> 添加</button></div>
-    <div id="cf-queries" class="space-y-2">${qHtml || '<div class="text-xs text-slate-400 py-2 text-center">暂无搜索关键词</div>'}</div></div></div>`;
-  var footer = `<button onclick="closeModal()" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-lg px-3 py-1.5">取消</button>
-    <button onclick="saveCampaign(${id||null})" class="text-xs bg-indigo-600 text-white rounded-lg px-4 py-1.5 flex items-center gap-1"><i data-lucide="check" class="w-3.5 h-3.5"></i> ${id?'保存':'创建'}</button>`;
-  showModal(id?'编辑求职方向':'新建求职方向', body, footer);
-}
-
-function buildQueryRow(q, idx) {
-  return `<div class="flex items-start gap-2 bg-slate-50 rounded-lg p-2.5" data-qi="${idx}">
-    <div class="flex-1 grid grid-cols-3 gap-2">
-    <div><label class="text-[10px] text-slate-400">Keywords</label><input class="q-kw w-full border border-slate-200 rounded px-2 py-1 text-xs" value="${escapeHtml(q.keywords||'')}" placeholder="Web3"></div>
-    <div><label class="text-[10px] text-slate-400">Location</label><input class="q-loc w-full border border-slate-200 rounded px-2 py-1 text-xs" value="${escapeHtml(q.location||'')}" placeholder="Hong Kong"></div>
-    <div><label class="text-[10px] text-slate-400">Classification</label><input class="q-cls w-full border border-slate-200 rounded px-2 py-1 text-xs" value="${escapeHtml(q.classification||'')}" placeholder="可选"></div></div>
-    <button onclick="this.closest('[data-qi]').remove()" class="text-red-400 hover:text-red-600 mt-5"><i data-lucide="x" class="w-3.5 h-3.5"></i></button></div>`;
-}
-
-function addQueryRow() {
-  var ct = document.getElementById('cf-queries');
-  var ph = ct.querySelector('.text-center'); if (ph) ph.remove();
-  ct.insertAdjacentHTML('beforeend', buildQueryRow({keywords:'',location:'',classification:''}, ct.children.length));
-  refreshIcons();
-}
-
-async function saveCampaign(id) {
-  var name = document.getElementById('cf-name').value.trim();
-  var strategy = document.getElementById('cf-strategy').value;
-  if (!name) { toast('请输入名称','warn'); return; }
-  if (!strategy) { toast('请选择策略','warn'); return; }
-  var sq = [];
-  document.querySelectorAll('#cf-queries [data-qi]').forEach(function(r){
-    var kw = r.querySelector('.q-kw').value.trim();
-    var loc = r.querySelector('.q-loc').value.trim();
-    var cls = r.querySelector('.q-cls').value.trim();
-    if (kw||loc||cls) sq.push({keywords:kw,location:loc,classification:cls});
-  });
-  var payload = {name:name, data:{strategy:strategy, search_queries:sq}};
-  var resp;
-  if (id) { resp = await api('PUT', '/api/campaigns/'+id, payload); }
-  else { resp = await api('POST', '/api/campaigns', payload); }
-  if (resp && !resp.error) { toast(id?'已更新':'已创建','ok'); closeModal(); renderCampaignList(); loadCampaignList(); }
-}
-
 async function deleteCampaign(id, name) {
   if (!confirm('确定删除「'+name+'」？此操作不可恢复。')) return;
   var resp = await api('DELETE', '/api/campaigns/'+id);
