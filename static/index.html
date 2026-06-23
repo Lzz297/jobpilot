@@ -1203,19 +1203,20 @@ function checkCampaignDirty() {
   if (id !== null && id !== undefined && !id) return;
   if (!window._campaignEditOriginal) return;
   window._campaignDirtyPaths = window._campaignDirtyPaths || new Set();
+  var suffix = (id === null) ? 'new' : id;
 
-  var nameEl = document.getElementById('cf-name-' + id);
+  var nameEl = document.getElementById('cf-name-' + suffix);
   var nameVal = nameEl ? nameEl.value.trim() : '';
   if (nameVal !== (window._campaignEditOriginal.name || '')) window._campaignDirtyPaths.add('name');
   else window._campaignDirtyPaths.delete('name');
 
-  var strategyEl = document.getElementById('cf-strategy-' + id);
+  var strategyEl = document.getElementById('cf-strategy-' + suffix);
   var strategyVal = strategyEl ? strategyEl.value : '';
   if (strategyVal !== (window._campaignEditOriginal.strategy || '')) window._campaignDirtyPaths.add('strategy');
   else window._campaignDirtyPaths.delete('strategy');
 
   var origRows = JSON.parse(window._campaignEditOriginal.queries || '[]');
-  var rows = document.querySelectorAll('#cf-queries-' + id + ' [data-qi]');
+  var rows = document.querySelectorAll('#cf-queries-' + suffix + ' [data-qi]');
   var seen = new Set();
   rows.forEach(function(r) {
     var idx = r.getAttribute('data-qi');
@@ -1245,7 +1246,12 @@ function checkCampaignDirty() {
 }
 
 function markCampaignDirtyFields() {
-  var item = document.querySelector('[data-campaign-id="' + window._campaignEditId + '"]');
+  var item;
+  if (window._campaignEditId === null) {
+    item = document.querySelector('[data-campaign-new]');
+  } else {
+    item = document.querySelector('[data-campaign-id="' + window._campaignEditId + '"]');
+  }
   if (!item) return;
   item.querySelectorAll('.dirty-field').forEach(function(el) { el.classList.remove('dirty-field'); });
   item.querySelectorAll('.undo-btn').forEach(function(el) { el.remove(); });
