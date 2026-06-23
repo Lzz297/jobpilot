@@ -1163,7 +1163,7 @@ async function renderCampaignList() {
   } else {
     var items = '';
     data.forEach(function(c) {
-      items += `<div class="flex items-center justify-between border-b border-slate-100 last:border-b-0 py-3" data-campaign-id="${c.id}">
+      items += `<div class="flex items-center justify-between border-b border-slate-100 last:border-b-0 py-2.5" data-campaign-id="${c.id}">
         <div class="min-w-0 flex-1">
           <div class="font-medium text-slate-700 text-sm">${escapeHtml(c.name)}</div>
           <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
