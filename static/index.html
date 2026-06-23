@@ -1215,7 +1215,11 @@ function checkCampaignDirty() {
 
   var origRows = JSON.parse(window._campaignEditOriginal.queries || '[]');
   var rows = document.querySelectorAll('#cf-queries-' + id + ' [data-qi]');
-  rows.forEach(function(r, i) {
+  var seen = new Set();
+  rows.forEach(function(r) {
+    var idx = r.getAttribute('data-qi');
+    var i = parseInt(idx);
+    seen.add(i);
     var kw = r.querySelector('.q-kw').value.trim();
     var loc = r.querySelector('.q-loc').value.trim();
     var cls = r.querySelector('.q-cls').value.trim();
@@ -1227,9 +1231,11 @@ function checkCampaignDirty() {
       window._campaignDirtyPaths.delete(path);
     }
   });
-  // 清理已不存在的行号
+  if (rows.length !== origRows.length) window._campaignDirtyPaths.add('rowCount');
+  else window._campaignDirtyPaths.delete('rowCount');
+  // 清理已不在 DOM 中的行号
   window._campaignDirtyPaths.forEach(function(p) {
-    if (p.startsWith('q-') && parseInt(p.slice(2)) >= rows.length) window._campaignDirtyPaths.delete(p);
+    if (p.startsWith('q-') && !seen.has(parseInt(p.slice(2)))) window._campaignDirtyPaths.delete(p);
   });
 
   STATE.dirty = window._campaignDirtyPaths.size > 0;
