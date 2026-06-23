@@ -1339,8 +1339,9 @@ async function addCampaignInline() {
         <button type="button" onclick="addQueryRowInline('new')" class="text-xs text-indigo-600 flex items-center gap-0.5"><i data-lucide="plus" class="w-3 h-3"></i> 添加</button></div>
       <div id="cf-queries-new" class="space-y-2"><div class="text-xs text-slate-400 py-2 text-center">暂无搜索关键词</div></div>
     </div>
-    <div class="flex justify-end gap-2 pt-2">
-      <button onclick="cancelEditCampaign()" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-md px-3 py-1.5">取消</button>
+    <div class="flex justify-end gap-2 pt-3 mt-1 border-t border-slate-100">
+      <span class="text-[11px] text-slate-400 mr-auto self-center">取消后不保存</span>
+      <button onclick="cancelEditCampaign()" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-md px-3 py-1.5 hover:border-slate-300">取消</button>
     </div>
   </div>`;
   list.insertBefore(form, list.lastElementChild);
@@ -1401,8 +1402,9 @@ async function editCampaignInline(id) {
         <button type="button" onclick="addQueryRowInline(${id})" class="text-xs text-indigo-600 flex items-center gap-0.5"><i data-lucide="plus" class="w-3 h-3"></i> 添加</button></div>
       <div id="cf-queries-${id}" class="space-y-2">${qRows || '<div class="text-xs text-slate-400 py-2 text-center">暂无搜索关键词</div>'}</div>
     </div>
-    <div class="flex justify-end gap-2 pt-2">
-      <button onclick="cancelEditCampaign(${id})" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-md px-3 py-1.5">取消</button>
+    <div class="flex justify-end gap-2 pt-3 mt-1 border-t border-slate-100">
+      <span class="text-[11px] text-slate-400 mr-auto self-center">取消后恢复原内容</span>
+      <button onclick="cancelEditCampaign(${id})" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-md px-3 py-1.5 hover:border-slate-300">取消</button>
     </div>
   </div>`;
   updateSaveBar();
