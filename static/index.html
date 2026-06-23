@@ -3801,6 +3801,7 @@ function updateSaveBar() {
       else if (STATE.settingsTab === 'job' && window._jobDirtyPaths) count = window._jobDirtyPaths.size;
       else if (STATE.settingsTab === 'market' && window._marketDirtyPaths) count = window._marketDirtyPaths.size;
       else if (isSchema && window._schemaDirtyPaths) count = window._schemaDirtyPaths.size;
+      else if (STATE.settingsTab === 'campaign' && window._campaignDirtyPaths) count = window._campaignDirtyPaths.size;
       if (count > 0) {
         badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>已修改 ' + count + ' 个字段';
       } else {
