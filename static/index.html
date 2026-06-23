@@ -1213,15 +1213,24 @@ function checkCampaignDirty() {
   if (strategyVal !== (window._campaignEditOriginal.strategy || '')) window._campaignDirtyPaths.add('strategy');
   else window._campaignDirtyPaths.delete('strategy');
 
-  var sq = [];
-  document.querySelectorAll('#cf-queries-' + id + ' [data-qi]').forEach(function(r) {
+  var origRows = JSON.parse(window._campaignEditOriginal.queries || '[]');
+  var rows = document.querySelectorAll('#cf-queries-' + id + ' [data-qi]');
+  rows.forEach(function(r, i) {
     var kw = r.querySelector('.q-kw').value.trim();
     var loc = r.querySelector('.q-loc').value.trim();
     var cls = r.querySelector('.q-cls').value.trim();
-    if (kw || loc || cls) sq.push({keywords: kw, location: loc, classification: cls});
+    var orig = origRows[i] || {keywords: '', location: '', classification: ''};
+    var path = 'q-' + i;
+    if (kw !== (orig.keywords || '') || loc !== (orig.location || '') || cls !== (orig.classification || '')) {
+      window._campaignDirtyPaths.add(path);
+    } else {
+      window._campaignDirtyPaths.delete(path);
+    }
   });
-  if (JSON.stringify(sq) !== (window._campaignEditOriginal.queries || '[]')) window._campaignDirtyPaths.add('queries');
-  else window._campaignDirtyPaths.delete('queries');
+  // 清理已不存在的行号
+  window._campaignDirtyPaths.forEach(function(p) {
+    if (p.startsWith('q-') && parseInt(p.slice(2)) >= rows.length) window._campaignDirtyPaths.delete(p);
+  });
 
   STATE.dirty = window._campaignDirtyPaths.size > 0;
   markCampaignDirtyFields();
@@ -1236,9 +1245,14 @@ function markCampaignDirtyFields() {
 
   if (!window._campaignDirtyPaths || window._campaignDirtyPaths.size === 0) return;
 
-  ['name', 'strategy', 'queries'].forEach(function(field) {
-    if (!window._campaignDirtyPaths.has(field)) return;
-    var el = item.querySelector('[data-campaign-field="' + field + '"]');
+  window._campaignDirtyPaths.forEach(function(path) {
+    var el;
+    if (path === 'name' || path === 'strategy') {
+      el = item.querySelector('[data-campaign-field="' + path + '"]');
+    } else if (path.startsWith('q-')) {
+      var idx = path.slice(2);
+      el = item.querySelector('[data-qi="' + idx + '"]');
+    }
     if (!el) return;
     if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
     el.classList.add('dirty-field');
@@ -1246,7 +1260,8 @@ function markCampaignDirtyFields() {
       var btn = document.createElement('button');
       btn.className = 'undo-btn';
       btn.textContent = '↺ 撤销';
-      btn.onclick = function(e) { e.stopPropagation(); restoreCampaignField(field); };
+      var fieldPath = path;
+      btn.onclick = function(e) { e.stopPropagation(); restoreCampaignField(fieldPath); };
       el.appendChild(btn);
     }
   });
@@ -1262,11 +1277,17 @@ function restoreCampaignField(field) {
   } else if (field === 'strategy') {
     var el = document.getElementById('cf-strategy-' + id);
     if (el) el.value = orig.strategy || '';
-  } else if (field === 'queries') {
+  } else if (field.startsWith('q-')) {
+    var idx = parseInt(field.slice(2));
     var queries = JSON.parse(orig.queries || '[]');
-    var ct = document.getElementById('cf-queries-' + id);
-    if (ct) {
-      ct.innerHTML = queries.map(function(q, i) { return buildQueryRowInline(q, i, id); }).join('') || '<div class="text-xs text-slate-400 py-2 text-center">暂无搜索关键词</div>';
+    var origRow = queries[idx];
+    if (origRow) {
+      var row = document.querySelector('[data-qi="' + idx + '"]');
+      if (row) {
+        row.querySelector('.q-kw').value = origRow.keywords || '';
+        row.querySelector('.q-loc').value = origRow.location || '';
+        row.querySelector('.q-cls').value = origRow.classification || '';
+      }
     }
   }
   checkCampaignDirty();
@@ -1274,7 +1295,9 @@ function restoreCampaignField(field) {
 }
 
 function undoCampaignFields() {
-  ['name', 'strategy', 'queries'].forEach(function(f) { restoreCampaignField(f); });
+  if (window._campaignDirtyPaths) {
+    Array.from(window._campaignDirtyPaths).forEach(function(f) { restoreCampaignField(f); });
+  }
 }
 
 function buildQueryRowInline(q, idx, campaignId) {
@@ -1325,7 +1348,7 @@ async function editCampaignInline(id) {
       <input id="cf-name-${id}" value="${escapeHtml(campaign.name)}" oninput="checkCampaignDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="例如: web3_hunt"></div>
     <div data-campaign-field="strategy"><label class="text-xs font-medium text-slate-500">策略</label>
       <select id="cf-strategy-${id}" onchange="checkCampaignDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-200 outline-none"><option value="">-- 请选择 --</option>${stratOpts}</select></div>
-    <div data-campaign-field="queries">
+    <div>
       <div class="flex items-center justify-between mb-1"><label class="text-xs font-medium text-slate-500">搜索关键词</label>
         <button type="button" onclick="addQueryRowInline(${id})" class="text-xs text-indigo-600 flex items-center gap-0.5"><i data-lucide="plus" class="w-3 h-3"></i> 添加</button></div>
       <div id="cf-queries-${id}" class="space-y-2">${qRows || '<div class="text-xs text-slate-400 py-2 text-center">暂无搜索关键词</div>'}</div>
@@ -1364,8 +1387,15 @@ async function saveCampaignInline() {
   var resp = await api('PUT', '/api/campaigns/' + id, payload);
   if (resp && !resp.error) {
     toast('已保存', 'ok');
-    cancelCampaignEdit();
-    await renderCampaignList();
+    window._campaignEditOriginal = {
+      name: name,
+      strategy: strategy,
+      queries: JSON.stringify(sq)
+    };
+    window._campaignDirtyPaths = new Set();
+    STATE.dirty = false;
+    markCampaignDirtyFields();
+    updateSaveBar();
     await loadCampaignList();
   }
 }
