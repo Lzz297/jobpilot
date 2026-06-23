@@ -280,18 +280,6 @@ def match_jobs(config: dict = None, profile: dict = None):
     # 排序
     all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
 
-    # 按 Job ID 去重
-    seen_job_ids = set()
-    deduped_scored = []
-    for s in all_scored:
-        norm = normalize_jobsdb_url(s.get("url", ""))
-        if norm not in seen_job_ids:
-            seen_job_ids.add(norm)
-            deduped_scored.append(s)
-        else:
-            emit(f"   ⚠️ 去重: {s.get('title', '?')} ({norm}) 已存在，跳过")
-    all_scored = deduped_scored
-
     # ── 第二轮：及格线附近复评 ──
     if borderline_rescore:
         low = min_score - borderline_range

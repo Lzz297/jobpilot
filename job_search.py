@@ -137,7 +137,7 @@ def search_jobs(sort_by: str = None, config: dict = None):
                 "  2. 手动在 JobsDB 网站搜索，复制岗位 URL 给我"
             ).format(len(all_listings))
 
-    all_rejected = basic_rejected
+    all_rejected = list(basic_rejected)
     emit(f"   ✅ 清洗后: {len(cleaned)} 条")
 
     # =============================================================
@@ -178,6 +178,15 @@ def search_jobs(sort_by: str = None, config: dict = None):
 
             norm = normalize_jobsdb_url(d.get("url", ""))
             if norm in seen_job_ids:
+                all_rejected.append({
+                    "title": d.get("title") or listing_info.get("title", "未知岗位"),
+                    "company": d.get("company") or listing_info.get("company", ""),
+                    "url": norm,
+                    "snippet": d.get("description", "")[:200],
+                    "reject_reasons": ["url_duplicate"],
+                    "reject_stage": "dedup",
+                })
+                emit(f"   ⚠️ 去重: {d.get('title') or listing_info.get('title', '未知岗位')} URL已存在，跳过")
                 continue
             seen_job_ids.add(norm)
 
@@ -221,7 +230,7 @@ def search_jobs(sort_by: str = None, config: dict = None):
             "url": r.get("url", ""),
             "snippet": r.get("snippet", "")[:200],
             "reject_reasons": r.get("reject_reasons", []),
-            "reject_stage": "basic",
+            "reject_stage": r.get("reject_stage", "basic"),
         })
     with open(rejected_path, "w", encoding="utf-8") as f:
         json.dump(rejected_data, f, ensure_ascii=False, indent=2)
@@ -235,6 +244,7 @@ def search_jobs(sort_by: str = None, config: dict = None):
         "jd_fetched": len(all_jobs),
         "full_jd_count": sum(1 for j in all_jobs if j.get("source") == "full_jd"),
         "snippet_count": sum(1 for j in all_jobs if j.get("source") == "snippet"),
+        "url_duplicates": sum(1 for r in all_rejected if r.get("reject_stage") == "dedup"),
         "rejected_samples": [
             {"title": r.get("title", ""), "reasons": r.get("reject_reasons", [])}
             for r in all_rejected
@@ -249,10 +259,13 @@ def search_jobs(sort_by: str = None, config: dict = None):
     full_jd_count = stats["full_jd_count"]
     snippet_count = stats["snippet_count"]
 
+    dedup_count = stats["url_duplicates"]
     summary = f"✅ 搜索完成！\n\n"
     summary += f"   📡 第一层 扫描: {len(all_listings)} 条（{len(search_queries)} 组搜索词）\n"
     summary += f"   🧹 第二层 清洗: {len(cleaned)} 条通过 / {len(basic_rejected)} 条排除（空标题/排除公司）\n"
     summary += f"   📄 第三层 抓取: {len(all_jobs)} 条（完整JD {full_jd_count} | snippet {snippet_count}）\n"
+    if dedup_count > 0:
+        summary += f"   🔄 URL 去重: {dedup_count} 条（重复URL已排除）\n"
     summary += f"   💾 保存到: {os.path.basename(run_dir)}/\n\n"
 
     summary += "--- 岗位列表 ---\n"
