@@ -1343,7 +1343,7 @@ async function addCampaignInline() {
       <button onclick="cancelEditCampaign()" class="text-xs border border-slate-200 bg-white text-slate-600 rounded-md px-3 py-1.5">取消</button>
     </div>
   </div>`;
-  list.insertBefore(form, list.firstElementChild);
+  list.insertBefore(form, list.lastElementChild);
   updateSaveBar();
   refreshIcons();
 }
