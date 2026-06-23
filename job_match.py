@@ -18,16 +18,18 @@ from scraper import normalize_jobsdb_url
 #  岗位分类 & 动态权重
 # ============================================================
 
-_DEFAULT_WEIGHTS = {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}
-
-# 分类检查顺序：更具体的类别在前，通用类别在后
-_CLASSIFY_ORDER = ["payment", "solutions", "web3", "technical"]
+# 分类检查顺序：从 weight_rules 动态派生，排除 "default"，按 key 长度降序
+# （更具体的类别在前，通用类别在后）
 
 
 def classify_job(title, weight_rules):
-    """根据岗位标题关键词匹配权重类型。按 _CLASSIFY_ORDER 优先级逐类检查。"""
+    """根据岗位标题关键词匹配权重类型。分类顺序从 weight_rules keys 动态派生。"""
     title_lower = title.lower()
-    for category in _CLASSIFY_ORDER:
+    order = sorted(
+        [k for k in weight_rules if k != "default"],
+        key=lambda k: (-len(k), k)
+    )
+    for category in order:
         keywords = weight_rules.get(category, [])
         for kw in keywords:
             if kw.lower() in title_lower:
@@ -36,8 +38,13 @@ def classify_job(title, weight_rules):
 
 
 def get_weights(profile_name, weight_profiles):
-    """获取指定类型的权重字典，找不到则返回默认。"""
-    return weight_profiles.get(profile_name, _DEFAULT_WEIGHTS)
+    """获取指定类型的权重字典，找不到则先找 default，再不行用硬编码 fallback。"""
+    return weight_profiles.get(
+        profile_name,
+        weight_profiles.get("default", {
+            "skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15
+        })
+    )
 
 
 def _build_weights_text(weights):
@@ -92,12 +99,40 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         config: Campaign 配置字典，用于读取 JD 截断长度等参数
     """
 
+    # ── 从 config 读取全部方向，注入 prompt ──
+    matching_cfg = (config or {}).get("matching", {})
+    all_weight_profiles = matching_cfg.get("weight_profiles", {})
+    all_weight_rules = matching_cfg.get("weight_rules", {})
+    direction_names = list(all_weight_profiles.keys())
+    direction_list = " / ".join(direction_names)
+
+    # 构建平局顺序：按各方向行业权重降序排列（行业越重要，越优先）
+    tiebreaker_names = [n for n in direction_names if n != "default"]
+    tiebreaker_names.sort(key=lambda n: all_weight_profiles.get(n, {}).get("industry", 15), reverse=True)
+    direction_tiebreaker_order = " > ".join(tiebreaker_names + ["default"])
+
+    # 构建方向指引：从各策略的 keywords 生成基本描述
+    guidance_parts = []
+    for name in direction_names:
+        keywords = all_weight_rules.get(name, [])
+        if name == "default":
+            guidance_parts.append(f"{name} — 无法明确归入其他方向的通用职能岗")
+        elif keywords:
+            kw_text = "、".join(keywords[:5])
+            guidance_parts.append(f"{name} — 关键词: {kw_text}")
+        else:
+            guidance_parts.append(f"{name} — 请根据岗位职责判断")
+    direction_guidance_text = "\n".join(guidance_parts)
+
     prompts = load_prompts()
     template = _load_scoring_prompt()
     system_prompt = render_prompt(template,
         profile_summary=profile_summary,
         weights_text=_build_weights_text(weights),
         score_formula=_build_score_formula(weights),
+        direction_list=direction_list,
+        direction_guidance_text=direction_guidance_text,
+        direction_tiebreaker_order=direction_tiebreaker_order,
     )
 
     # 注入 few-shot 示例
@@ -195,7 +230,7 @@ def match_jobs(config: dict = None, profile: dict = None):
     top_n = matching_cfg.get("top_n", 10)
 
     # 动态权重配置
-    weight_profiles = matching_cfg.get("weight_profiles", {"default": _DEFAULT_WEIGHTS})
+    weight_profiles = matching_cfg.get("weight_profiles", {"default": {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}})
     weight_rules = matching_cfg.get("weight_rules", {})
 
     # 及格线复评配置
@@ -243,7 +278,7 @@ def match_jobs(config: dict = None, profile: dict = None):
                     s["company"] = batch[local_idx].get("company", "")
                 # LLM 判断的方向（用于权重选择和简历聚合）
                 llm_dir = s.get("direction", "")
-                valid_directions = {"payment", "solutions", "web3", "technical", "default"}
+                valid_directions = set(weight_rules.keys()) | {"default"}
                 fallback_cat = classify_job(batch[local_idx].get("title", ""), weight_rules)
                 s["llm_direction"] = llm_dir if llm_dir in valid_directions else fallback_cat
                 s["weight_profile"] = s["llm_direction"]
@@ -582,7 +617,7 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
     config = config or {}
 
     matching_cfg = config.get("matching", {})
-    weight_profiles = matching_cfg.get("weight_profiles", {"default": _DEFAULT_WEIGHTS})
+    weight_profiles = matching_cfg.get("weight_profiles", {"default": {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}})
     weight_rules = matching_cfg.get("weight_rules", {})
 
     if weights is None:
@@ -592,12 +627,32 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
     profile_summary = _build_profile_summary(user_profile)
 
     # ── 加载并渲染评分 prompt（与 _score_batch 完全一致）──
+    direction_names = list(weight_profiles.keys())
+    direction_list = " / ".join(direction_names)
+    tiebreaker_names = [n for n in direction_names if n != "default"]
+    tiebreaker_names.sort(key=lambda n: weight_profiles.get(n, {}).get("industry", 15), reverse=True)
+    direction_tiebreaker_order = " > ".join(tiebreaker_names + ["default"])
+    guidance_parts = []
+    for name in direction_names:
+        keywords = weight_rules.get(name, [])
+        if name == "default":
+            guidance_parts.append(f"{name} — 无法明确归入其他方向的通用职能岗")
+        elif keywords:
+            kw_text = "、".join(keywords[:5])
+            guidance_parts.append(f"{name} — 关键词: {kw_text}")
+        else:
+            guidance_parts.append(f"{name} — 请根据岗位职责判断")
+    direction_guidance_text = "\n".join(guidance_parts)
+
     prompts = load_prompts()
     template = _load_scoring_prompt()
     system_prompt = render_prompt(template,
         profile_summary=profile_summary,
         weights_text=_build_weights_text(weights),
         score_formula=_build_score_formula(weights),
+        direction_list=direction_list,
+        direction_tiebreaker_order=direction_tiebreaker_order,
+        direction_guidance_text=direction_guidance_text,
     )
 
     # 注入 few-shot 示例（默认方向为 default，确保通用示例加载）

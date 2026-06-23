@@ -16,6 +16,6 @@ class MatchResult(BaseModel):
         description="匹配推理过程"
     )
     direction: str = Field(
-        description="岗位赛道标签：web3 / payment / solutions / technical / default"
+        description="岗位赛道标签，从系统策略配置中定义的方向名称中选择"
     )
     scores: Scores = Field(description="五维原始分，每个维度 0-100 整数")

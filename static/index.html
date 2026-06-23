@@ -446,12 +446,14 @@
                 <button id="set-tab-job" onclick="setTab('job')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">找工作配置</button>
                 <button id="set-tab-market" onclick="setTab('market')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">市场调研配置</button>
                 <button id="set-tab-campaign" onclick="setTab('campaign')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">求职方向</button>
+                <button id="set-tab-strategy" onclick="setTab('strategy')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">策略管理</button>
               </div>
               <div id="set-profile"></div>
               <div id="set-job" class="hidden"></div>
               <div id="set-market" class="hidden"></div>
               <div id="set-schema" class="hidden"></div>
               <div id="set-campaign" class="hidden"></div>
+              <div id="set-strategy" class="hidden"></div>
             </div>
             <div id="save-bar" class="sticky bottom-0 z-10 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3">
               <div class="flex items-center gap-2 text-xs">
@@ -522,10 +524,34 @@ window._jobOriginalData = null;
 window._marketOriginalData = null;
 window._schemaDirtyPaths = new Set();
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
-const DIR_META = {
-  payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'},
-  solutions:{cls:'bg-blue-100 text-blue-700'}, technical:{cls:'bg-indigo-100 text-indigo-700'}, default:{cls:'bg-slate-100 text-slate-600'},
-};
+const DIR_PALETTE = [
+  'bg-emerald-100 text-emerald-700',
+  'bg-purple-100 text-purple-700',
+  'bg-blue-100 text-blue-700',
+  'bg-indigo-100 text-indigo-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-orange-100 text-orange-700',
+  'bg-teal-100 text-teal-700',
+  'bg-pink-100 text-pink-700',
+];
+const DIR_DEFAULT = 'bg-slate-100 text-slate-600';
+
+// 从 API 加载的策略名称缓存（初始化时从 /api/strategies 填充）
+window._strategyNames = [];
+
+function getDirCls(directionName) {
+  const idx = (window._strategyNames || []).indexOf(directionName);
+  if (idx >= 0 && idx < DIR_PALETTE.length) return DIR_PALETTE[idx];
+  // 兼容旧数据：如果缓存未加载，用 hash 分配颜色
+  if (!window._strategyNames || !window._strategyNames.length) {
+    const h = directionName.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+    return DIR_PALETTE[h % DIR_PALETTE.length];
+  }
+  return DIR_DEFAULT;
+}
+
 
 /* ===================== SCHEMA UTILITIES ===================== */
 // 根据点分隔路径设置对象的值（用于收集表单数据）
@@ -1106,7 +1132,7 @@ async function loadCampaignList(){
       data.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.name;
-        opt.textContent = `${c.name} · ${c.strategy}`;
+        opt.textContent = `${c.name}`;
         sel.appendChild(opt);
       });
       // 自动选中第一个 campaign 并通知后端
@@ -1318,7 +1344,8 @@ async function addCampaignInline() {
     await renderCampaignList();
   }
   cancelCampaignEdit();
-  var strategies = await apiGet('/api/strategies') || [];
+  await loadStrategiesCache();
+  var strategies = window._strategiesCache || [];
   var stratOpts = strategies.map(function(s) {
     return '<option value="' + escapeHtml(s.name) + '">' + escapeHtml(s.name) + '</option>';
   }).join('');
@@ -1385,11 +1412,12 @@ async function editCampaignInline(id) {
   window._campaignDirtyPaths = new Set();
   STATE.dirty = false;
 
-  var strategies = await apiGet('/api/strategies') || [];
+  await loadStrategiesCache();
+  var strategies = window._strategiesCache || [];
   var d = campaign.data;
   var sq = d.search_queries || [];
   var stratOpts = strategies.map(function(s) {
-    return '<option value="' + escapeHtml(s.name) + '"' + (d.strategy === s.name ? ' selected' : '') + '>' + escapeHtml(s.name) + '</option>';
+    return '<option value="' + escapeHtml(s.name) + '"' + (d.strategy === s.name ? ' selected' : '') + '>' + escapeHtml(s.display_name||s.name) + ' (' + escapeHtml(s.name) + ')</option>';
   }).join('');
   var qRows = sq.map(function(q, i) { return buildQueryRowInline(q, i, id); }).join('');
 
@@ -1461,6 +1489,315 @@ async function deleteCampaign(id, name) {
   if (!confirm('确定删除「'+name+'」？此操作不可恢复。')) return;
   var resp = await api('DELETE', '/api/campaigns/'+id);
   if (resp && !resp.error) { toast('已删除','ok'); renderCampaignList(); loadCampaignList(); }
+}
+
+/* ===================== STRATEGY MANAGEMENT ===================== */
+
+async function loadStrategiesCache() {
+  try {
+    const data = await apiGet('/api/strategies');
+    window._strategiesCache = data || [];
+    window._strategyNames = (data || []).map(s => s.name);
+  } catch(e) { console.warn('加载策略列表失败', e); }
+}
+
+async function renderStrategyList() {
+  await loadStrategiesCache();
+  const data = window._strategiesCache;
+  var html = '';
+  if (!data || data.length === 0) {
+    html = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">策略定义五维匹配权重和方向分类关键词，可创建多个灵活切换。</span></div>
+      <div class="bg-white border border-slate-200 rounded-lg p-3.5">
+        <div class="text-center py-10 text-slate-400 text-sm"><i data-lucide="sliders-horizontal" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i><p>还没有策略</p><p class="text-xs mt-1">每个策略包含权重分配与分类关键词</p></div>
+      <button onclick="addStrategyInline()" class="mt-3 w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-sm text-slate-500 hover:border-indigo-400 hover:text-indigo-600 flex items-center justify-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 新增策略</button>
+      </div>`;
+  } else {
+    var items = '';
+    data.forEach(function(s) {
+      var wp = (s.data && s.data.weight_profile) ? s.data.weight_profile : {};
+      var weightSummary = Object.entries(wp).map(function(e){return e[0].slice(0,2)+':'+e[1]}).join(' ');
+      items += `<div class="flex items-center justify-between border-b border-slate-100 last:border-b-0 py-2.5" data-strategy-id="${s.id}">
+        <div class="min-w-0 flex-1">
+          <div class="font-medium text-slate-700 text-sm">${escapeHtml(s.display_name||s.name)} <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(s.name)}</span></div>
+          <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+            <span class="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-[10px] font-mono">${weightSummary}</span>
+            ${s.is_default?'<span class="text-[10px] text-slate-400">系统默认</span>':''}
+          </div>
+        </div>
+        <div class="flex items-center gap-1 shrink-0 ml-3">
+          <button onclick="editStrategyInline(${s.id})" class="text-xs border border-slate-200 rounded-md px-2.5 py-1 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 transition">编辑</button>
+          <button onclick="deleteStrategy(${s.id},'${escapeHtml(s.name)}')" class="text-xs border border-slate-200 rounded-md px-2.5 py-1 text-slate-500 hover:text-red-600 hover:border-red-300 transition">删除</button>
+        </div>
+      </div>`;
+    });
+    html = `<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3"><span class="text-xs text-amber-700">策略定义五维匹配权重和方向分类关键词，可创建多个灵活切换。</span></div>
+      <div class="bg-white border border-slate-200 rounded-lg p-3.5">
+        <div class="space-y-0 -mt-2">${items}</div>
+      <button onclick="addStrategyInline()" class="mt-3 w-full rounded-lg border border-dashed border-slate-300 py-2.5 text-sm text-slate-500 hover:border-indigo-400 hover:text-indigo-600 flex items-center justify-center gap-1"><i data-lucide="plus" class="w-3.5 h-3.5"></i> 新增策略</button>
+      </div>`;
+  }
+  $('#set-strategy').innerHTML = html;
+  refreshIcons();
+}
+
+// ── 权重滑块 UI ──
+const WT_LABELS = {skill:'技能匹配',experience:'经验年限',level:'职级匹配',industry:'行业匹配',bonus:'加分项'};
+
+function renderWeightSliders(wp) {
+  wp = wp || {};
+  var html = '<div class="space-y-2.5" id="weight-sliders">';
+  Object.keys(WT_LABELS).forEach(function(k) {
+    var v = wp[k] || 0;
+    html += `<div class="flex items-center gap-2.5">
+      <span class="w-16 text-xs text-slate-500 shrink-0">${WT_LABELS[k]}</span>
+      <input type="range" min="0" max="100" value="${v}" id="ws-${k}" oninput="updateWeightSlider('${k}', +this.value)" class="flex-1 h-1.5 accent-indigo-600">
+      <span class="w-8 text-right text-xs font-mono text-slate-600" id="ws-val-${k}">${v}</span>
+    </div>`;
+  });
+  html += `<div class="flex items-center gap-2 text-xs pt-1.5 border-t border-slate-100">
+    权重总和：<span class="font-bold font-mono" id="ws-sum">100</span>
+    <span id="ws-ok" class="text-emerald-600">有效</span>
+    <span id="ws-err" class="text-red-600 hidden">必须等于 100</span>
+  </div></div>`;
+  return html;
+}
+
+function updateWeightSlider(k, v) {
+  document.getElementById('ws-val-'+k).textContent = v;
+  checkWeightSum();
+  checkStrategyDirty();
+}
+
+function checkWeightSum() {
+  var total = 0;
+  Object.keys(WT_LABELS).forEach(function(k) {
+    var el = document.getElementById('ws-'+k);
+    if (el) total += parseInt(el.value) || 0;
+  });
+  var sumEl = document.getElementById('ws-sum');
+  if (sumEl) sumEl.textContent = total;
+  var ok = document.getElementById('ws-ok'), err = document.getElementById('ws-err');
+  if (ok) ok.classList.toggle('hidden', total !== 100);
+  if (err) err.classList.toggle('hidden', total === 100);
+  return total === 100;
+}
+
+function collectWeightProfile() {
+  var wp = {};
+  Object.keys(WT_LABELS).forEach(function(k) {
+    var el = document.getElementById('ws-'+k);
+    wp[k] = el ? (parseInt(el.value)||0) : 0;
+  });
+  return wp;
+}
+
+// ── 策略表单渲染 ──
+function buildStrategyForm(suffix, data) {
+  var d = data || {};
+  var wp = (d.weight_profile) ? d.weight_profile : {};
+  var kw = (d.weight_rules_keywords || []).filter(Boolean);
+  var kwTags = kw.map(function(t){return escapeHtml(t);}).join('\n');
+  return `<div class="flex-1 min-w-0 space-y-3 py-1">
+    <div>
+      <div class="flex items-center justify-between">
+        <label class="text-xs font-medium text-slate-500">策略名称 <span class="text-red-400">*</span></label>
+        <span class="flex items-center gap-1.5 mr-1.5"><span class="text-[11px] text-red-400">取消后不保存</span><button type="button" onclick="cancelEditStrategy()" class="text-xs border border-slate-200 rounded-md px-2 py-0.5 text-slate-500 hover:text-slate-700 hover:border-slate-300">取消</button></span>
+      </div>
+      <input id="sf-name-${suffix}" value="${escapeHtml(d.name||'')}" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="英文标识（如 web3）">
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-500">显示名称</label>
+      <input id="sf-display-${suffix}" value="${escapeHtml(d.display_name||'')}" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="人类可读（如 Web3/区块链策略）">
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-500">描述</label>
+      <input id="sf-desc-${suffix}" value="${escapeHtml(d.description||'')}" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="策略用途说明（可选）">
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-500 mb-1 block">权重分配 <span class="text-red-400">*</span> <span class="text-slate-400 font-normal">（五维之和必须 = 100）</span></label>
+      ${renderWeightSliders(wp)}
+    </div>
+    <div>
+      <label class="text-xs font-medium text-slate-500">分类关键词 <span class="text-slate-400 font-normal">（每行一个，用于标题匹配）</span></label>
+      <textarea id="sf-kw-${suffix}" rows="4" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="blockchain&#10;crypto&#10;web3">${kwTags}</textarea>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div><label class="text-[10px] text-slate-400">最低匹配分</label><input id="sf-min-${suffix}" type="number" value="${d.min_match_score||45}" min="0" max="100" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
+      <div><label class="text-[10px] text-slate-400">取前 N</label><input id="sf-top-${suffix}" type="number" value="${d.top_n||999}" min="1" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
+      <div><label class="text-[10px] text-slate-400">复评区间</label><input id="sf-range-${suffix}" type="number" value="${d.borderline_range||8}" min="0" max="20" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
+      <div><label class="text-[10px] text-slate-400">&nbsp;</label><label class="flex items-center gap-1.5 cursor-pointer mt-1"><input id="sf-rescore-${suffix}" type="checkbox" ${d.borderline_rescore!==false?'checked':''} onchange="checkStrategyDirty()" class="rounded text-indigo-600"> <span class="text-xs text-slate-600">启用复评</span></label></div>
+    </div>
+  </div>`;
+}
+
+// ── 编辑/新建 ──
+async function addStrategyInline() {
+  if (window._strategyEditId !== null && window._strategyEditId !== undefined) { await renderStrategyList(); }
+  cancelStrategyEdit();
+
+  window._strategyEditId = null;
+  window._strategyEditOriginal = {name:'',display_name:'',description:'',weight_profile:{},weight_rules_keywords:[],min_match_score:45,top_n:999,borderline_rescore:true,borderline_range:8};
+  window._strategyDirtyPaths = new Set();
+  STATE.dirty = false;
+
+  var form = document.createElement('div');
+  form.className = 'border-b border-slate-100 py-3 bg-slate-50';
+  form.setAttribute('data-strategy-new', '');
+  form.innerHTML = buildStrategyForm('new', window._strategyEditOriginal);
+  var list = document.querySelector('#set-strategy .bg-white.border');
+  list.insertBefore(form, list.lastElementChild);
+  updateSaveBar();
+  refreshIcons();
+}
+
+async function editStrategyInline(id) {
+  cancelStrategyEdit();
+  var s = await apiGet('/api/strategies/'+id);
+  if (!s) { toast('加载失败','err'); return; }
+
+  window._strategyEditId = id;
+  var d = s.data || {};
+  window._strategyEditOriginal = {
+    name: s.name,
+    display_name: s.display_name || '',
+    description: s.description || '',
+    weight_profile: Object.assign({}, d.weight_profile||{}),
+    weight_rules_keywords: (d.weight_rules_keywords||[]).slice(),
+    min_match_score: d.min_match_score||45,
+    top_n: d.top_n||999,
+    borderline_rescore: d.borderline_rescore!==false,
+    borderline_range: d.borderline_range||8,
+  };
+  window._strategyDirtyPaths = new Set();
+  STATE.dirty = false;
+
+  var item = document.querySelector('[data-strategy-id="'+id+'"]');
+  item.classList.add('bg-slate-50');
+  item.innerHTML = buildStrategyForm(id, Object.assign({}, window._strategyEditOriginal, {name: s.name, display_name: s.display_name||'', description: s.description||''}));
+  updateSaveBar();
+  refreshIcons();
+}
+
+// ── 脏追踪 ──
+function checkStrategyDirty() {
+  var id = window._strategyEditId;
+  if (id !== null && id !== undefined && !id) return;
+  if (!window._strategyEditOriginal) return;
+  window._strategyDirtyPaths = window._strategyDirtyPaths || new Set();
+  var suffix = (id === null) ? 'new' : id;
+
+  var fields = ['name','display','desc','min','top','range','kw','rescore'];
+  var checks = {name:'sf-name-'+suffix,display:'sf-display-'+suffix,desc:'sf-desc-'+suffix,min:'sf-min-'+suffix,top:'sf-top-'+suffix,range:'sf-range-'+suffix,kw:'sf-kw-'+suffix,rescore:'sf-rescore-'+suffix};
+  var orig = window._strategyEditOriginal;
+
+  var el = document.getElementById(checks.name);
+  var v = el ? el.value.trim() : '';
+  if (v !== (orig.name||'')) window._strategyDirtyPaths.add('name'); else window._strategyDirtyPaths.delete('name');
+
+  el = document.getElementById(checks.display);
+  v = el ? el.value.trim() : '';
+  if (v !== (orig.display_name||'')) window._strategyDirtyPaths.add('display'); else window._strategyDirtyPaths.delete('display');
+
+  el = document.getElementById(checks.desc);
+  v = el ? el.value.trim() : '';
+  if (v !== (orig.description||'')) window._strategyDirtyPaths.add('desc'); else window._strategyDirtyPaths.delete('desc');
+
+  el = document.getElementById(checks.min);
+  v = el ? parseInt(el.value)||0 : 0;
+  if (v !== (orig.min_match_score||45)) window._strategyDirtyPaths.add('min'); else window._strategyDirtyPaths.delete('min');
+
+  el = document.getElementById(checks.top);
+  v = el ? parseInt(el.value)||0 : 0;
+  if (v !== (orig.top_n||999)) window._strategyDirtyPaths.add('top'); else window._strategyDirtyPaths.delete('top');
+
+  el = document.getElementById(checks.range);
+  v = el ? parseInt(el.value)||0 : 0;
+  if (v !== (orig.borderline_range||8)) window._strategyDirtyPaths.add('range'); else window._strategyDirtyPaths.delete('range');
+
+  el = document.getElementById(checks.kw);
+  v = el ? el.value.split('\n').map(function(s){return s.trim();}).filter(Boolean) : [];
+  var origKw = (orig.weight_rules_keywords||[]).filter(Boolean);
+  if (JSON.stringify(v) !== JSON.stringify(origKw)) window._strategyDirtyPaths.add('kw'); else window._strategyDirtyPaths.delete('kw');
+
+  el = document.getElementById(checks.rescore);
+  v = el ? el.checked : true;
+  if (v !== (orig.borderline_rescore!==false)) window._strategyDirtyPaths.add('rescore'); else window._strategyDirtyPaths.delete('rescore');
+
+  // 权重变化由 updateWeightSlider 触发
+  var wp = collectWeightProfile();
+  var origWp = orig.weight_profile || {};
+  var wpSame = true;
+  Object.keys(WT_LABELS).forEach(function(k) { if ((wp[k]||0) !== (origWp[k]||0)) wpSame = false; });
+  if (!wpSame) window._strategyDirtyPaths.add('weight'); else window._strategyDirtyPaths.delete('weight');
+
+  STATE.dirty = window._strategyDirtyPaths.size > 0;
+  updateSaveBar();
+}
+
+// ── 保存/删除 ──
+async function saveStrategyInline() {
+  var id = window._strategyEditId;
+  var isNew = (id === null);
+  var suffix = isNew ? 'new' : id;
+
+  if (!checkWeightSum()) { toast('权重总和必须等于 100','warn'); return; }
+
+  var name = (document.getElementById('sf-name-'+suffix)?.value||'').trim();
+  if (!name) { toast('请输入策略名称','warn'); return; }
+
+  var kwText = document.getElementById('sf-kw-'+suffix)?.value||'';
+  var payload = {
+    name: name,
+    display_name: (document.getElementById('sf-display-'+suffix)?.value||'').trim(),
+    description: (document.getElementById('sf-desc-'+suffix)?.value||'').trim(),
+    data: {
+      weight_profile: collectWeightProfile(),
+      weight_rules_keywords: kwText.split('\n').map(function(s){return s.trim();}).filter(Boolean),
+      min_match_score: parseInt(document.getElementById('sf-min-'+suffix)?.value)||45,
+      top_n: parseInt(document.getElementById('sf-top-'+suffix)?.value)||999,
+      borderline_rescore: document.getElementById('sf-rescore-'+suffix)?.checked !== false,
+      borderline_range: parseInt(document.getElementById('sf-range-'+suffix)?.value)||8,
+    }
+  };
+
+  var resp;
+  if (isNew) { resp = await api('POST', '/api/strategies', payload); }
+  else { resp = await api('PUT', '/api/strategies/'+id, payload); }
+
+  if (resp && !resp.error) {
+    toast(isNew ? '已创建' : '已保存', 'ok');
+    cancelStrategyEdit();
+    await renderStrategyList();
+    await loadCampaignList(); // 刷新侧边栏 campaign 和策略联动
+  }
+}
+
+async function deleteStrategy(id, name) {
+  if (!confirm('确定删除「'+name+'」？如果被求职方向引用则无法删除。')) return;
+  var resp = await api('DELETE', '/api/strategies/'+id);
+  if (resp && !resp.error) { toast('已删除','ok'); await renderStrategyList(); await loadCampaignList(); }
+}
+
+function cancelStrategyEdit() {
+  var el = document.querySelector('[data-strategy-new]');
+  if (el) el.remove();
+  window._strategyEditId = null;
+  window._strategyEditOriginal = null;
+  window._strategyDirtyPaths = null;
+  STATE.dirty = false;
+  updateSaveBar();
+}
+
+function cancelEditStrategy() {
+  cancelStrategyEdit();
+  renderStrategyList();
+}
+
+function undoStrategyFields() {
+  if (window._strategyDirtyPaths) {
+    cancelStrategyEdit();
+    renderStrategyList();
+  }
 }
 
 function showModal(title, bodyHtml, footerHtml){
@@ -1629,7 +1966,6 @@ async function renderJobFiles(){
   // Group files by category
   const groups = {search:[], filter:[], match:[], resume:[]};
   const resumeDirs = {}; // direction -> {resume:[], cover:[], review:[]}
-  const DIR_META_ = {payment:{cls:'bg-emerald-100 text-emerald-700'}, web3:{cls:'bg-purple-100 text-purple-700'}, solutions:{cls:'bg-blue-100 text-blue-700'}, technical:{cls:'bg-indigo-100 text-indigo-700'}};
   const langMap = {en:'EN', hk:'繁中', cn:'简中'};
 
   files.forEach(f => {
@@ -1673,13 +2009,13 @@ async function renderJobFiles(){
 
   // Render resume section with direction grouping
   Object.entries(resumeDirs).forEach(([dir, rf]) => {
-    const dm = DIR_META_[dir] || {cls:'bg-slate-100 text-slate-600'};
+    const dmCls = getDirCls(dir);
     const total = rf.resume.length + rf.cover.length + rf.review.length;
     let inner = '';
     if(rf.resume.length) inner += `<div class="flex items-center gap-2 text-xs flex-wrap"><span class="text-slate-400 w-20 shrink-0">简历</span>${rf.resume.join('')}</div>`;
     if(rf.cover.length) inner += `<div class="flex items-center gap-2 text-xs flex-wrap"><span class="text-slate-400 w-20 shrink-0">Cover Letter</span>${rf.cover.join('')}</div>`;
     if(rf.review.length) inner += `<div class="flex items-center gap-2 text-xs flex-wrap"><span class="text-slate-400 w-20 shrink-0">审查报告</span>${rf.review.join('')}</div>`;
-    groups['resume'].push(`<div class="border border-slate-100 rounded-lg p-3 bg-slate-50"><div class="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded ${dm.cls} text-[10px]">${dir}</span> 方向（${total} 文件）</div>${inner}</div>`);
+    groups['resume'].push(`<div class="border border-slate-100 rounded-lg p-3 bg-slate-50"><div class="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1.5"><span class="px-1.5 py-0.5 rounded ${dmCls} text-[10px]">${dir}</span> 方向（${total} 文件）</div>${inner}</div>`);
   });
   if(Object.keys(resumeDirs).length){
     groups['resume'].unshift(`<div class="text-[11px] font-medium text-slate-400 px-1 pt-1">resumes/ · 按方向分组</div>`);
@@ -1792,7 +2128,7 @@ async function renderMatches(){
   $('#match-list').innerHTML = list.map(j=>{
     const total = j.total_score || 0;
     const dir = j.llm_direction || j.weight_profile || 'default';
-    const dirCls = DIR_META[dir] ? DIR_META[dir].cls : 'bg-slate-100 text-slate-600';
+    const dirCls = getDirCls(dir);
     const [ic,cls] = recBadge(total);
     const scores = j.scores || {};
     const bars = Object.entries({技能:'skill',经验:'experience',职级:'level',行业:'industry',加分:'bonus'}).map(([cn,k])=>{
@@ -3005,6 +3341,11 @@ function undoAll() {
     undoCampaignFields();
     return;
   }
+  // ── strategy Tab ──
+  if (STATE.settingsTab === 'strategy' && window._strategyDirtyPaths && window._strategyDirtyPaths.size > 0) {
+    undoStrategyFields();
+    return;
+  }
   // ── job Tab ──
   if (STATE.settingsTab === 'job' && window._jobDirtyPaths && window._jobDirtyPaths.size > 0) {
     var paths = Array.from(window._jobDirtyPaths);
@@ -3497,17 +3838,19 @@ function setTab(t){
   $('#set-market').classList.toggle('hidden',t!=='market');
   $('#set-schema').classList.toggle('hidden',t!=='schema');
   $('#set-campaign').classList.toggle('hidden',t!=='campaign');
+  $('#set-strategy').classList.toggle('hidden',t!=='strategy');
   const anchorWrap = document.getElementById('anchor-nav-wrap');
   if (anchorWrap) {
     const show = t !== 'profile' && t !== 'schema' && window.innerWidth >= 1024;
     anchorWrap.style.display = show ? 'block' : 'none';
   }
-  ['profile','job','market','schema','campaign'].forEach(tab => {
+  ['profile','job','market','schema','campaign','strategy'].forEach(tab => {
     const btn = document.getElementById('set-tab-'+tab);
     if(btn) btn.className = 'px-4 py-1.5 rounded-md ' + (t===tab?'bg-indigo-600 text-white font-medium shadow-sm':'text-slate-600 hover:bg-slate-100');
   });
   if(t==='schema') renderSchemaEditor();
   else if(t==='campaign'){ cancelCampaignEdit(); $('#set-campaign').classList.remove('hidden'); renderCampaignList(); }
+  else if(t==='strategy'){ cancelStrategyEdit(); $('#set-strategy').classList.remove('hidden'); renderStrategyList(); }
   else { window._schemaSelectedGroupIndex = 0; }
   if (t === 'profile') { setTimeout(initCharCounters, 400); }
   else { disconnectScrollSpy(); }
@@ -3525,6 +3868,8 @@ function setTab(t){
     if (STATE.dirty) setTimeout(markSchemaDirtyFields, 50);
   } else if (t === 'campaign') {
     STATE.dirty = window._campaignDirtyPaths ? window._campaignDirtyPaths.size > 0 : false;
+  } else if (t === 'strategy') {
+    STATE.dirty = window._strategyDirtyPaths ? window._strategyDirtyPaths.size > 0 : false;
   }
   updateSaveBar();
   refreshIcons();
@@ -3782,6 +4127,7 @@ async function doLogin(e){
       await loadModelConfig();
       await loadUserList();
       await loadCampaignList();
+      await loadStrategiesCache();
       document.getElementById('status-text').textContent = 'Agent 空闲';
       renderSuggests();
       renderMarketPresets();
@@ -3873,6 +4219,7 @@ function updateUserDisplay(){
     await loadModelConfig();
     await loadUserList();
     await loadCampaignList();
+    await loadStrategiesCache();
     $('#status-text').textContent = 'Agent 空闲';
   } else {
     $('#status-text').textContent = '连接失败';
@@ -3906,6 +4253,7 @@ function updateSaveBar() {
       else if (STATE.settingsTab === 'market' && window._marketDirtyPaths) count = window._marketDirtyPaths.size;
       else if (isSchema && window._schemaDirtyPaths) count = window._schemaDirtyPaths.size;
       else if (STATE.settingsTab === 'campaign' && window._campaignDirtyPaths) count = window._campaignDirtyPaths.size;
+      else if (STATE.settingsTab === 'strategy' && window._strategyDirtyPaths) count = window._strategyDirtyPaths.size;
       if (count > 0) {
         badge.innerHTML = '<span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>已修改 ' + count + ' 个字段';
       } else {
@@ -3957,6 +4305,7 @@ function handleSaveBarClick() {
   else if (tab === 'market') saveMarketConfig();
   else if (tab === 'schema') saveSchema();
   else if (tab === 'campaign') saveCampaignInline();
+  else if (tab === 'strategy') saveStrategyInline();
 }
 
 document.addEventListener('input', e => {

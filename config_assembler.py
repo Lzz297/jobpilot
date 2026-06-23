@@ -81,8 +81,32 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
         user_profile = {}
         print(f"[config_assembler] 警告: 用户画像为空或不存在")
 
-    # ── 3. 加载策略 ──
-    row = _db_fetch_one("SELECT data FROM strategies WHERE name = ?", (strategy_name,))
+    # ── 3. 加载策略（全部用户策略 + campaign 选中的策略）──
+    from config import _db_fetch_all
+
+    # 3a. 加载用户的全部策略（构建完整 weight_profiles / weight_rules）
+    all_rows = _db_fetch_all(
+        "SELECT name, data FROM strategies WHERE owner_id = ? ORDER BY id",
+        (user_id,)
+    )
+    if not all_rows:
+        # 回退：user_id 为 None (CLI 模式) 或用户没有策略时，使用全局默认策略
+        all_rows = _db_fetch_all(
+            "SELECT name, data FROM strategies WHERE is_default = 1 ORDER BY id"
+        )
+
+    weight_profiles = {}
+    weight_rules = {}
+    for r in all_rows:
+        s = json.loads(r["data"])
+        weight_profiles[r["name"]] = s.get("weight_profile", {})
+        weight_rules[r["name"]] = s.get("weight_rules_keywords", [])
+
+    # 3b. 单独加载 campaign 选中的策略（用于 min_match_score 等参数）
+    row = _db_fetch_one(
+        "SELECT data FROM strategies WHERE name = ? AND (owner_id = ? OR is_default = 1) LIMIT 1",
+        (strategy_name, user_id if user_id else 1)
+    )
     if not row:
         raise FileNotFoundError(f"策略不存在: {strategy_name}")
     strategy = json.loads(row["data"])
@@ -105,10 +129,10 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
     resume_template = _load_yaml(os.path.join(PROFILES_DIR, "resume_template.yaml"))
     resume_guide = _load_yaml(os.path.join(PROFILES_DIR, "resume_guide.yaml"))
 
-    # ── 6. 构建 matching 段（从 strategy 文件 + 策略通用参数）──
+    # ── 6. 构建 matching 段（全部策略的 weight_profiles/weight_rules + 选中策略的参数）──
     matching = {
-        "weight_profiles": {strategy_name: strategy.get("weight_profile", {})},
-        "weight_rules": {strategy_name: strategy.get("weight_rules_keywords", [])},
+        "weight_profiles": weight_profiles,
+        "weight_rules": weight_rules,
         "min_match_score": strategy.get("min_match_score", 45),
         "top_n": strategy.get("top_n", 999),
         "borderline_rescore": strategy.get("borderline_rescore", True),

@@ -65,6 +65,10 @@ def login():
     session["user"] = username
     session["role"] = user["role"]
     session["user_id"] = user["id"]
+
+    # 确保新用户有默认策略
+    _ensure_user_strategies(user["id"])
+
     return jsonify({"status": "ok", "username": username, "role": user["role"]})
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -1066,20 +1070,234 @@ def delete_campaign(id):
         return jsonify({"error": f"删除失败: {str(e)}"}), 500
 
 
-# ── 策略列表 API ──
+# ── 策略 CRUD API ──
+
+def _ensure_user_strategies(user_id):
+    """确保用户拥有自己的策略副本。如果没有，从 is_default=1 的策略复制。"""
+    count = _db_fetch_one(
+        "SELECT COUNT(*) as cnt FROM strategies WHERE owner_id = ?", (user_id,)
+    )
+    if count and count["cnt"] > 0:
+        return  # 已有策略，跳过
+
+    defaults = _db_fetch_all(
+        "SELECT name, display_name, description, data FROM strategies WHERE is_default = 1 AND owner_id IS NOT NULL"
+    )
+    if not defaults:
+        defaults = _db_fetch_all(
+            "SELECT name, display_name, description, data FROM strategies WHERE is_default = 1"
+        )
+
+    if not defaults:
+        return  # 没有任何默认策略
+
+    conn = _get_db()
+    cursor = conn.cursor()
+    copied = 0
+    for d in defaults:
+        # 检查用户是否已有同名策略
+        exist = cursor.execute(
+            "SELECT id FROM strategies WHERE name = ? AND owner_id = ?",
+            (d["name"], user_id)
+        ).fetchone()
+        if exist:
+            continue
+        cursor.execute(
+            "INSERT INTO strategies (name, display_name, description, data, owner_id) VALUES (?, ?, ?, ?, ?)",
+            (d["name"], d["display_name"], d["description"], d["data"], user_id)
+        )
+        copied += 1
+    conn.commit()
+    conn.close()
+    if copied:
+        print(f"[策略种子] 为用户 {user_id} 复制了 {copied} 个默认策略")
+
 
 @app.route("/api/strategies", methods=["GET"])
+@login_required
 def list_strategies():
-    """列出所有可用策略，供 campaign 编辑下拉使用。"""
-    rows = _db_fetch_all("SELECT id, name, data FROM strategies")
+    """列出当前用户的策略 + 全局默认策略（供 campaign 编辑下拉使用）。"""
+    user_id = session.get("user_id")
+    rows = _db_fetch_all(
+        "SELECT id, name, display_name, description, data, is_default, created_at "
+        "FROM strategies WHERE owner_id = ? OR (owner_id IS NULL AND is_default = 1) "
+        "ORDER BY is_default DESC, id",
+        (user_id,)
+    )
     result = []
     for r in rows:
         try:
             data = json.loads(r["data"])
         except json.JSONDecodeError:
             continue
-        result.append({"id": r["id"], "name": r["name"]})
+        result.append({
+            "id": r["id"],
+            "name": r["name"],
+            "display_name": r["display_name"] or r["name"],
+            "description": r["description"],
+            "data": data,
+            "is_default": bool(r["is_default"]),
+            "created_at": r["created_at"],
+        })
     return jsonify(result)
+
+
+@app.route("/api/strategies", methods=["POST"])
+@login_required
+def create_strategy():
+    """创建新策略。验证五维权重之和等于 100。"""
+    data = request.json or {}
+    name = data.get("name", "").strip()
+    display_name = data.get("display_name", name)
+    description = data.get("description", "")
+    strategy_data = data.get("data", {})
+
+    if not name:
+        return jsonify({"error": "策略名称不能为空"}), 400
+    if not isinstance(strategy_data, dict):
+        return jsonify({"error": "data 必须是 JSON 对象"}), 400
+
+    wp = strategy_data.get("weight_profile", {})
+    if wp:
+        total = sum(wp.values())
+        if total != 100:
+            return jsonify({"error": f"五维权重之和必须等于 100，当前为 {total}"}), 400
+
+    user_id = session.get("user_id")
+    existing = _db_fetch_one(
+        "SELECT id FROM strategies WHERE name = ? AND owner_id = ?",
+        (name, user_id)
+    )
+    if existing:
+        return jsonify({"error": f"策略 '{name}' 已存在"}), 400
+
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO strategies (name, display_name, description, data, owner_id) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (name, display_name, description, json.dumps(strategy_data, ensure_ascii=False), user_id)
+        )
+        conn.commit()
+        new_id = cursor.lastrowid
+        conn.close()
+        return jsonify({"status": "ok", "id": new_id, "name": name}), 201
+    except Exception as e:
+        return jsonify({"error": f"创建失败: {str(e)}"}), 500
+
+
+@app.route("/api/strategies/<int:id>", methods=["GET"])
+@login_required
+def get_strategy(id):
+    """获取单个策略（仅限自己的或全局默认）。"""
+    user_id = session.get("user_id")
+    row = _db_fetch_one(
+        "SELECT id, name, display_name, description, data, is_default, created_at, updated_at "
+        "FROM strategies WHERE id = ? AND (owner_id = ? OR is_default = 1)",
+        (id, user_id)
+    )
+    if not row:
+        return jsonify({"error": "策略不存在"}), 404
+    try:
+        data = json.loads(row["data"])
+    except json.JSONDecodeError:
+        return jsonify({"error": "数据损坏"}), 500
+    return jsonify({
+        "id": row["id"],
+        "name": row["name"],
+        "display_name": row["display_name"],
+        "description": row["description"],
+        "data": data,
+        "is_default": bool(row["is_default"]),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+    })
+
+
+@app.route("/api/strategies/<int:id>", methods=["PUT"])
+@login_required
+def update_strategy(id):
+    """更新策略（仅限自己的策略）。"""
+    data = request.json or {}
+    name = data.get("name", "").strip()
+    display_name = data.get("display_name", name)
+    description = data.get("description", "")
+    strategy_data = data.get("data", {})
+
+    if not name:
+        return jsonify({"error": "策略名称不能为空"}), 400
+    if not isinstance(strategy_data, dict):
+        return jsonify({"error": "data 必须是 JSON 对象"}), 400
+
+    wp = strategy_data.get("weight_profile", {})
+    if wp:
+        total = sum(wp.values())
+        if total != 100:
+            return jsonify({"error": f"五维权重之和必须等于 100，当前为 {total}"}), 400
+
+    user_id = session.get("user_id")
+    row = _db_fetch_one(
+        "SELECT id, is_default FROM strategies WHERE id = ? AND owner_id = ?",
+        (id, user_id)
+    )
+    if not row:
+        return jsonify({"error": "策略不存在或无权编辑"}), 404
+
+    existing = _db_fetch_one(
+        "SELECT id FROM strategies WHERE name = ? AND owner_id = ? AND id != ?",
+        (name, user_id, id)
+    )
+    if existing:
+        return jsonify({"error": f"名称 '{name}' 已被其他策略使用"}), 400
+
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE strategies SET name = ?, display_name = ?, description = ?, data = ?, "
+            "updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
+            (name, display_name, description, json.dumps(strategy_data, ensure_ascii=False), id, user_id)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": f"更新失败: {str(e)}"}), 500
+
+
+@app.route("/api/strategies/<int:id>", methods=["DELETE"])
+@login_required
+def delete_strategy(id):
+    """删除策略（仅限自己的，且不能是被 Campaign 引用的）。"""
+    user_id = session.get("user_id")
+    row = _db_fetch_one(
+        "SELECT id, name, is_default FROM strategies WHERE id = ? AND owner_id = ?",
+        (id, user_id)
+    )
+    if not row:
+        return jsonify({"error": "策略不存在或无权删除"}), 404
+
+    # 检查是否有 Campaign 引用此策略
+    usage = _db_fetch_one(
+        "SELECT COUNT(*) as cnt FROM campaigns WHERE owner_id = ? "
+        "AND json_extract(data, '$.strategy') = ?",
+        (user_id, row["name"])
+    )
+    if usage and usage["cnt"] > 0:
+        return jsonify({
+            "error": f"该策略正被 {usage['cnt']} 个求职方向使用，请先修改那些方向的策略选择后再删除"
+        }), 400
+
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM strategies WHERE id = ? AND owner_id = ?", (id, user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"error": f"删除失败: {str(e)}"}), 500
 
 
 # ── 用户画像 API ──
