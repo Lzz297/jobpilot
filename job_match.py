@@ -102,7 +102,6 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
     # ── 从 config 读取全部方向，注入 prompt ──
     matching_cfg = (config or {}).get("matching", {})
     all_weight_profiles = matching_cfg.get("weight_profiles", {})
-    all_weight_rules = matching_cfg.get("weight_rules", {})
     direction_names = list(all_weight_profiles.keys())
     direction_list = " / ".join(direction_names)
 
@@ -111,19 +110,6 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
     tiebreaker_names.sort(key=lambda n: all_weight_profiles.get(n, {}).get("industry", 15), reverse=True)
     direction_tiebreaker_order = " > ".join(tiebreaker_names + ["default"])
 
-    # 构建方向指引：从各策略的 keywords 生成基本描述
-    guidance_parts = []
-    for name in direction_names:
-        keywords = all_weight_rules.get(name, [])
-        if name == "default":
-            guidance_parts.append(f"{name} — 无法明确归入其他方向的通用职能岗")
-        elif keywords:
-            kw_text = "、".join(keywords[:5])
-            guidance_parts.append(f"{name} — 关键词: {kw_text}")
-        else:
-            guidance_parts.append(f"{name} — 请根据岗位职责判断")
-    direction_guidance_text = "\n".join(guidance_parts)
-
     prompts = load_prompts()
     template = _load_scoring_prompt()
     system_prompt = render_prompt(template,
@@ -131,7 +117,6 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         weights_text=_build_weights_text(weights),
         score_formula=_build_score_formula(weights),
         direction_list=direction_list,
-        direction_guidance_text=direction_guidance_text,
         direction_tiebreaker_order=direction_tiebreaker_order,
     )
 
@@ -632,17 +617,6 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
     tiebreaker_names = [n for n in direction_names if n != "default"]
     tiebreaker_names.sort(key=lambda n: weight_profiles.get(n, {}).get("industry", 15), reverse=True)
     direction_tiebreaker_order = " > ".join(tiebreaker_names + ["default"])
-    guidance_parts = []
-    for name in direction_names:
-        keywords = weight_rules.get(name, [])
-        if name == "default":
-            guidance_parts.append(f"{name} — 无法明确归入其他方向的通用职能岗")
-        elif keywords:
-            kw_text = "、".join(keywords[:5])
-            guidance_parts.append(f"{name} — 关键词: {kw_text}")
-        else:
-            guidance_parts.append(f"{name} — 请根据岗位职责判断")
-    direction_guidance_text = "\n".join(guidance_parts)
 
     prompts = load_prompts()
     template = _load_scoring_prompt()
@@ -652,7 +626,6 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         score_formula=_build_score_formula(weights),
         direction_list=direction_list,
         direction_tiebreaker_order=direction_tiebreaker_order,
-        direction_guidance_text=direction_guidance_text,
     )
 
     # 注入 few-shot 示例（默认方向为 default，确保通用示例加载）
