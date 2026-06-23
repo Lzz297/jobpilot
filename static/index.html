@@ -1314,6 +1314,9 @@ function undoCampaignFields() {
 }
 
 async function addCampaignInline() {
+  if (window._campaignEditId !== null && window._campaignEditId !== undefined) {
+    await renderCampaignList();
+  }
   cancelCampaignEdit();
   var strategies = await apiGet('/api/strategies') || [];
   var stratOpts = strategies.map(function(s) {
