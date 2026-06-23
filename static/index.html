@@ -1299,10 +1299,13 @@ async function editCampaignInline(id) {
   var campaign = await apiGet('/api/campaigns/' + id);
   if (!campaign) { toast('加载失败','err'); return; }
   window._campaignEditId = id;
+  var normSq = (campaign.data.search_queries || []).map(function(q) {
+    return {keywords: q.keywords || '', location: q.location || '', classification: q.classification || ''};
+  });
   window._campaignEditOriginal = {
     name: campaign.name,
     strategy: campaign.data.strategy || '',
-    queries: JSON.stringify(campaign.data.search_queries || [])
+    queries: JSON.stringify(normSq)
   };
   window._campaignDirtyPaths = new Set();
   STATE.dirty = false;
