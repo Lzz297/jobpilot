@@ -1,6 +1,13 @@
 from pydantic import BaseModel, Field, ConfigDict
 
 
+class DirectionLabel(BaseModel):
+    """LLM 方向预判步骤的单条输出模型。"""
+    model_config = ConfigDict(extra='allow')
+    index: int = Field(description="岗位编号")
+    direction: str = Field(description="从可选方向列表中选择的方向名")
+
+
 class CommonRequirements(BaseModel):
     model_config = ConfigDict(extra='allow')
     direct_match: list[dict] = Field(default_factory=list)

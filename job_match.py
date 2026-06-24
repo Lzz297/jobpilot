@@ -91,6 +91,125 @@ def _load_scoring_prompt():
     return template
 
 
+def _load_direction_prompt():
+    """加载方向分类 prompt。唯一来源为 prompts.yaml。"""
+    template = load_prompts().get("job_match", {}).get("direction_classification_prompt")
+    if not template:
+        raise RuntimeError("job_match.direction_classification_prompt 在 prompts.yaml 中缺失或为空")
+    return template
+
+
+def classify_direction_batch(jobs, config):
+    """对一批 JD 调用 LLM 做方向分类，返回带有 llm_direction 字段的 JD 列表。
+
+    Args:
+        jobs: raw_jobs.json 的内容列表（URL 已去重，每个条目含 index 字段）
+        config: Campaign 配置字典
+
+    Returns:
+        带有 llm_direction 字段的 JD 列表（原地修改 + 返回）
+    """
+    matching_cfg = (config or {}).get("matching", {})
+    weight_rules = matching_cfg.get("weight_rules", {})
+    weight_profiles = matching_cfg.get("weight_profiles", {})
+
+    # ── 1. 构建方向列表和平局顺序 ──
+    direction_names = [k for k in weight_profiles.keys() if k != "default"]
+    direction_names.sort(key=lambda n: weight_profiles.get(n, {}).get("industry", 15), reverse=True)
+    if "default" not in direction_names:
+        direction_names.append("default")
+    direction_list = " / ".join(direction_names)
+    direction_tiebreaker_order = " > ".join(direction_names)
+
+    # ── 2. 加载并渲染 prompt ──
+    template = _load_direction_prompt()
+    system_prompt = render_prompt(template,
+        direction_list=direction_list,
+        direction_tiebreaker_order=direction_tiebreaker_order,
+    )
+
+    # ── 3. 分批调用 LLM ──
+    # direction_batch_size: 将来可暴露到 Web UI
+    direction_batch_size = (config or {}).get("matching", {}).get("direction_batch_size", 20)
+    jd_max_chars = (config or {}).get("search", {}).get("jd_max_chars", 4000)
+    valid_directions = set(weight_rules.keys()) | {"default"}
+
+    all_labels = []
+
+    for i in range(0, len(jobs), direction_batch_size):
+        batch = jobs[i:i + direction_batch_size]
+        batch_num = i // direction_batch_size + 1
+        total_batches = (len(jobs) + direction_batch_size - 1) // direction_batch_size
+
+        emit(f"   🏷️ 方向分类 第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
+
+        # 构造 user message
+        jobs_text = ""
+        for j, job in enumerate(batch):
+            job_idx = job.get("index", i + j + 1)
+            jobs_text += f"\n--- 岗位 {job_idx} ---\n"
+            jobs_text += f"标题: {job.get('title', '未知')}\n"
+            if job.get("company"):
+                jobs_text += f"公司: {job['company']}\n"
+            desc = job.get("description", "")
+            if len(desc) > jd_max_chars:
+                desc = desc[:jd_max_chars] + "\n...(截断)"
+            jobs_text += f"职位描述:\n{desc}\n"
+
+        try:
+            # 主路径：Instructor + Pydantic 结构化输出
+            from engine.contracts import DirectionLabel
+            results = llm_call(
+                [{"role": "system", "content": system_prompt},
+                 {"role": "user", "content": jobs_text}],
+                temperature=0, thinking={"type": "disabled"},
+                response_model=list[DirectionLabel],
+            )
+            labels = [m.model_dump() for m in results]
+            all_labels.extend(labels)
+        except Exception:
+            # 回退：旧方式（parse_json_response）
+            try:
+                msg = llm_call(
+                    [{"role": "system", "content": system_prompt},
+                     {"role": "user", "content": jobs_text}],
+                    temperature=0, thinking={"type": "disabled"},
+                )
+                result_text = msg.content
+                parsed = parse_json_response(result_text)
+                if parsed and isinstance(parsed, list):
+                    all_labels.extend(parsed)
+                else:
+                    emit(f"   ⚠️ 方向分类第 {batch_num} 批返回格式异常，将使用关键词回退")
+            except Exception as e:
+                emit(f"   ❌ 方向分类第 {batch_num} 批失败: {e}，将使用关键词回退")
+
+    # ── 4. 校验与兜底 ──
+    label_by_index = {}
+    for label in all_labels:
+        idx = label.get("index")
+        if idx is not None:
+            label_by_index[idx] = label
+
+    for job in jobs:
+        idx = job.get("index")
+        llm_dir = None
+        if idx in label_by_index:
+            llm_dir = label_by_index[idx].get("direction", "")
+
+        if llm_dir and llm_dir in valid_directions:
+            job["llm_direction"] = llm_dir
+        else:
+            fallback = classify_job(job.get("title", ""), weight_rules)
+            job["llm_direction"] = fallback
+            if llm_dir:
+                emit(f"   ⚠️ 方向兜底: {job.get('title', '?')[:40]} LLM方向={llm_dir} 无效，回退为 {fallback}")
+            else:
+                emit(f"   ⚠️ 方向兜底: {job.get('title', '?')[:40]} LLM未返回方向，回退为 {fallback}")
+
+    return jobs
+
+
 def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str = None, config: dict = None):
     """对一批岗位调用 LLM 评分，返回 scored 列表（可能为空）。
 
@@ -99,25 +218,12 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         config: Campaign 配置字典，用于读取 JD 截断长度等参数
     """
 
-    # ── 从 config 读取全部方向，注入 prompt ──
-    matching_cfg = (config or {}).get("matching", {})
-    all_weight_profiles = matching_cfg.get("weight_profiles", {})
-    direction_names = list(all_weight_profiles.keys())
-    direction_list = " / ".join(direction_names)
-
-    # 构建平局顺序：按各方向行业权重降序排列（行业越重要，越优先）
-    tiebreaker_names = [n for n in direction_names if n != "default"]
-    tiebreaker_names.sort(key=lambda n: all_weight_profiles.get(n, {}).get("industry", 15), reverse=True)
-    direction_tiebreaker_order = " > ".join(tiebreaker_names + ["default"])
-
     prompts = load_prompts()
     template = _load_scoring_prompt()
     system_prompt = render_prompt(template,
         profile_summary=profile_summary,
         weights_text=_build_weights_text(weights),
         score_formula=_build_score_formula(weights),
-        direction_list=direction_list,
-        direction_tiebreaker_order=direction_tiebreaker_order,
     )
 
     # 注入 few-shot 示例
@@ -237,45 +343,70 @@ def match_jobs(config: dict = None, profile: dict = None):
         "summary": profile.get("summary", "")
     }, ensure_ascii=False, indent=2)
 
-    # ── 第一轮：分批评分（统一用 default 权重，评完后按 LLM 方向重算） ──
+    # ── [新] Step 1: 独立的 LLM 方向预判 ──
+    emit(f"\n{'='*50}")
+    emit(f"🏷️ Step 1: 方向分类（LLM 预判）")
+    emit(f"{'='*50}")
+    jobs = classify_direction_batch(jobs, config)
+
+    # 按方向分组统计
+    dir_counts = {}
+    for j in jobs:
+        d = j.get("llm_direction", "default")
+        dir_counts[d] = dir_counts.get(d, 0) + 1
+    dir_summary = ", ".join(f"{d}: {c}" for d, c in sorted(dir_counts.items()))
+    emit(f"   方向分布: {dir_summary}")
+
+    # ── Step 2: 按方向分批评分（每组用各自的方向权重）──
+    emit(f"\n{'='*50}")
+    emit(f"📊 Step 2: 按方向分批评分")
+    emit(f"{'='*50}")
+
     batch_size = 5
     all_scored = []
     default_weights = get_weights("default", weight_profiles)
 
-    for i in range(0, len(jobs), batch_size):
-        batch = jobs[i:i + batch_size]
-        batch_num = i // batch_size + 1
-        total_batches = (len(jobs) + batch_size - 1) // batch_size
+    # 按 llm_direction 分组
+    jobs_by_direction = {}
+    for j in jobs:
+        d = j.get("llm_direction", "default")
+        jobs_by_direction.setdefault(d, []).append(j)
 
-        emit(f"   📊 分析第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
+    for direction, dir_jobs in jobs_by_direction.items():
+        dir_weights = get_weights(direction, weight_profiles)
+        emit(f"\n   📂 {direction} 方向（{len(dir_jobs)} 个岗位）权重: {dir_weights}")
 
-        scored = _score_batch(batch, profile_summary, default_weights,
-                              batch_label=f"第 {batch_num} 批", config=config)
+        for i in range(0, len(dir_jobs), batch_size):
+            batch = dir_jobs[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (len(dir_jobs) + batch_size - 1) // batch_size
 
-        for s in scored:
-            local_idx = s.get("index", 1) - 1
-            if 0 <= local_idx < len(batch):
-                s["url"] = batch[local_idx].get("url", "")
-                s["description"] = batch[local_idx].get("description", "")
-                if not s.get("title"):
-                    s["title"] = batch[local_idx].get("title", "")
-                if not s.get("company"):
-                    s["company"] = batch[local_idx].get("company", "")
-                # LLM 判断的方向（用于权重选择和简历聚合）
-                llm_dir = s.get("direction", "")
-                valid_directions = set(weight_rules.keys()) | {"default"}
-                fallback_cat = classify_job(batch[local_idx].get("title", ""), weight_rules)
-                s["llm_direction"] = llm_dir if llm_dir in valid_directions else fallback_cat
-                s["weight_profile"] = s["llm_direction"]
-                # 用 LLM 判断的方向对应的权重计算 total_score
-                direction_weights = get_weights(s["llm_direction"], weight_profiles)
-                if s.get("scores"):
-                    s["total_score"] = _calc_total_score(s["scores"], direction_weights)
-                s["score_rounds"] = [s.get("total_score", 0)]
-                s["score_variance"] = 0
-                s["confidence"] = "high"
+            emit(f"   📊 {direction} 第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
 
-        all_scored.extend(scored)
+            scored = _score_batch(batch, profile_summary, dir_weights,
+                                  batch_label=f"{direction} 第 {batch_num} 批",
+                                  strategy=direction, config=config)
+
+            for s in scored:
+                local_idx = s.get("index", 1) - 1
+                if 0 <= local_idx < len(batch):
+                    s["url"] = batch[local_idx].get("url", "")
+                    s["description"] = batch[local_idx].get("description", "")
+                    if not s.get("title"):
+                        s["title"] = batch[local_idx].get("title", "")
+                    if not s.get("company"):
+                        s["company"] = batch[local_idx].get("company", "")
+                    # 方向直接从 JD 数据读取（已在 classify_direction_batch 中确定）
+                    s["llm_direction"] = batch[local_idx].get("llm_direction", "default")
+                    s["weight_profile"] = s["llm_direction"]
+                    # 用该方向权重计算 total_score
+                    if s.get("scores"):
+                        s["total_score"] = _calc_total_score(s["scores"], dir_weights)
+                    s["score_rounds"] = [s.get("total_score", 0)]
+                    s["score_variance"] = 0
+                    s["confidence"] = "high"
+
+            all_scored.extend(scored)
 
     # 排序
     all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
@@ -599,21 +730,13 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
     # ── 构造 profile_summary ──
     profile_summary = _build_profile_summary(user_profile)
 
-    # ── 加载并渲染评分 prompt（与 _score_batch 完全一致）──
-    direction_names = list(weight_profiles.keys())
-    direction_list = " / ".join(direction_names)
-    tiebreaker_names = [n for n in direction_names if n != "default"]
-    tiebreaker_names.sort(key=lambda n: weight_profiles.get(n, {}).get("industry", 15), reverse=True)
-    direction_tiebreaker_order = " > ".join(tiebreaker_names + ["default"])
-
+    # ── 加载并渲染评分 prompt（不注入方向，方向由 classify_job 确定）──
     prompts = load_prompts()
     template = _load_scoring_prompt()
     system_prompt = render_prompt(template,
         profile_summary=profile_summary,
         weights_text=_build_weights_text(weights),
         score_formula=_build_score_formula(weights),
-        direction_list=direction_list,
-        direction_tiebreaker_order=direction_tiebreaker_order,
     )
 
     # 注入 few-shot 示例（默认方向为 default，确保通用示例加载）
