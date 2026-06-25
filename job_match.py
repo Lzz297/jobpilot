@@ -315,12 +315,6 @@ def match_jobs(config: dict = None, profile: dict = None):
         config: 配置字典（不传则从 search_config.yaml 加载）
         profile: 用户画像字典（不传则从 me.yaml 加载）
     """
-    global _dir_fallbacks, _weight_fallbacks, _score_errors
-    _dir_fallbacks = []
-    _weight_fallbacks = []
-    _score_errors = []
-
-    # 加载用户档案
     if profile is None:
         profile = load_profile()
 
@@ -338,188 +332,19 @@ def match_jobs(config: dict = None, profile: dict = None):
     if not jobs:
         return "岗位数据为空"
 
-    # 加载匹配配置
     if config is None:
         raise RuntimeError("match_jobs 需要 config 参数，请通过 Campaign 提供。CLI 使用 --campaign，Web UI 选择求职方向。")
+
     matching_cfg = config.get("matching", {})
     min_score = matching_cfg.get("min_match_score", 50)
     top_n = matching_cfg.get("top_n", 10)
-
-    # 动态权重配置
-    weight_profiles = matching_cfg.get("weight_profiles", {"default": {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}})
-    weight_rules = matching_cfg.get("weight_rules", {})
-
-    # 及格线复评配置
     borderline_rescore = matching_cfg.get("borderline_rescore", False)
-    borderline_range = matching_cfg.get("borderline_range", 8)
+    weight_profiles = matching_cfg.get("weight_profiles", {})
 
-    # 精简版用户信息
-    profile_summary = json.dumps({
-        "job_intent": profile.get("job_intent", {}),
-        "skills": profile.get("skills", {}),
-        "work_experience": [
-            {"title": exp.get("title"), "company": exp.get("company_en", exp.get("company", "")),
-             "period": exp.get("period", ""), "tech_stack": exp.get("tech_stack", []),
-             "highlights": exp.get("highlights", [])}
-            for exp in profile.get("work_experience", [])
-        ],
-        "education": profile.get("education", []),
-        "certifications": profile.get("certifications", []),
-        "summary": profile.get("summary", "")
-    }, ensure_ascii=False, indent=2)
+    # ── 核心逻辑：纯函数调用 ──
+    all_scored = execute_matching_pipeline(jobs, profile, config)
 
-    # ── [新] Step 1: 独立的 LLM 方向预判 ──
-    emit(f"\n{'='*50}")
-    emit(f"🏷️ Step 1: 方向分类（LLM 预判）")
-    emit(f"{'='*50}")
-    jobs = classify_direction_batch(jobs, config)
-
-    # 按方向分组统计
-    dir_counts = {}
-    for j in jobs:
-        d = j.get("llm_direction", "default")
-        dir_counts[d] = dir_counts.get(d, 0) + 1
-    dir_summary = ", ".join(f"{d}: {c}" for d, c in sorted(dir_counts.items()))
-    emit(f"   方向分布: {dir_summary}")
-
-    # ── Step 2: 按方向分批评分（每组用各自的方向权重）──
-    emit(f"\n{'='*50}")
-    emit(f"📊 Step 2: 按方向分批评分")
-    emit(f"{'='*50}")
-
-    batch_size = matching_cfg.get("score_batch_size", 5)
-    rescore_batch_size = matching_cfg.get("rescore_batch_size", 5)
-    all_scored = []
-
-    # 按 llm_direction 分组
-    jobs_by_direction = {}
-    for j in jobs:
-        d = j.get("llm_direction", "default")
-        jobs_by_direction.setdefault(d, []).append(j)
-
-    for direction, dir_jobs in jobs_by_direction.items():
-        dir_weights, weight_source = get_weights(direction, weight_profiles)
-        emit(f"\n   📂 {direction} 方向（{len(dir_jobs)} 个岗位）")
-        emit(f"   🎯 方向 [{direction}] 权重: 技能{dir_weights['skill']}% 经验{dir_weights['experience']}% 职级{dir_weights['level']}% 行业{dir_weights['industry']}% 加分{dir_weights['bonus']}% (来源: {weight_source})")
-        if "代码默认值" in weight_source:
-            _weight_fallbacks.append({"direction": direction, "weight_profile": weight_source})
-
-        for i in range(0, len(dir_jobs), batch_size):
-            batch = dir_jobs[i:i + batch_size]
-            batch_num = i // batch_size + 1
-            total_batches = (len(dir_jobs) + batch_size - 1) // batch_size
-
-            emit(f"   📊 {direction} 第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
-
-            scored = _score_batch(batch, profile_summary, dir_weights,
-                                  batch_label=f"{direction} 第 {batch_num} 批",
-                                  strategy=direction, config=config)
-
-            for s in scored:
-                local_idx = s.get("index", 1) - 1
-                if 0 <= local_idx < len(batch):
-                    s["url"] = batch[local_idx].get("url", "")
-                    s["description"] = batch[local_idx].get("description", "")
-                    if not s.get("title"):
-                        s["title"] = batch[local_idx].get("title", "")
-                    if not s.get("company"):
-                        s["company"] = batch[local_idx].get("company", "")
-                    # 方向直接从 JD 数据读取（已在 classify_direction_batch 中确定）
-                    s["llm_direction"] = batch[local_idx].get("llm_direction", "default")
-                    s["weight_profile"] = s["llm_direction"]
-                    # 用该方向权重计算 total_score
-                    if s.get("scores"):
-                        s["total_score"] = _calc_total_score(s["scores"], dir_weights)
-                    s["score_rounds"] = [s.get("total_score", 0)]
-                    s["score_variance"] = 0
-                    s["confidence"] = "high"
-
-            all_scored.extend(scored)
-            for s in scored:
-                if s.get("_score_error"):
-                    _score_errors.append({"title": s.get("title", "未知"), "reason": s.get("reason", "")})
-
-    # 排序
-    all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
-
-    # ── 第二轮：及格线附近复评 ──
-    if borderline_rescore:
-        low = min_score - borderline_range
-        high = min_score + borderline_range
-        borderline_jobs = [s for s in all_scored if low <= s.get("total_score", 0) <= high]
-
-        if borderline_jobs:
-            emit(f"\n   🔄 及格线复评：{len(borderline_jobs)} 个岗位处于 {low}-{high} 分区间，进行二次评分...")
-
-            # 需要从原始 jobs 中找到对应的 job 数据
-            url_to_job = {normalize_jobsdb_url(j.get("url", "")): j for j in jobs}
-
-            # 按方向分组
-            rescore_groups = {}
-            for s in borderline_jobs:
-                d = s.get("llm_direction", "default")
-                rescore_groups.setdefault(d, []).append(s)
-
-            for direction, dir_jobs in rescore_groups.items():
-                dir_weights, ws = get_weights(direction, weight_profiles)
-                if "代码默认值" in ws:
-                    _weight_fallbacks.append({"direction": direction, "weight_profile": ws})
-
-                for i in range(0, len(dir_jobs), rescore_batch_size):
-                    batch = dir_jobs[i:i + rescore_batch_size]
-                    # 还原原始 job 数据用于重新评分
-                    original_batch = []
-                    for s in batch:
-                        norm = normalize_jobsdb_url(s.get("url", ""))
-                        orig = url_to_job.get(norm)
-                        if orig:
-                            original_batch.append(orig)
-                        else:
-                            original_batch.append({
-                                "title": s.get("title", ""),
-                                "company": s.get("company", ""),
-                                "description": s.get("description", ""),
-                                "url": s.get("url", ""),
-                            })
-
-                    batch_num = i // rescore_batch_size + 1
-                    total_batches = (len(dir_jobs) + rescore_batch_size - 1) // rescore_batch_size
-                    batch_label = f"复评 {direction} 第 {batch_num}/{total_batches} 批"
-                    scored2_list = _score_batch(original_batch, profile_summary, dir_weights,
-                                                batch_label=batch_label, strategy=direction, config=config)
-
-                    # 建立 scored2 的 index→结果 映射（index 从 1 开始）
-                    scored2_map = {s2.get("index", 1) - 1: s2 for s2 in scored2_list}
-
-                    for j, s in enumerate(batch):
-                        s2 = scored2_map.get(j)
-                        if s2 and s2.get("scores"):
-                            round2_total = _calc_total_score(s2["scores"], dir_weights)
-                            round1_total = s["score_rounds"][0]
-                            # 取两轮平均
-                            avg_scores = {}
-                            for dim in ["skill", "experience", "level", "industry", "bonus"]:
-                                avg_scores[dim] = round(
-                                    (s.get("scores", {}).get(dim, 0) + s2["scores"].get(dim, 0)) / 2
-                                )
-                            avg_total = _calc_total_score(avg_scores, dir_weights)
-                            variance = abs(round1_total - round2_total)
-
-                            s["scores"] = avg_scores
-                            s["total_score"] = avg_total
-                            s["score_rounds"] = [round1_total, round2_total]
-                            s["score_variance"] = variance
-                            s["confidence"] = "verified" if variance <= 10 else "uncertain"
-
-                            if variance > 10:
-                                s["reason"] = f"⚠️ 评分波动较大（{round1_total} vs {round2_total}）| " + s.get("reason", "")
-
-                            emit(f"     📊 {s.get('title', '?')[:35]}: "
-                                  f"{round1_total}→{round2_total}（平均 {avg_total}，波动 {variance}）")
-
-            # 复评后重新排序
-            all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
-
+    # ── 过滤 ──
     qualified = [s for s in all_scored
                  if s.get("total_score", 0) >= min_score][:top_n]
 
@@ -791,71 +616,195 @@ def _build_profile_summary(user_profile: dict) -> str:
     }, ensure_ascii=False, indent=2)
 
 
-def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
-                    jd_title: str = "") -> dict:
-    """对单条 JD 进行方向预判 + 五维匹配评分。
+def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> list:
+    """纯函数：对 job 列表执行方向分类 → 五维评分 → 及格线复评。
 
-    内部全部复用 Pipeline 的核心函数：classify_direction_batch + _score_batch。
-    与 match_jobs 走完全相同的代码路径，确保评估结果反映线上实际表现。
+    不涉及任何文件读写、过滤、排序后处理。
+    调用方负责准备 jobs_list 和解析返回结果。
+
+    Args:
+        jobs_list: job 字典列表，每条需含 title / description，
+                   可选 company / url / location / salary / eval_id 等。
+        profile: 用户画像字典。
+        config: Campaign 配置字典。
+
+    Returns:
+        all_scored 列表，按 total_score 降序排列。每条记录含：
+        eval_id（若有）、title、company、url、description、
+        llm_direction、weight_profile、scores、total_score、
+        reason、recommendation、score_rounds、score_variance、
+        confidence、skill_match、missing_skills。
     """
+    global _dir_fallbacks, _weight_fallbacks, _score_errors
+    _dir_fallbacks = []
+    _weight_fallbacks = []
+    _score_errors = []
+
     if config is None:
-        raise RuntimeError("score_single_jd 需要 config 参数，请从 Campaign 提供。")
+        raise RuntimeError("execute_matching_pipeline 需要 config 参数")
 
-    from config import (
-        clear_usage_accumulator, get_accumulated_usage,
-        clear_last_usage,
-    )
-
-    # ── Step 1: 方向预判 ──
-    clear_usage_accumulator()
-    clear_last_usage()
-
-    job = {
-        "title": jd_title or "未知岗位",
-        "description": jd_text,
-        "index": 1,
-        "url": "",
-        "company": "",
-    }
-    jobs = classify_direction_batch([job], config)
-    direction = jobs[0].get("llm_direction", "default")
-    dir_usage = get_accumulated_usage()
-
-    # ── Step 2: 获取该方向权重 ──
     matching_cfg = config.get("matching", {})
-    weight_profiles = matching_cfg.get("weight_profiles", {})
-    dir_weights, _ = get_weights(direction, weight_profiles)
+    min_score = matching_cfg.get("min_match_score", 50)
+    weight_profiles = matching_cfg.get("weight_profiles", {
+        "default": {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}
+    })
+    weight_rules = matching_cfg.get("weight_rules", {})
+    borderline_rescore = matching_cfg.get("borderline_rescore", False)
+    borderline_range = matching_cfg.get("borderline_range", 8)
+    batch_size = matching_cfg.get("score_batch_size", 5)
+    rescore_batch_size = matching_cfg.get("rescore_batch_size", 5)
 
-    # ── Step 3: 评分 ──
-    clear_usage_accumulator()
-    clear_last_usage()
+    # ── B.1: 构建 profile_summary ──
+    profile_summary = _build_profile_summary(profile)
 
-    profile_summary = _build_profile_summary(user_profile)
-    scored_list = _score_batch(
-        [job], profile_summary, dir_weights,
-        batch_label=f"评估 {jd_title[:30]}" if jd_title else "评估",
-        strategy=direction,
-        config=config,
-    )
+    # ── B.2: 方向分类 ──
+    emit(f"\n{'='*50}")
+    emit(f"🏷️ Step 1: 方向分类（LLM 预判）")
+    emit(f"{'='*50}")
+    jobs = classify_direction_batch(jobs_list, config)
 
-    score_usage = get_accumulated_usage()
+    dir_counts = {}
+    for j in jobs:
+        d = j.get("llm_direction", "default")
+        dir_counts[d] = dir_counts.get(d, 0) + 1
+    dir_summary = ", ".join(f"{d}: {c}" for d, c in sorted(dir_counts.items()))
+    emit(f"   方向分布: {dir_summary}")
 
-    # ── Step 4: 组装返回 ──
-    if scored_list:
-        s = scored_list[0]
-        scores = s.get("scores", {})
-        reason = s.get("reason", "")
-        total_score = _calc_total_score(scores, dir_weights) if scores else 0
-    else:
-        scores = {}
-        total_score = 0
-        reason = "LLM 评分调用失败"
+    # ── B.3: 按方向分批评分 ──
+    emit(f"\n{'='*50}")
+    emit(f"📊 Step 2: 按方向分批评分")
+    emit(f"{'='*50}")
 
-    return {
-        "direction": direction,
-        "scores": scores,
-        "total_score": total_score,
-        "reason": reason,
-        "input_tokens": dir_usage["input_tokens"] + score_usage["input_tokens"],
-        "output_tokens": dir_usage["output_tokens"] + score_usage["output_tokens"],
-    }
+    jobs_by_direction = {}
+    for j in jobs:
+        d = j.get("llm_direction", "default")
+        jobs_by_direction.setdefault(d, []).append(j)
+
+    all_scored = []
+
+    for direction, dir_jobs in jobs_by_direction.items():
+        dir_weights, weight_source = get_weights(direction, weight_profiles)
+        emit(f"\n   📂 {direction} 方向（{len(dir_jobs)} 个岗位）")
+        emit(f"   🎯 权重: 技能{dir_weights['skill']}% 经验{dir_weights['experience']}% "
+             f"职级{dir_weights['level']}% 行业{dir_weights['industry']}% 加分{dir_weights['bonus']}% "
+             f"(来源: {weight_source})")
+        if "代码默认值" in weight_source:
+            _weight_fallbacks.append({"direction": direction, "weight_profile": weight_source})
+
+        for i in range(0, len(dir_jobs), batch_size):
+            batch = dir_jobs[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            total_batches = (len(dir_jobs) + batch_size - 1) // batch_size
+            emit(f"   📊 {direction} 第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
+
+            scored = _score_batch(batch, profile_summary, dir_weights,
+                                  batch_label=f"{direction} 第 {batch_num} 批",
+                                  strategy=direction, config=config)
+
+            # 构建当前 batch 的 index 映射字典，精确匹配
+            idx_to_job = {j.get("index"): j for j in batch}
+
+            for s in scored:
+                orig_job = idx_to_job.get(s.get("index"))
+                if orig_job:
+                    s["url"] = orig_job.get("url", "")
+                    s["description"] = orig_job.get("description", "")
+                    if not s.get("title"):
+                        s["title"] = orig_job.get("title", "")
+                    if not s.get("company"):
+                        s["company"] = orig_job.get("company", "")
+                    s["llm_direction"] = orig_job.get("llm_direction", "default")
+                    s["weight_profile"] = s["llm_direction"]
+                    # 透传 eval_id
+                    if orig_job.get("eval_id"):
+                        s["eval_id"] = orig_job["eval_id"]
+
+                if s.get("scores"):
+                    s["total_score"] = _calc_total_score(s["scores"], dir_weights)
+                s["score_rounds"] = [s.get("total_score", 0)]
+                s["score_variance"] = 0
+                s["confidence"] = "high"
+
+            all_scored.extend(scored)
+            for s in scored:
+                if s.get("_score_error"):
+                    _score_errors.append({"title": s.get("title", "未知"), "reason": s.get("reason", "")})
+
+    # ── B.4: 排序 ──
+    all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
+
+    # ── B.5: 及格线复评 ──
+    if borderline_rescore:
+        low = min_score - borderline_range
+        high = min_score + borderline_range
+        borderline_jobs = [s for s in all_scored if low <= s.get("total_score", 0) <= high]
+
+        if borderline_jobs:
+            emit(f"\n   🔄 及格线复评：{len(borderline_jobs)} 个岗位处于 {low}-{high} 分区间...")
+
+            url_to_job = {normalize_jobsdb_url(j.get("url", "")): j for j in jobs}
+
+            rescore_groups = {}
+            for s in borderline_jobs:
+                d = s.get("llm_direction", "default")
+                rescore_groups.setdefault(d, []).append(s)
+
+            for direction, dir_jobs in rescore_groups.items():
+                dir_weights, ws = get_weights(direction, weight_profiles)
+                if "代码默认值" in ws:
+                    _weight_fallbacks.append({"direction": direction, "weight_profile": ws})
+
+                for i in range(0, len(dir_jobs), rescore_batch_size):
+                    batch = dir_jobs[i:i + rescore_batch_size]
+                    original_batch = []
+                    for s in batch:
+                        norm = normalize_jobsdb_url(s.get("url", ""))
+                        orig = url_to_job.get(norm)
+                        if orig:
+                            original_batch.append(orig)
+                        else:
+                            original_batch.append({
+                                "title": s.get("title", ""),
+                                "company": s.get("company", ""),
+                                "description": s.get("description", ""),
+                                "url": s.get("url", ""),
+                                "eval_id": s.get("eval_id", ""),
+                            })
+
+                    batch_num = i // rescore_batch_size + 1
+                    total_batches = (len(dir_jobs) + rescore_batch_size - 1) // rescore_batch_size
+                    scored2_list = _score_batch(original_batch, profile_summary, dir_weights,
+                                                batch_label=f"复评 {direction} 第 {batch_num}/{total_batches} 批",
+                                                strategy=direction, config=config)
+
+                    # 构建复评结果的 index 映射字典，精确匹配
+                    scored2_map = {s2.get("index"): s2 for s2 in scored2_list}
+
+                    for s in batch:
+                        s2 = scored2_map.get(s.get("index"))
+                        if s2 and s2.get("scores"):
+                            round2_total = _calc_total_score(s2["scores"], dir_weights)
+                            round1_total = s["score_rounds"][0]
+                            avg_scores = {}
+                            for dim in ["skill", "experience", "level", "industry", "bonus"]:
+                                avg_scores[dim] = round(
+                                    (s.get("scores", {}).get(dim, 0) + s2["scores"].get(dim, 0)) / 2
+                                )
+                            avg_total = _calc_total_score(avg_scores, dir_weights)
+                            variance = abs(round1_total - round2_total)
+
+                            s["scores"] = avg_scores
+                            s["total_score"] = avg_total
+                            s["score_rounds"] = [round1_total, round2_total]
+                            s["score_variance"] = variance
+                            s["confidence"] = "verified" if variance <= 10 else "uncertain"
+
+                            if variance > 10:
+                                s["reason"] = f"⚠️ 评分波动较大（{round1_total} vs {round2_total}）| " + s.get("reason", "")
+
+                            emit(f"     📊 {s.get('title', '?')[:35]}: "
+                                 f"{round1_total}→{round2_total}（平均 {avg_total}，波动 {variance}）")
+
+            all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
+
+    return all_scored

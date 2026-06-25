@@ -1,7 +1,7 @@
 """
 run_eval.py — 匹配评估运行脚本
 
-对 dev_set 或 holdout 中的每条 JD 调用 score_single_jd，计算方向准确率，
+对 dev_set 或 holdout 中的每条 JD 调用 execute_matching_pipeline 批量匹配，计算方向准确率，
 输出结果 JSON 到 output/eval/。
 
 用法:
@@ -13,7 +13,6 @@ import io
 import json
 import os
 import sys
-import time
 import yaml
 from datetime import datetime
 from collections import Counter
@@ -24,9 +23,9 @@ if sys.stdout.encoding != 'utf-8':
 # 添加项目根目录到 sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config import load_profile, load_search_config_dict, OUTPUT_DIR
+from config import load_profile, load_search_config_dict, OUTPUT_DIR, clear_usage_accumulator, get_accumulated_usage
 from config_assembler import load_campaign
-from job_match import score_single_jd
+from job_match import execute_matching_pipeline
 
 # ── 价格常量（单位：USD / 1M tokens）──
 PRICES = {
@@ -133,70 +132,68 @@ def main():
     print(f"Campaign: {CAMPAIGN_NAME}")
     campaign_config = load_campaign(CAMPAIGN_NAME)
     config = campaign_config
-    matching_cfg = config.get("matching", {})
-    weight_rules = matching_cfg.get("weight_rules", {})
-    weight_profiles = matching_cfg.get("weight_profiles", {})
 
     model_name = _load_model_name()
     print(f"模型: {model_name}")
     print()
 
-    # ── 逐条评分 ──
+    # ── 补全字段，构建 jobs_list ──
+    jobs_list = []
+    for i, case in enumerate(cases):
+        jobs_list.append({
+            "eval_id": case["id"],
+            "title": case["title"],
+            "company": case.get("company", "评估测试"),
+            "url": "",
+            "location": "未知",
+            "salary": "未知",
+            "description": case["description"],
+            "index": i + 1,
+        })
+
+    # ── 批量调用纯函数（与生产环境完全一致）──
+    clear_usage_accumulator()
+    all_scored = execute_matching_pipeline(jobs_list, profile, config)
+    total_usage = get_accumulated_usage()
+
+    total_input_tokens = total_usage["input_tokens"]
+    total_output_tokens = total_usage["output_tokens"]
+
+    # ── 按 eval_id 匹配结果并比对 ──
+    scored_dict = {s["eval_id"]: s for s in all_scored if s.get("eval_id")}
     results = []
-    total_input_tokens = 0
-    total_output_tokens = 0
     errors = 0
 
-    for i, case in enumerate(cases, 1):
-        jd_id = case["id"]
-        jd_text = case.get("description", "")
-        jd_title = case.get("title", "")
-        expected_dir = case.get("expected_direction", "default")
-
-        print(f"[{i}/{len(cases)}] {jd_id}: {jd_title[:60]} ... ", end="", flush=True)
-
-        try:
-            result = score_single_jd(
-                jd_text=jd_text,
-                user_profile=profile,
-                config=config,
-                jd_title=jd_title,
-            )
-        except Exception as e:
-            print(f"ERROR: {e}")
-            result = {
-                "direction": "default",
-                "scores": {},
-                "total_score": 0,
-                "reason": f"评分异常: {e}",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "error": str(e),
-            }
+    for case in cases:
+        scored = scored_dict.get(case["id"])
+        if scored:
+            predicted_dir = scored.get("llm_direction", "default")
+            scores = scored.get("scores", {})
+            total_score = scored.get("total_score", 0)
+            reason = scored.get("reason", "")
+        else:
+            predicted_dir = "default"
+            scores = {}
+            total_score = 0
+            reason = "未在匹配结果中找到该岗位"
             errors += 1
 
-        predicted_dir = result.get("direction", "default")
+        expected_dir = case.get("expected_direction", "default")
         match = "✓" if predicted_dir == expected_dir else f"✗ (expected {expected_dir})"
-        print(f"{predicted_dir} {match}")
-
-        total_input_tokens += result.get("input_tokens", 0)
-        total_output_tokens += result.get("output_tokens", 0)
+        print(f"[{case['id']}] {case['title'][:60]} → {predicted_dir} {match}")
 
         results.append({
-            "id": jd_id,
-            "title": jd_title,
+            "id": case["id"],
+            "title": case["title"],
             "expected_direction": expected_dir,
             "predicted_direction": predicted_dir,
             "direction_correct": predicted_dir == expected_dir,
-            "scores": result.get("scores", {}),
-            "total_score": result.get("total_score", 0),
-            "reason": result.get("reason", ""),
-            "input_tokens": result.get("input_tokens", 0),
-            "output_tokens": result.get("output_tokens", 0),
+            "scores": scores,
+            "total_score": total_score,
+            "reason": reason,
+            "input_tokens": 0,
+            "output_tokens": 0,
         })
-
-        # 避免限流
-        time.sleep(0.5)
 
     # ── 方向准确率 ──
     dir_correct = sum(1 for r in results if r.get("direction_correct"))
