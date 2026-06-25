@@ -1,8 +1,8 @@
 """
 run_eval.py — 匹配评估运行脚本
 
-对 dev_set 或 holdout 中的每条 JD 调用 score_single_jd，计算方向准确率、
-token 消耗和成本估算，输出结果 JSON 到 output/eval/。
+对 dev_set 或 holdout 中的每条 JD 调用 score_single_jd，计算方向准确率，
+输出结果 JSON 到 output/eval/。
 
 用法:
     python evaluation/run_eval.py --dev_set          # 评估 dev_set
@@ -28,17 +28,6 @@ from config import load_profile, load_search_config_dict, OUTPUT_DIR
 from config_assembler import load_campaign
 from job_match import score_single_jd
 
-# ── 价格常量（单位：USD / 1M tokens）──
-PRICES = {
-    "deepseek": {"input": 0.55, "output": 2.19},
-    "deepseek-v4-pro": {"input": 0.55, "output": 2.19},
-    "qwen": {"input": 0.40, "output": 1.60},
-    "qwen3.6-plus": {"input": 0.40, "output": 1.60},
-    "glm": {"input": 1.00, "output": 1.50},
-    "glm-5.1": {"input": 1.00, "output": 1.50},
-}
-
-
 def _load_model_name():
     """从 search_config.yaml 读取当前模型名。"""
     try:
@@ -47,12 +36,6 @@ def _load_model_name():
         return llm_cfg.get("model", "unknown")
     except Exception:
         return "unknown"
-
-
-def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """估算单次调用的美元成本。"""
-    price = PRICES.get(model, PRICES.get("deepseek-v4-pro", {"input": 0.55, "output": 2.19}))
-    return (input_tokens / 1_000_000) * price["input"] + (output_tokens / 1_000_000) * price["output"]
 
 
 def is_placeholder_profile(profile: dict) -> bool:
@@ -143,8 +126,6 @@ def main():
 
     # ── 逐条评分 ──
     results = []
-    total_input_tokens = 0
-    total_output_tokens = 0
     errors = 0
 
     for i, case in enumerate(cases, 1):
@@ -169,8 +150,6 @@ def main():
                 "scores": {},
                 "total_score": 0,
                 "reason": f"评分异常: {e}",
-                "input_tokens": 0,
-                "output_tokens": 0,
                 "error": str(e),
             }
             errors += 1
@@ -178,9 +157,6 @@ def main():
         predicted_dir = result.get("direction", "default")
         match = "✓" if predicted_dir == expected_dir else f"✗ (expected {expected_dir})"
         print(f"{predicted_dir} {match}")
-
-        total_input_tokens += result.get("input_tokens", 0)
-        total_output_tokens += result.get("output_tokens", 0)
 
         results.append({
             "id": jd_id,
@@ -191,8 +167,6 @@ def main():
             "scores": result.get("scores", {}),
             "total_score": result.get("total_score", 0),
             "reason": result.get("reason", ""),
-            "input_tokens": result.get("input_tokens", 0),
-            "output_tokens": result.get("output_tokens", 0),
         })
 
         # 避免限流
@@ -238,13 +212,6 @@ def main():
         if range_total > 0:
             print(f"分数档位准确率: {range_correct}/{range_total} = {range_correct/range_total:.1%}")
 
-    # ── Token 汇总 ──
-    total_cost = _estimate_cost(model_name, total_input_tokens, total_output_tokens)
-    print(f"\nToken 消耗:")
-    print(f"  Input:  {total_input_tokens:,}")
-    print(f"  Output: {total_output_tokens:,}")
-    print(f"  估算成本: ${total_cost:.4f} USD")
-
     # ── 保存结果 ──
     eval_dir = os.path.join(OUTPUT_DIR, "eval")
     os.makedirs(eval_dir, exist_ok=True)
@@ -260,9 +227,6 @@ def main():
             "num_cases": len(cases),
             "errors": errors,
             "direction_accuracy": dir_accuracy,
-            "total_input_tokens": total_input_tokens,
-            "total_output_tokens": total_output_tokens,
-            "estimated_cost_usd": total_cost,
         },
         "results": results,
     }
@@ -281,14 +245,10 @@ def main():
             prev = json.load(f)
         prev_meta = prev.get("meta", {})
         prev_acc = prev_meta.get("direction_accuracy", 0)
-        prev_cost = prev_meta.get("estimated_cost_usd", 0)
         delta_acc = dir_accuracy - prev_acc
-        delta_cost = total_cost - prev_cost
         print(f"\n历史对比 (上次: {history_files[0]}):")
         print(f"  方向准确率: {prev_acc:.1%} → {dir_accuracy:.1%} "
               f"({'↑' if delta_acc > 0 else '↓' if delta_acc < 0 else '='}{abs(delta_acc):.1%})")
-        print(f"  成本: ${prev_cost:.4f} → ${total_cost:.4f} "
-              f"({'↑' if delta_cost > 0 else '↓' if delta_cost < 0 else '='}${abs(delta_cost):.4f})")
     else:
         print("\n无历史结果可对比")
 

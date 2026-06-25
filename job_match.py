@@ -838,6 +838,4 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         "scores": scores,
         "total_score": total_score,
         "reason": reason,
-        "input_tokens": 0,
-        "output_tokens": 0,
     }
