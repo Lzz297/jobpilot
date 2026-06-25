@@ -204,13 +204,10 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
             max_retries=max_retries,
             **kwargs_instruct
         )
-        # 尝试从 Instructor 的底层 response 获取 usage 信息
+        # Token 用量存入线程安全 storage
         if hasattr(result, '_raw_response') and hasattr(result._raw_response, 'usage'):
             usage = result._raw_response.usage
-            result._usage = {
-                "input_tokens": usage.prompt_tokens,
-                "output_tokens": usage.completion_tokens,
-            }
+            _store_usage(usage.prompt_tokens, usage.completion_tokens)
         return result
 
     last_error = None
@@ -227,6 +224,8 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
                     kwargs["temperature"] = temperature
 
             response = client.chat.completions.create(**kwargs)
+            if hasattr(response, 'usage') and response.usage:
+                _store_usage(response.usage.prompt_tokens, response.usage.completion_tokens)
             return response.choices[0].message
 
         except RateLimitError as e:
@@ -401,6 +400,48 @@ def set_campaign_config(cfg: dict) -> None:
 def get_campaign_config() -> dict | None:
     """获取当前线程的 campaign 配置。没有则返回 None。"""
     return getattr(_campaign_local, 'config', None)
+
+
+# ── Token 用量追踪（线程安全）──
+_usage_local = threading.local()
+
+
+def _store_usage(input_tokens: int, output_tokens: int) -> None:
+    """存储最近一次 LLM 调用的 token 用量，并自动累加到 batch 总和（内部使用）"""
+    _usage_local.last_input = input_tokens
+    _usage_local.last_output = output_tokens
+    _usage_local.batch_input = getattr(_usage_local, 'batch_input', 0) + input_tokens
+    _usage_local.batch_output = getattr(_usage_local, 'batch_output', 0) + output_tokens
+
+
+def get_last_usage() -> dict | None:
+    """获取最近一次 LLM 调用的 token 用量。无数据返回 None。"""
+    inp = getattr(_usage_local, 'last_input', 0)
+    out = getattr(_usage_local, 'last_output', 0)
+    if inp == 0 and out == 0:
+        return None
+    return {"input_tokens": inp, "output_tokens": out}
+
+
+def clear_last_usage() -> None:
+    """清空最近一次 token 记录。每次独立 LLM 调用前使用，防止异常时串台。"""
+    _usage_local.last_input = 0
+    _usage_local.last_output = 0
+
+
+def clear_usage_accumulator() -> None:
+    """清空累加器。批量调用开始前使用。"""
+    _usage_local.batch_input = 0
+    _usage_local.batch_output = 0
+
+
+def get_accumulated_usage() -> dict:
+    """获取累加的总 token 用量并自动清零。"""
+    inp = getattr(_usage_local, 'batch_input', 0)
+    out = getattr(_usage_local, 'batch_output', 0)
+    _usage_local.batch_input = 0
+    _usage_local.batch_output = 0
+    return {"input_tokens": inp, "output_tokens": out}
 
 
 def set_emit_target(queue):

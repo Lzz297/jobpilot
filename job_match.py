@@ -163,6 +163,10 @@ def classify_direction_batch(jobs, config):
     jd_max_chars = (config or {}).get("search", {}).get("jd_max_chars", 4000)
     valid_directions = set(weight_rules.keys()) | {"default"}
 
+    from config import clear_usage_accumulator
+
+    clear_usage_accumulator()
+
     all_labels = []
 
     for i in range(0, len(jobs), direction_batch_size):
@@ -797,7 +801,15 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
     if config is None:
         raise RuntimeError("score_single_jd 需要 config 参数，请从 Campaign 提供。")
 
-    # ── Step 1: 方向预判（复用 classify_direction_batch）──
+    from config import (
+        clear_usage_accumulator, get_accumulated_usage,
+        clear_last_usage,
+    )
+
+    # ── Step 1: 方向预判 ──
+    clear_usage_accumulator()
+    clear_last_usage()
+
     job = {
         "title": jd_title or "未知岗位",
         "description": jd_text,
@@ -807,13 +819,17 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
     }
     jobs = classify_direction_batch([job], config)
     direction = jobs[0].get("llm_direction", "default")
+    dir_usage = get_accumulated_usage()
 
     # ── Step 2: 获取该方向权重 ──
     matching_cfg = config.get("matching", {})
     weight_profiles = matching_cfg.get("weight_profiles", {})
     dir_weights, _ = get_weights(direction, weight_profiles)
 
-    # ── Step 3: 评分（复用 _score_batch）──
+    # ── Step 3: 评分 ──
+    clear_usage_accumulator()
+    clear_last_usage()
+
     profile_summary = _build_profile_summary(user_profile)
     scored_list = _score_batch(
         [job], profile_summary, dir_weights,
@@ -821,6 +837,8 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         strategy=direction,
         config=config,
     )
+
+    score_usage = get_accumulated_usage()
 
     # ── Step 4: 组装返回 ──
     if scored_list:
@@ -838,4 +856,6 @@ def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
         "scores": scores,
         "total_score": total_score,
         "reason": reason,
+        "input_tokens": dir_usage["input_tokens"] + score_usage["input_tokens"],
+        "output_tokens": dir_usage["output_tokens"] + score_usage["output_tokens"],
     }
