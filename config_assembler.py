@@ -90,9 +90,9 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
         (user_id,)
     )
     if not all_rows:
-        # 回退：user_id 为 None (CLI 模式) 或用户没有策略时，使用全局默认策略
+        # 回退：user_id 为 None (CLI 模式) 或用户没有策略时，使用全局策略
         all_rows = _db_fetch_all(
-            "SELECT name, data FROM strategies WHERE is_default = 1 ORDER BY id"
+            "SELECT name, data FROM strategies WHERE owner_id IS NOT NULL ORDER BY id LIMIT 20"
         )
 
     weight_profiles = {}
@@ -104,7 +104,7 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
 
     # 3b. 单独加载 campaign 选中的策略（用于 min_match_score 等参数）
     row = _db_fetch_one(
-        "SELECT data FROM strategies WHERE name = ? AND (owner_id = ? OR is_default = 1) LIMIT 1",
+        "SELECT data FROM strategies WHERE name = ? AND owner_id = ? LIMIT 1",
         (strategy_name, user_id if user_id else 1)
     )
     if not row:
@@ -130,6 +130,7 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
     resume_guide = _load_yaml(os.path.join(PROFILES_DIR, "resume_guide.yaml"))
 
     # ── 6. 构建 matching 段（全部策略的 weight_profiles/weight_rules + 选中策略的参数）──
+    sc_matching = search_cfg.get("matching", {})
     matching = {
         "weight_profiles": weight_profiles,
         "weight_rules": weight_rules,
@@ -137,6 +138,9 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
         "top_n": strategy.get("top_n", 999),
         "borderline_rescore": strategy.get("borderline_rescore", True),
         "borderline_range": strategy.get("borderline_range", 8),
+        "direction_batch_size": sc_matching.get("direction_batch_size", 20),
+        "score_batch_size": sc_matching.get("score_batch_size", 5),
+        "rescore_batch_size": sc_matching.get("rescore_batch_size", 5),
     }
 
     # ── 7. 组装基础配置 ──

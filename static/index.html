@@ -390,6 +390,7 @@
           <div class="flex rounded-lg border border-slate-200 overflow-hidden text-sm w-fit mb-4">
             <button id="ftab-jobs" onclick="fileTab('jobs')" class="px-4 py-1.5 bg-indigo-600 text-white flex items-center gap-1.5"><i data-lucide="briefcase" class="w-4 h-4"></i> 找工作文件</button>
             <button id="ftab-market" onclick="fileTab('market')" class="px-4 py-1.5 bg-white text-slate-500 flex items-center gap-1.5"><i data-lucide="line-chart" class="w-4 h-4"></i> 市场分析文件</button>
+            <button id="ftab-eval" onclick="fileTab('eval')" class="px-4 py-1.5 bg-white text-slate-500 flex items-center gap-1.5"><i data-lucide="flask-conical" class="w-4 h-4"></i> 评估结果</button>
           </div>
 
           <div class="bg-white border border-slate-200 rounded-xl p-3 mb-4 flex flex-wrap items-center gap-3">
@@ -424,6 +425,13 @@
             </div>
             <div id="files-market-list" class="space-y-3"></div>
           </div>
+
+          <div id="files-eval" class="hidden">
+            <div class="flex items-center gap-2 mb-4 flex-wrap">
+              <p class="text-xs text-slate-400">目录：<code class="bg-slate-100 px-1 rounded">output/eval/</code> · 每次评估产出 1 个 JSON 文件</p>
+            </div>
+            <div id="files-eval-list" class="space-y-3"></div>
+          </div>
         </div>
       </section>
 
@@ -447,6 +455,7 @@
                 <button id="set-tab-market" onclick="setTab('market')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">市场调研配置</button>
                 <button id="set-tab-campaign" onclick="setTab('campaign')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">求职方向</button>
                 <button id="set-tab-strategy" onclick="setTab('strategy')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100">策略管理</button>
+                <button id="set-tab-eval" onclick="setTab('eval')" class="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-100 hidden">系统评估</button>
               </div>
               <div id="set-profile"></div>
               <div id="set-job" class="hidden"></div>
@@ -454,6 +463,7 @@
               <div id="set-schema" class="hidden"></div>
               <div id="set-campaign" class="hidden"></div>
               <div id="set-strategy" class="hidden"></div>
+              <div id="set-eval" class="hidden"></div>
             </div>
             <div id="save-bar" class="sticky bottom-0 z-10 flex items-center justify-between border-t border-slate-200 bg-white px-6 py-3">
               <div class="flex items-center gap-2 text-xs">
@@ -1417,7 +1427,7 @@ async function editCampaignInline(id) {
   var d = campaign.data;
   var sq = d.search_queries || [];
   var stratOpts = strategies.map(function(s) {
-    return '<option value="' + escapeHtml(s.name) + '"' + (d.strategy === s.name ? ' selected' : '') + '>' + escapeHtml(s.display_name||s.name) + ' (' + escapeHtml(s.name) + ')</option>';
+    return '<option value="' + escapeHtml(s.name) + '"' + (d.strategy === s.name ? ' selected' : '') + '>' + escapeHtml(s.name) + '</option>';
   }).join('');
   var qRows = sq.map(function(q, i) { return buildQueryRowInline(q, i, id); }).join('');
 
@@ -1518,10 +1528,9 @@ async function renderStrategyList() {
       var weightSummary = Object.entries(wp).map(function(e){return e[0].slice(0,2)+':'+e[1]}).join(' ');
       items += `<div class="flex items-center justify-between border-b border-slate-100 last:border-b-0 py-2.5" data-strategy-id="${s.id}">
         <div class="min-w-0 flex-1">
-          <div class="font-medium text-slate-700 text-sm">${escapeHtml(s.display_name||s.name)} <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(s.name)}</span></div>
+          <div class="font-medium text-slate-700 text-sm">${escapeHtml(s.name)}</div>
           <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
             <span class="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-[10px] font-mono">${weightSummary}</span>
-            ${s.is_default?'<span class="text-[10px] text-slate-400">系统默认</span>':''}
           </div>
         </div>
         <div class="flex items-center gap-1 shrink-0 ml-3">
@@ -1542,30 +1551,75 @@ async function renderStrategyList() {
 
 // ── 权重滑块 UI ──
 const WT_LABELS = {skill:'技能匹配',experience:'经验年限',level:'职级匹配',industry:'行业匹配',bonus:'加分项'};
+const WT_COLORS = {
+  skill:    'bg-indigo-500',
+  experience: 'bg-emerald-500',
+  level:    'bg-amber-500',
+  industry: 'bg-purple-500',
+  bonus:    'bg-rose-500',
+};
 
-function renderWeightSliders(wp) {
+function renderWeightAllocation(wp) {
   wp = wp || {};
-  var html = '<div class="space-y-2.5" id="weight-sliders">';
+  // 条形图
+  var bar = '<div class="flex h-6 rounded-lg overflow-hidden bg-slate-100 mb-3" id="weight-bar">';
   Object.keys(WT_LABELS).forEach(function(k) {
     var v = wp[k] || 0;
-    html += `<div class="flex items-center gap-2.5">
-      <span class="w-16 text-xs text-slate-500 shrink-0">${WT_LABELS[k]}</span>
-      <input type="range" min="0" max="100" value="${v}" id="ws-${k}" oninput="updateWeightSlider('${k}', +this.value)" class="flex-1 h-1.5 accent-indigo-600">
-      <span class="w-8 text-right text-xs font-mono text-slate-600" id="ws-val-${k}">${v}</span>
-    </div>`;
+    bar += '<div class="' + WT_COLORS[k] + ' h-full transition-all duration-200" style="width:' + v + '%" id="wb-' + k + '" title="' + WT_LABELS[k] + ': ' + v + '%"></div>';
   });
-  html += `<div class="flex items-center gap-2 text-xs pt-1.5 border-t border-slate-100">
-    权重总和：<span class="font-bold font-mono" id="ws-sum">100</span>
-    <span id="ws-ok" class="text-emerald-600">有效</span>
-    <span id="ws-err" class="text-red-600 hidden">必须等于 100</span>
-  </div></div>`;
-  return html;
+  bar += '</div>';
+
+  // 数字输入框
+  var inputs = '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3" id="weight-inputs">';
+  Object.keys(WT_LABELS).forEach(function(k) {
+    var v = wp[k] || 0;
+    inputs += '<div>' +
+      '<label class="text-[11px] text-slate-500 mb-1 block">' + WT_LABELS[k] + '</label>' +
+      '<div class="flex items-center gap-1">' +
+        '<button class="w-7 h-7 rounded-md border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 text-sm shrink-0" onclick="adjustWeight(\'' + k + '\', -1)">−</button>' +
+        '<input id="ws-' + k + '" type="number" value="' + v + '" min="0" max="100" oninput="updateWeightFromInput(\'' + k + '\', this.value)" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-center font-mono focus:ring-2 focus:ring-indigo-200 outline-none">' +
+        '<button class="w-7 h-7 rounded-md border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-50 text-sm shrink-0" onclick="adjustWeight(\'' + k + '\', 1)">+</button>' +
+      '</div>' +
+    '</div>';
+  });
+  inputs += '</div>';
+
+  // 总和
+  var sum = Object.values(wp).reduce(function(a,b){return a+b;}, 0);
+  var sumOk = sum === 100;
+  inputs += '<div class="flex items-center gap-2 text-xs pt-2 border-t border-slate-100 mt-2">' +
+    '权重总和：<span class="font-bold font-mono" id="ws-sum">' + sum + '</span>' +
+    '<span id="ws-ok" class="' + (sumOk?'text-emerald-600':'hidden') + '">有效</span>' +
+    '<span id="ws-err" class="' + (sumOk?'hidden':'text-red-600') + '">必须等于 100</span>' +
+  '</div>';
+
+  return bar + inputs;
 }
 
-function updateWeightSlider(k, v) {
-  document.getElementById('ws-val-'+k).textContent = v;
+function adjustWeight(k, delta) {
+  var el = document.getElementById('ws-' + k);
+  if (!el) return;
+  var v = (parseInt(el.value) || 0) + delta;
+  if (v < 0) v = 0;
+  if (v > 100) v = 100;
+  el.value = v;
+  updateWeightBar(k, v);
   checkWeightSum();
   checkStrategyDirty();
+}
+
+function updateWeightFromInput(k, rawValue) {
+  var v = parseInt(rawValue) || 0;
+  if (v < 0) v = 0;
+  if (v > 100) v = 100;
+  updateWeightBar(k, v);
+  checkWeightSum();
+  checkStrategyDirty();
+}
+
+function updateWeightBar(k, v) {
+  var bar = document.getElementById('wb-' + k);
+  if (bar) bar.style.width = v + '%';
 }
 
 function checkWeightSum() {
@@ -1598,34 +1652,30 @@ function buildStrategyForm(suffix, data) {
   var kw = (d.weight_rules_keywords || []).filter(Boolean);
   var kwTags = kw.map(function(t){return escapeHtml(t);}).join('\n');
   return `<div class="flex-1 min-w-0 space-y-3 py-1">
-    <div>
+    <div data-strategy-field="name">
       <div class="flex items-center justify-between">
         <label class="text-xs font-medium text-slate-500">策略名称 <span class="text-red-400">*</span></label>
         <span class="flex items-center gap-1.5 mr-1.5"><span class="text-[11px] text-red-400">取消后不保存</span><button type="button" onclick="cancelEditStrategy()" class="text-xs border border-slate-200 rounded-md px-2 py-0.5 text-slate-500 hover:text-slate-700 hover:border-slate-300">取消</button></span>
       </div>
       <input id="sf-name-${suffix}" value="${escapeHtml(d.name||'')}" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="英文标识（如 web3）">
     </div>
-    <div>
-      <label class="text-xs font-medium text-slate-500">显示名称</label>
-      <input id="sf-display-${suffix}" value="${escapeHtml(d.display_name||'')}" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="人类可读（如 Web3/区块链策略）">
-    </div>
-    <div>
+    <div data-strategy-field="desc">
       <label class="text-xs font-medium text-slate-500">描述</label>
       <input id="sf-desc-${suffix}" value="${escapeHtml(d.description||'')}" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="策略用途说明（可选）">
     </div>
-    <div>
+    <div data-strategy-field="weight">
       <label class="text-xs font-medium text-slate-500 mb-1 block">权重分配 <span class="text-red-400">*</span> <span class="text-slate-400 font-normal">（五维之和必须 = 100）</span></label>
-      ${renderWeightSliders(wp)}
+      ${renderWeightAllocation(wp)}
     </div>
-    <div>
+    <div data-strategy-field="kw">
       <label class="text-xs font-medium text-slate-500">分类关键词 <span class="text-slate-400 font-normal">（每行一个，用于标题匹配）</span></label>
       <textarea id="sf-kw-${suffix}" rows="4" oninput="checkStrategyDirty()" class="w-full mt-1 border border-slate-300 rounded-lg px-3 py-2 text-sm resize-none focus:ring-2 focus:ring-indigo-200 outline-none" placeholder="blockchain&#10;crypto&#10;web3">${kwTags}</textarea>
     </div>
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-      <div><label class="text-[10px] text-slate-400">最低匹配分</label><input id="sf-min-${suffix}" type="number" value="${d.min_match_score||45}" min="0" max="100" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
-      <div><label class="text-[10px] text-slate-400">取前 N</label><input id="sf-top-${suffix}" type="number" value="${d.top_n||999}" min="1" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
-      <div><label class="text-[10px] text-slate-400">复评区间</label><input id="sf-range-${suffix}" type="number" value="${d.borderline_range||8}" min="0" max="20" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
-      <div><label class="text-[10px] text-slate-400">&nbsp;</label><label class="flex items-center gap-1.5 cursor-pointer mt-1"><input id="sf-rescore-${suffix}" type="checkbox" ${d.borderline_rescore!==false?'checked':''} onchange="checkStrategyDirty()" class="rounded text-indigo-600"> <span class="text-xs text-slate-600">启用复评</span></label></div>
+      <div data-strategy-field="min"><label class="text-[10px] text-slate-400">最低匹配分</label><input id="sf-min-${suffix}" type="number" value="${d.min_match_score||45}" min="0" max="100" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
+      <div data-strategy-field="top"><label class="text-[10px] text-slate-400">取前 N</label><input id="sf-top-${suffix}" type="number" value="${d.top_n||999}" min="1" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
+      <div data-strategy-field="range"><label class="text-[10px] text-slate-400">复评区间</label><input id="sf-range-${suffix}" type="number" value="${d.borderline_range||8}" min="0" max="20" oninput="checkStrategyDirty()" class="w-full border border-slate-200 rounded px-2 py-1 text-sm"></div>
+      <div data-strategy-field="rescore"><label class="text-[10px] text-slate-400">&nbsp;</label><label class="flex items-center gap-1.5 cursor-pointer mt-1"><input id="sf-rescore-${suffix}" type="checkbox" ${d.borderline_rescore!==false?'checked':''} onchange="checkStrategyDirty()" class="rounded text-indigo-600"> <span class="text-xs text-slate-600">启用复评</span></label></div>
     </div>
   </div>`;
 }
@@ -1636,7 +1686,7 @@ async function addStrategyInline() {
   cancelStrategyEdit();
 
   window._strategyEditId = null;
-  window._strategyEditOriginal = {name:'',display_name:'',description:'',weight_profile:{},weight_rules_keywords:[],min_match_score:45,top_n:999,borderline_rescore:true,borderline_range:8};
+  window._strategyEditOriginal = {name:'',description:'',weight_profile:{},weight_rules_keywords:[],min_match_score:45,top_n:999,borderline_rescore:true,borderline_range:8};
   window._strategyDirtyPaths = new Set();
   STATE.dirty = false;
 
@@ -1659,7 +1709,6 @@ async function editStrategyInline(id) {
   var d = s.data || {};
   window._strategyEditOriginal = {
     name: s.name,
-    display_name: s.display_name || '',
     description: s.description || '',
     weight_profile: Object.assign({}, d.weight_profile||{}),
     weight_rules_keywords: (d.weight_rules_keywords||[]).slice(),
@@ -1673,7 +1722,7 @@ async function editStrategyInline(id) {
 
   var item = document.querySelector('[data-strategy-id="'+id+'"]');
   item.classList.add('bg-slate-50');
-  item.innerHTML = buildStrategyForm(id, Object.assign({}, window._strategyEditOriginal, {name: s.name, display_name: s.display_name||'', description: s.description||''}));
+  item.innerHTML = buildStrategyForm(id, Object.assign({}, window._strategyEditOriginal, {name: s.name, description: s.description||''}));
   updateSaveBar();
   refreshIcons();
 }
@@ -1686,17 +1735,14 @@ function checkStrategyDirty() {
   window._strategyDirtyPaths = window._strategyDirtyPaths || new Set();
   var suffix = (id === null) ? 'new' : id;
 
-  var fields = ['name','display','desc','min','top','range','kw','rescore'];
-  var checks = {name:'sf-name-'+suffix,display:'sf-display-'+suffix,desc:'sf-desc-'+suffix,min:'sf-min-'+suffix,top:'sf-top-'+suffix,range:'sf-range-'+suffix,kw:'sf-kw-'+suffix,rescore:'sf-rescore-'+suffix};
+  var fields = ['name','desc','min','top','range','kw','rescore'];
+  var checks = {name:'sf-name-'+suffix,desc:'sf-desc-'+suffix,min:'sf-min-'+suffix,top:'sf-top-'+suffix,range:'sf-range-'+suffix,kw:'sf-kw-'+suffix,rescore:'sf-rescore-'+suffix};
   var orig = window._strategyEditOriginal;
 
   var el = document.getElementById(checks.name);
   var v = el ? el.value.trim() : '';
   if (v !== (orig.name||'')) window._strategyDirtyPaths.add('name'); else window._strategyDirtyPaths.delete('name');
 
-  el = document.getElementById(checks.display);
-  v = el ? el.value.trim() : '';
-  if (v !== (orig.display_name||'')) window._strategyDirtyPaths.add('display'); else window._strategyDirtyPaths.delete('display');
 
   el = document.getElementById(checks.desc);
   v = el ? el.value.trim() : '';
@@ -1723,7 +1769,7 @@ function checkStrategyDirty() {
   v = el ? el.checked : true;
   if (v !== (orig.borderline_rescore!==false)) window._strategyDirtyPaths.add('rescore'); else window._strategyDirtyPaths.delete('rescore');
 
-  // 权重变化由 updateWeightSlider 触发
+  // 权重变化由 adjustWeight / updateWeightFromInput 触发
   var wp = collectWeightProfile();
   var origWp = orig.weight_profile || {};
   var wpSame = true;
@@ -1732,6 +1778,7 @@ function checkStrategyDirty() {
 
   STATE.dirty = window._strategyDirtyPaths.size > 0;
   updateSaveBar();
+  markStrategyDirtyFields();
 }
 
 // ── 保存/删除 ──
@@ -1748,7 +1795,6 @@ async function saveStrategyInline() {
   var kwText = document.getElementById('sf-kw-'+suffix)?.value||'';
   var payload = {
     name: name,
-    display_name: (document.getElementById('sf-display-'+suffix)?.value||'').trim(),
     description: (document.getElementById('sf-desc-'+suffix)?.value||'').trim(),
     data: {
       weight_profile: collectWeightProfile(),
@@ -1778,6 +1824,74 @@ async function deleteStrategy(id, name) {
   if (resp && !resp.error) { toast('已删除','ok'); await renderStrategyList(); await loadCampaignList(); }
 }
 
+function markStrategyDirtyFields() {
+  var item;
+  if (window._strategyEditId === null) {
+    item = document.querySelector('[data-strategy-new]');
+  } else {
+    item = document.querySelector('[data-strategy-id="' + window._strategyEditId + '"]');
+  }
+  if (!item) return;
+  item.querySelectorAll('.dirty-field').forEach(function(el) { el.classList.remove('dirty-field'); });
+  item.querySelectorAll('.undo-btn').forEach(function(el) { el.remove(); });
+
+  if (!window._strategyDirtyPaths || window._strategyDirtyPaths.size === 0) return;
+
+  window._strategyDirtyPaths.forEach(function(path) {
+    var el = item.querySelector('[data-strategy-field="' + path + '"]');
+    if (!el) return;
+    if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+    el.classList.add('dirty-field');
+    if (!el.querySelector('.undo-btn')) {
+      var btn = document.createElement('button');
+      btn.className = 'undo-btn';
+      btn.textContent = '↺ 撤销';
+      btn.onclick = function(e) { e.stopPropagation(); restoreStrategyField(path); };
+      el.appendChild(btn);
+    }
+  });
+}
+
+function restoreStrategyField(path) {
+  var orig = window._strategyEditOriginal;
+  if (!orig) return;
+  var id = window._strategyEditId;
+  var suffix = (id === null) ? 'new' : id;
+  var el;
+
+  if (path === 'name') {
+    el = document.getElementById('sf-name-' + suffix);
+    if (el) el.value = orig.name || '';
+  } else if (path === 'desc') {
+    el = document.getElementById('sf-desc-' + suffix);
+    if (el) el.value = orig.description || '';
+  } else if (path === 'min') {
+    el = document.getElementById('sf-min-' + suffix);
+    if (el) el.value = orig.min_match_score || 45;
+  } else if (path === 'top') {
+    el = document.getElementById('sf-top-' + suffix);
+    if (el) el.value = orig.top_n || 999;
+  } else if (path === 'range') {
+    el = document.getElementById('sf-range-' + suffix);
+    if (el) el.value = orig.borderline_range || 8;
+  } else if (path === 'kw') {
+    el = document.getElementById('sf-kw-' + suffix);
+    if (el) el.value = (orig.weight_rules_keywords || []).filter(Boolean).join('\n');
+  } else if (path === 'rescore') {
+    el = document.getElementById('sf-rescore-' + suffix);
+    if (el) el.checked = orig.borderline_rescore !== false;
+  } else if (path === 'weight') {
+    var wp = orig.weight_profile || {};
+    Object.keys(WT_LABELS).forEach(function(k) {
+      var wEl = document.getElementById('ws-' + k);
+      if (wEl) { wEl.value = wp[k] || 0; updateWeightBar(k, wp[k] || 0); }
+    });
+    checkWeightSum();
+  }
+
+  checkStrategyDirty();
+}
+
 function cancelStrategyEdit() {
   var el = document.querySelector('[data-strategy-new]');
   if (el) el.remove();
@@ -1794,11 +1908,120 @@ function cancelEditStrategy() {
 }
 
 function undoStrategyFields() {
-  if (window._strategyDirtyPaths) {
-    cancelStrategyEdit();
-    renderStrategyList();
-  }
+  if (!window._strategyDirtyPaths || window._strategyDirtyPaths.size === 0) return;
+  var orig = window._strategyEditOriginal;
+  if (!orig) return;
+  var id = window._strategyEditId;
+  var suffix = (id === null) ? 'new' : id;
+
+  Array.from(window._strategyDirtyPaths).forEach(function(p) {
+    var el;
+    if (p === 'name') {
+      el = document.getElementById('sf-name-' + suffix);
+      if (el) el.value = orig.name || '';
+    } else if (p === 'desc') {
+      el = document.getElementById('sf-desc-' + suffix);
+      if (el) el.value = orig.description || '';
+    } else if (p === 'min') {
+      el = document.getElementById('sf-min-' + suffix);
+      if (el) el.value = orig.min_match_score || 45;
+    } else if (p === 'top') {
+      el = document.getElementById('sf-top-' + suffix);
+      if (el) el.value = orig.top_n || 999;
+    } else if (p === 'range') {
+      el = document.getElementById('sf-range-' + suffix);
+      if (el) el.value = orig.borderline_range || 8;
+    } else if (p === 'kw') {
+      el = document.getElementById('sf-kw-' + suffix);
+      if (el) el.value = (orig.weight_rules_keywords || []).filter(Boolean).join('\n');
+    } else if (p === 'rescore') {
+      el = document.getElementById('sf-rescore-' + suffix);
+      if (el) el.checked = orig.borderline_rescore !== false;
+    } else if (p === 'weight') {
+      var wp = orig.weight_profile || {};
+      Object.keys(WT_LABELS).forEach(function(k) {
+        el = document.getElementById('ws-' + k);
+        if (el) { el.value = wp[k] || 0; updateWeightBar(k, wp[k] || 0); }
+      });
+      checkWeightSum();
+    }
+  });
+
+  window._strategyDirtyPaths = new Set();
+  STATE.dirty = false;
+  updateSaveBar();
+  markStrategyDirtyFields();
 }
+
+// ── 评估 Tab ──
+
+async function renderEvalTab() {
+  var history = await apiGet('/api/eval/history') || {};
+
+  var html = '<div class="space-y-4">' +
+    '<div class="flex items-center bg-amber-50 rounded-lg px-3 py-2 mb-3">' +
+      '<span class="text-xs text-amber-700">对标注数据集运行方向预判 + 评分全链路，评估 prompt 和流程优化的实际效果。仅管理员可用。</span>' +
+    '</div>';
+
+  var sets = [
+    {name: 'dev_set', label: '开发集', count: 19, desc: '日常优化 prompt 后运行此评估'},
+    {name: 'holdout', label: '留出集', count: 6, desc: '最终验收时运行，平时不动'}
+  ];
+  sets.forEach(function(s) {
+    var prev = history[s.name];
+    html += '<div class="bg-white border border-slate-200 rounded-xl p-4">' +
+      '<div class="flex items-center justify-between">' +
+        '<div>' +
+          '<div class="font-semibold text-slate-700 text-sm">' + s.label + ' (' + s.name + ') · ' + s.count + ' 条</div>' +
+          '<p class="text-xs text-slate-400 mt-1">' + s.desc + '</p>' +
+          (prev ? '<p class="text-xs text-slate-500 mt-1">上次: ' + prev.run_time.slice(0,10) + ' 准确率 ' + (prev.accuracy*100).toFixed(1) + '%</p>' : '') +
+        '</div>' +
+        '<button onclick="startEval(\'' + s.name + '\')" class="agent-trigger px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium">运行评估</button>' +
+      '</div>' +
+    '</div>';
+  });
+
+  html += '<div id="eval-log-wrap" class="bg-white border border-slate-200 rounded-xl p-4 hidden">' +
+    '<div class="logbox rounded-lg p-3 max-h-72 overflow-y-auto" id="eval-log"></div>' +
+    '<div id="eval-result" class="mt-3"></div>' +
+  '</div>';
+
+  html += '</div>';
+  $('#set-eval').innerHTML = html;
+  refreshIcons();
+}
+
+function startEval(set_name) {
+  if (guardBusy()) return;
+  if (!STATE.sid) { toast('Session 未建立', 'warn'); return; }
+  setBusy(true);
+
+  var wrap = document.getElementById('eval-log-wrap');
+  wrap.classList.remove('hidden');
+  var box = document.getElementById('eval-log');
+  box.innerHTML = '';
+  document.getElementById('eval-result').innerHTML = '';
+
+  startSSE(box, function(reply, files) {
+    var data;
+    try { data = JSON.parse(reply); } catch(e) { data = {raw: reply}; }
+    var html = '<div class="bg-white border border-emerald-200 rounded-xl p-4 fade-in">' +
+      '<div class="font-semibold text-slate-800 text-sm mb-2">评估完成</div>' +
+      '<div class="grid grid-cols-3 gap-3 text-center mb-3">' +
+        '<div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-slate-800">' + data.num_cases + '</div><div class="text-[11px] text-slate-400">评估数量</div></div>' +
+        '<div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-indigo-600">' + data.direction_accuracy + '</div><div class="text-[11px] text-slate-400">方向准确率</div></div>' +
+        '<div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold ' + ((data.delta_accuracy||'').startsWith('↑')?'text-emerald-600':'text-red-600') + '">' + (data.delta_accuracy||'首次') + '</div><div class="text-[11px] text-slate-400">历史对比</div></div>' +
+      '</div>' +
+      '<div class="text-xs text-slate-500">各方向: ' + Object.entries(data.dir_details||{}).map(function(e){return e[0]+' '+e[1]}).join(' · ') + '</div>' +
+      (data.errors ? '<p class="text-xs text-red-500 mt-1">' + data.errors + ' 条异常</p>' : '') +
+    '</div>';
+    document.getElementById('eval-result').innerHTML = html;
+    refreshIcons();
+  }, null, 0, function() {
+    apiPost('/api/eval', {sid: STATE.sid, set_name: set_name});
+  });
+}
+
 
 function showModal(title, bodyHtml, footerHtml){
   document.getElementById('modal-overlay').classList.remove('hidden');
@@ -1904,8 +2127,10 @@ function fileTab(t){
   FILE_TAB=t;
   $('#files-jobs').classList.toggle('hidden',t!=='jobs');
   $('#files-market').classList.toggle('hidden',t!=='market');
+  $('#files-eval').classList.toggle('hidden',t!=='eval');
   $('#ftab-jobs').className='px-4 py-1.5 flex items-center gap-1.5 '+(t==='jobs'?'bg-indigo-600 text-white':'bg-white text-slate-500');
   $('#ftab-market').className='px-4 py-1.5 flex items-center gap-1.5 '+(t==='market'?'bg-indigo-600 text-white':'bg-white text-slate-500');
+  $('#ftab-eval').className='px-4 py-1.5 flex items-center gap-1.5 '+(t==='eval'?'bg-indigo-600 text-white':'bg-white text-slate-500');
   renderFiles();
   refreshIcons();
 }
@@ -1917,8 +2142,8 @@ function fileChipMini(path,label){
   return `<a href="/download/${path}" target="_blank" class="inline-flex items-center gap-1 text-[11px] bg-white border border-slate-200 hover:border-indigo-300 rounded px-2 py-1 text-slate-600"><i data-lucide="download" class="w-3 h-3"></i>${label}</a>`;
 }
 function toggleCat(k){ if(EXPANDED.has(k)) EXPANDED.delete(k); else EXPANDED.add(k); renderFiles(); }
-function expandAllCats(){ const list = FILE_TAB==='jobs' ? $('#files-jobs-list') : $('#files-market-list'); list.querySelectorAll('[data-cat-key]').forEach(el=>EXPANDED.add(el.dataset.catKey)); renderFiles(); }
-function collapseAllCats(){ const list = FILE_TAB==='jobs' ? $('#files-jobs-list') : $('#files-market-list'); list.querySelectorAll('[data-cat-key]').forEach(el=>EXPANDED.delete(el.dataset.catKey)); renderFiles(); }
+function expandAllCats(){ if(FILE_TAB==='eval') return; const list = FILE_TAB==='jobs' ? $('#files-jobs-list') : $('#files-market-list'); list.querySelectorAll('[data-cat-key]').forEach(el=>EXPANDED.add(el.dataset.catKey)); renderFiles(); }
+function collapseAllCats(){ if(FILE_TAB==='eval') return; const list = FILE_TAB==='jobs' ? $('#files-jobs-list') : $('#files-market-list'); list.querySelectorAll('[data-cat-key]').forEach(el=>EXPANDED.delete(el.dataset.catKey)); renderFiles(); }
 
 const FILE_LABELS = {
   'scan_listings.json':'第一层扫描的全量职位列表（过滤前）',
@@ -1944,7 +2169,7 @@ function catSection(key,cat,count,inner){
 }
 
 async function renderFiles(){
-  if(FILE_TAB==='jobs') await renderJobFiles(); else await renderMarketFiles();
+  if(FILE_TAB==='jobs') await renderJobFiles(); else if(FILE_TAB==='eval') renderEvalFiles(); else await renderMarketFiles();
 }
 async function renderJobFiles(){
   const runsData = await apiGet('/api/runs');
@@ -2029,6 +2254,42 @@ async function renderJobFiles(){
   }
 
   list.innerHTML = html || `<div class="text-sm text-slate-400 py-10 text-center bg-white border border-slate-200 rounded-xl">该 Run 暂无文件</div>`;
+  refreshIcons();
+}
+
+async function renderEvalFiles() {
+  renderEvalFiles._loading = renderEvalFiles._loading || false;
+  if (renderEvalFiles._loading) return;
+  renderEvalFiles._loading = true;
+  const data = await apiGet('/api/eval/files');
+  renderEvalFiles._loading = false;
+  const list = $('#files-eval-list');
+  if (!data || data.length === 0) {
+    list.innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">暂无评估结果文件<br><span class="text-xs">运行评估后将在此显示结果</span></div>';
+    return;
+  }
+  const filtered = data.filter(f => {
+    if (FILE_FILTER.range === 'all') return true;
+    const ts = f.mtime ? new Date(f.mtime * 1000).toISOString().slice(0,10) : '';
+    if (FILE_FILTER.range === '7d') { const d7 = new Date(Date.now() - 7*86400000).toISOString().slice(0,10); return ts >= d7; }
+    if (FILE_FILTER.range === '30d') { const d30 = new Date(Date.now() - 30*86400000).toISOString().slice(0,10); return ts >= d30; }
+    if (FILE_FILTER.range === 'custom') { return (!FILE_FILTER.from || ts >= FILE_FILTER.from) && (!FILE_FILTER.to || ts <= FILE_FILTER.to); }
+    return true;
+  });
+  list.innerHTML = filtered.map(f => {
+    const date = f.mtime ? new Date(f.mtime * 1000).toISOString().slice(0,10) : '';
+    return '<div class="flex items-center justify-between border border-slate-100 rounded-lg px-3 py-2 bg-white">' +
+      '<div class="flex items-center gap-2 min-w-0">' +
+        '<i data-lucide="file-text" class="w-4 h-4 text-slate-400 shrink-0"></i>' +
+        '<span class="text-sm text-slate-700 truncate">' + escapeHtml(f.name) + '</span>' +
+        '<span class="text-[11px] text-slate-400">' + date + '</span>' +
+      '</div>' +
+      '<div class="flex items-center gap-3 shrink-0">' +
+        '<span class="text-[11px] text-slate-400">' + fmtSize(f.size) + '</span>' +
+        '<a href="/download/' + f.path + '" class="text-xs text-indigo-600 hover:text-indigo-800">下载</a>' +
+      '</div>' +
+    '</div>';
+  }).join('');
   refreshIcons();
 }
 
@@ -2943,6 +3204,8 @@ async function renderSettings(){
       // 管理员可见
       const schemaTabBtn = document.getElementById('set-tab-schema');
       if (schemaTabBtn) { schemaTabBtn.classList.toggle('hidden', STATE.userRole !== 'admin'); }
+      const evalTabBtn = document.getElementById('set-tab-eval');
+      if (evalTabBtn) { evalTabBtn.classList.toggle('hidden', STATE.userRole !== 'admin'); }
       // 清除旧脏标记并重建基准快照
       setTimeout(() => {
         window._dirtyPaths = new Set();
@@ -2978,10 +3241,13 @@ async function renderSettings(){
         ${field('全局默认排序','c-sort',cfg.sort_mode||'date','text','date / relevance')}
         ${areaField('排除公司（每行一个）','c-exclude',(cfg.filters?.exclude_companies||[]).join('\n'),4,'大小写不敏感，在基础清洗阶段直接排除')}
       `)}
-      ${card('抓取参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      ${card('执行参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','','1')}
         ${field('JD 抓取上限','job-max-results',searchCfg.max_total_results||200,'number','','1')}
-        ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','发给 LLM 前截断','1')}
+        ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','方向分类与评分阶段均使用此截断值','1')}
+        ${field('方向预判批次大小','job-dir-batch',cfg.matching?.direction_batch_size||20,'number','每批发送给 LLM 判断方向的 JD 数量，任务轻可调大','1','50')}
+        ${field('评分批次大小','job-score-batch',cfg.matching?.score_batch_size||5,'number','每批发送给 LLM 评分的 JD 数量，越小越精细但调用次数越多','1','20')}
+        ${field('复评批次大小','job-rescore-batch',cfg.matching?.rescore_batch_size||5,'number','及格线附近岗位二次评分的批次大小','1','20')}
       </div>`)}`;
       // ── 捕获 job 表单字段初始值（用于 dirty 比对 & 撤销）──
       window._jobOriginalData = {
@@ -2990,6 +3256,9 @@ async function renderSettings(){
         'job-max-pages': ($('#job-max-pages')?.value || ''),
         'job-max-results': ($('#job-max-results')?.value || ''),
         'job-jd-chars': ($('#job-jd-chars')?.value || ''),
+        'job-dir-batch': ($('#job-dir-batch')?.value || ''),
+        'job-score-batch': ($('#job-score-batch')?.value || ''),
+        'job-rescore-batch': ($('#job-rescore-batch')?.value || ''),
       };
       window._jobDirtyPaths = new Set();
 
@@ -3626,7 +3895,13 @@ async function saveJobConfig(){
         max_pages: parseInt($('#job-max-pages')?.value) || cfg.search?.max_pages || 3,
         max_total_results: parseInt($('#job-max-results')?.value) || cfg.search?.max_total_results || 200,
         jd_max_chars: parseInt($('#job-jd-chars')?.value) || cfg.search?.jd_max_chars || 4000,
-      }
+      },
+      matching: {
+        ...(cfg.matching || {}),
+        direction_batch_size: parseInt($('#job-dir-batch')?.value) || cfg.matching?.direction_batch_size || 20,
+        score_batch_size: parseInt($('#job-score-batch')?.value) || cfg.matching?.score_batch_size || 5,
+        rescore_batch_size: parseInt($('#job-rescore-batch')?.value) || cfg.matching?.rescore_batch_size || 5,
+      },
     };
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
@@ -3839,18 +4114,20 @@ function setTab(t){
   $('#set-schema').classList.toggle('hidden',t!=='schema');
   $('#set-campaign').classList.toggle('hidden',t!=='campaign');
   $('#set-strategy').classList.toggle('hidden',t!=='strategy');
+  $('#set-eval').classList.toggle('hidden',t!=='eval');
   const anchorWrap = document.getElementById('anchor-nav-wrap');
   if (anchorWrap) {
     const show = t !== 'profile' && t !== 'schema' && window.innerWidth >= 1024;
     anchorWrap.style.display = show ? 'block' : 'none';
   }
-  ['profile','job','market','schema','campaign','strategy'].forEach(tab => {
+  ['profile','job','market','schema','campaign','strategy','eval'].forEach(tab => {
     const btn = document.getElementById('set-tab-'+tab);
     if(btn) btn.className = 'px-4 py-1.5 rounded-md ' + (t===tab?'bg-indigo-600 text-white font-medium shadow-sm':'text-slate-600 hover:bg-slate-100');
   });
   if(t==='schema') renderSchemaEditor();
   else if(t==='campaign'){ cancelCampaignEdit(); $('#set-campaign').classList.remove('hidden'); renderCampaignList(); }
   else if(t==='strategy'){ cancelStrategyEdit(); $('#set-strategy').classList.remove('hidden'); renderStrategyList(); }
+  else if(t==='eval'){ renderEvalTab(); }
   else { window._schemaSelectedGroupIndex = 0; }
   if (t === 'profile') { setTimeout(initCharCounters, 400); }
   else { disconnectScrollSpy(); }
@@ -3870,6 +4147,8 @@ function setTab(t){
     STATE.dirty = window._campaignDirtyPaths ? window._campaignDirtyPaths.size > 0 : false;
   } else if (t === 'strategy') {
     STATE.dirty = window._strategyDirtyPaths ? window._strategyDirtyPaths.size > 0 : false;
+  } else if (t === 'eval') {
+    STATE.dirty = false;
   }
   updateSaveBar();
   refreshIcons();
@@ -4243,6 +4522,13 @@ function updateSaveBar() {
   const saveBtn = document.getElementById('save-bar-btn');
   const isProfile = STATE.settingsTab === 'profile';
   const isSchema = STATE.settingsTab === 'schema';
+
+  if (STATE.settingsTab === 'eval') {
+    document.getElementById('save-bar').classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('save-bar').classList.remove('hidden');
 
   if (badge) {
     badge.classList.toggle('hidden', !STATE.dirty);

@@ -8,10 +8,16 @@ from datetime import datetime
 
 from config import (
     emit, llm_call, OUTPUT_DIR, track_file,
-    load_profile, load_search_config_dict, parse_json_response,
+    load_profile, load_search_config_dict,
     get_current_run_dir, get_latest_run_dir, load_prompts, render_prompt,
 )
 from scraper import normalize_jobsdb_url
+
+
+# ── 模块级兜底记录列表（match_jobs() 开始时清空，被 classify_direction_batch / _score_batch 等追加）──
+_dir_fallbacks = []
+_weight_fallbacks = []
+_score_errors = []
 
 
 # ============================================================
@@ -38,13 +44,33 @@ def classify_job(title, weight_rules):
 
 
 def get_weights(profile_name, weight_profiles):
-    """获取指定类型的权重字典，找不到则先找 default，再不行用硬编码 fallback。"""
-    return weight_profiles.get(
-        profile_name,
-        weight_profiles.get("default", {
-            "skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15
-        })
-    )
+    """获取指定方向的权重字典，带五维校验和兜底。
+
+    返回 (weights_dict, source_label)。
+    校验规则：五维 key（skill/experience/level/industry/bonus）必须齐全，且值之和等于 100。
+    任一不满足 → 视为无效，逐级回退。
+    """
+    REQUIRED_KEYS = {"skill", "experience", "level", "industry", "bonus"}
+    HARDCODED_DEFAULT = {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}
+
+    def _validate(w):
+        """权重字典合法：非空、五维齐全、和为 100"""
+        if not w or not isinstance(w, dict):
+            return False
+        return set(w.keys()) == REQUIRED_KEYS and sum(w.values()) == 100
+
+    # 1. 尝试 weight_profiles[profile_name]
+    w = weight_profiles.get(profile_name)
+    if _validate(w):
+        return w, f"数据库策略 {profile_name}"
+
+    # 2. 回退到 weight_profiles["default"]
+    w = weight_profiles.get("default")
+    if _validate(w):
+        return w, "策略 default"
+
+    # 3. 硬编码兜底
+    return dict(HARDCODED_DEFAULT), f"代码默认值 · 策略 {profile_name} 未配置权重"
 
 
 def _build_weights_text(weights):
@@ -113,20 +139,23 @@ def classify_direction_batch(jobs, config):
     weight_rules = matching_cfg.get("weight_rules", {})
     weight_profiles = matching_cfg.get("weight_profiles", {})
 
-    # ── 1. 构建方向列表和平局顺序 ──
+    # ── 1. 构建方向列表 ──
     direction_names = [k for k in weight_profiles.keys() if k != "default"]
-    direction_names.sort(key=lambda n: weight_profiles.get(n, {}).get("industry", 15), reverse=True)
     if "default" not in direction_names:
         direction_names.append("default")
     direction_list = " / ".join(direction_names)
-    direction_tiebreaker_order = " > ".join(direction_names)
 
     # ── 2. 加载并渲染 prompt ──
     template = _load_direction_prompt()
     system_prompt = render_prompt(template,
         direction_list=direction_list,
-        direction_tiebreaker_order=direction_tiebreaker_order,
     )
+
+    # 注入方向分类 few-shot 示例（每个方向单独加载）
+    for dir_name in direction_names:
+        examples_text = _load_direction_examples(dir_name)
+        if examples_text:
+            system_prompt += "\n\n" + examples_text
 
     # ── 3. 分批调用 LLM ──
     # direction_batch_size: 将来可暴露到 Web UI
@@ -167,22 +196,10 @@ def classify_direction_batch(jobs, config):
             )
             labels = [m.model_dump() for m in results]
             all_labels.extend(labels)
-        except Exception:
-            # 回退：旧方式（parse_json_response）
-            try:
-                msg = llm_call(
-                    [{"role": "system", "content": system_prompt},
-                     {"role": "user", "content": jobs_text}],
-                    temperature=0, thinking={"type": "disabled"},
-                )
-                result_text = msg.content
-                parsed = parse_json_response(result_text)
-                if parsed and isinstance(parsed, list):
-                    all_labels.extend(parsed)
-                else:
-                    emit(f"   ⚠️ 方向分类第 {batch_num} 批返回格式异常，将使用关键词回退")
-            except Exception as e:
-                emit(f"   ❌ 方向分类第 {batch_num} 批失败: {e}，将使用关键词回退")
+        except Exception as e:
+            emit(f"   ❌ 方向分类第 {batch_num} 批失败: {e}")
+            for job in batch:
+                _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": None, "fallback_to": classify_job(job.get("title", ""), weight_rules), "reason": "LLM批次调用失败"})
 
     # ── 4. 校验与兜底 ──
     label_by_index = {}
@@ -204,8 +221,10 @@ def classify_direction_batch(jobs, config):
             job["llm_direction"] = fallback
             if llm_dir:
                 emit(f"   ⚠️ 方向兜底: {job.get('title', '?')[:40]} LLM方向={llm_dir} 无效，回退为 {fallback}")
+                _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": llm_dir, "fallback_to": fallback, "reason": "LLM方向无效"})
             else:
                 emit(f"   ⚠️ 方向兜底: {job.get('title', '?')[:40]} LLM未返回方向，回退为 {fallback}")
+                _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": None, "fallback_to": fallback, "reason": "LLM未返回方向"})
 
     return jobs
 
@@ -228,7 +247,7 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
 
     # 注入 few-shot 示例
     if strategy:
-        examples_text = _load_examples(strategy)
+        examples_text = _load_scoring_examples(strategy)
         if examples_text:
             system_prompt += "\n\n" + examples_text
 
@@ -264,24 +283,21 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         else:
             emit(f"   ⚠️ {batch_label}返回格式异常，跳过")
             return []
-    except Exception:
-        # 回退：旧方式（parse_json_response）
-        try:
-            msg = llm_call(
-                [{"role": "system", "content": system_prompt},
-                 {"role": "user", "content": jobs_text}],
-                temperature=0, thinking={"type": "disabled"},
-            )
-            result_text = msg.content
-            scored = parse_json_response(result_text)
-            if scored and isinstance(scored, list):
-                return scored
-            else:
-                emit(f"   ⚠️ {batch_label}返回格式异常，跳过")
-                return []
-        except Exception as e:
-            emit(f"   ❌ {batch_label}分析失败: {e}")
-            return []
+    except Exception as e:
+        emit(f"   ❌ {batch_label}评分失败: {e}")
+        # 不丢数据：为批次内每个 JD 返回一条标记了错误的记录
+        error_scored = []
+        for j, job in enumerate(batch, 1):
+            error_scored.append({
+                "index": j,
+                "title": job.get("title", "未知"),
+                "company": job.get("company", ""),
+                "scores": {"skill": 0, "experience": 0, "level": 0, "industry": 0, "bonus": 0},
+                "reason": f"LLM 评分调用失败，请重试: {str(e)[:150]}",
+                "recommendation": "不推荐",
+                "_score_error": True,
+            })
+        return error_scored
 
 
 # ============================================================
@@ -295,6 +311,11 @@ def match_jobs(config: dict = None, profile: dict = None):
         config: 配置字典（不传则从 search_config.yaml 加载）
         profile: 用户画像字典（不传则从 me.yaml 加载）
     """
+    global _dir_fallbacks, _weight_fallbacks, _score_errors
+    _dir_fallbacks = []
+    _weight_fallbacks = []
+    _score_errors = []
+
     # 加载用户档案
     if profile is None:
         profile = load_profile()
@@ -362,9 +383,9 @@ def match_jobs(config: dict = None, profile: dict = None):
     emit(f"📊 Step 2: 按方向分批评分")
     emit(f"{'='*50}")
 
-    batch_size = 5
+    batch_size = matching_cfg.get("score_batch_size", 5)
+    rescore_batch_size = matching_cfg.get("rescore_batch_size", 5)
     all_scored = []
-    default_weights = get_weights("default", weight_profiles)
 
     # 按 llm_direction 分组
     jobs_by_direction = {}
@@ -373,8 +394,11 @@ def match_jobs(config: dict = None, profile: dict = None):
         jobs_by_direction.setdefault(d, []).append(j)
 
     for direction, dir_jobs in jobs_by_direction.items():
-        dir_weights = get_weights(direction, weight_profiles)
-        emit(f"\n   📂 {direction} 方向（{len(dir_jobs)} 个岗位）权重: {dir_weights}")
+        dir_weights, weight_source = get_weights(direction, weight_profiles)
+        emit(f"\n   📂 {direction} 方向（{len(dir_jobs)} 个岗位）")
+        emit(f"   🎯 方向 [{direction}] 权重: 技能{dir_weights['skill']}% 经验{dir_weights['experience']}% 职级{dir_weights['level']}% 行业{dir_weights['industry']}% 加分{dir_weights['bonus']}% (来源: {weight_source})")
+        if "代码默认值" in weight_source:
+            _weight_fallbacks.append({"direction": direction, "weight_profile": weight_source})
 
         for i in range(0, len(dir_jobs), batch_size):
             batch = dir_jobs[i:i + batch_size]
@@ -407,6 +431,9 @@ def match_jobs(config: dict = None, profile: dict = None):
                     s["confidence"] = "high"
 
             all_scored.extend(scored)
+            for s in scored:
+                if s.get("_score_error"):
+                    _score_errors.append({"title": s.get("title", "未知"), "reason": s.get("reason", "")})
 
     # 排序
     all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
@@ -423,35 +450,47 @@ def match_jobs(config: dict = None, profile: dict = None):
             # 需要从原始 jobs 中找到对应的 job 数据
             url_to_job = {normalize_jobsdb_url(j.get("url", "")): j for j in jobs}
 
-            for bi in range(0, len(borderline_jobs), batch_size):
-                b_batch = borderline_jobs[bi:bi + batch_size]
-                # 还原原始 job 数据用于重新评分
-                original_batch = []
-                for s in b_batch:
-                    norm = normalize_jobsdb_url(s.get("url", ""))
-                    orig = url_to_job.get(norm)
-                    if orig:
-                        original_batch.append(orig)
-                    else:
-                        original_batch.append({
-                            "title": s.get("title", ""),
-                            "company": s.get("company", ""),
-                            "description": s.get("description", ""),
-                            "url": s.get("url", ""),
-                        })
+            # 按方向分组
+            rescore_groups = {}
+            for s in borderline_jobs:
+                d = s.get("llm_direction", "default")
+                rescore_groups.setdefault(d, []).append(s)
 
-                # 对每个岗位用其 LLM 方向对应的权重评分
-                for idx, (s, orig_job) in enumerate(zip(b_batch, original_batch)):
-                    cat = s.get("llm_direction", s.get("weight_profile", "default"))
-                    w = get_weights(cat, weight_profiles)
+            for direction, dir_jobs in rescore_groups.items():
+                dir_weights, ws = get_weights(direction, weight_profiles)
+                if "代码默认值" in ws:
+                    _weight_fallbacks.append({"direction": direction, "weight_profile": ws})
 
-                    scored2 = _score_batch([orig_job], profile_summary, w,
-                                           batch_label=f"复评 {s.get('title', '?')[:30]}", config=config)
+                for i in range(0, len(dir_jobs), rescore_batch_size):
+                    batch = dir_jobs[i:i + rescore_batch_size]
+                    # 还原原始 job 数据用于重新评分
+                    original_batch = []
+                    for s in batch:
+                        norm = normalize_jobsdb_url(s.get("url", ""))
+                        orig = url_to_job.get(norm)
+                        if orig:
+                            original_batch.append(orig)
+                        else:
+                            original_batch.append({
+                                "title": s.get("title", ""),
+                                "company": s.get("company", ""),
+                                "description": s.get("description", ""),
+                                "url": s.get("url", ""),
+                            })
 
-                    if scored2:
-                        s2 = scored2[0]
-                        if s2.get("scores"):
-                            round2_total = _calc_total_score(s2["scores"], w)
+                    batch_num = i // rescore_batch_size + 1
+                    total_batches = (len(dir_jobs) + rescore_batch_size - 1) // rescore_batch_size
+                    batch_label = f"复评 {direction} 第 {batch_num}/{total_batches} 批"
+                    scored2_list = _score_batch(original_batch, profile_summary, dir_weights,
+                                                batch_label=batch_label, strategy=direction, config=config)
+
+                    # 建立 scored2 的 index→结果 映射（index 从 1 开始）
+                    scored2_map = {s2.get("index", 1) - 1: s2 for s2 in scored2_list}
+
+                    for j, s in enumerate(batch):
+                        s2 = scored2_map.get(j)
+                        if s2 and s2.get("scores"):
+                            round2_total = _calc_total_score(s2["scores"], dir_weights)
                             round1_total = s["score_rounds"][0]
                             # 取两轮平均
                             avg_scores = {}
@@ -459,7 +498,7 @@ def match_jobs(config: dict = None, profile: dict = None):
                                 avg_scores[dim] = round(
                                     (s.get("scores", {}).get(dim, 0) + s2["scores"].get(dim, 0)) / 2
                                 )
-                            avg_total = _calc_total_score(avg_scores, w)
+                            avg_total = _calc_total_score(avg_scores, dir_weights)
                             variance = abs(round1_total - round2_total)
 
                             s["scores"] = avg_scores
@@ -491,7 +530,8 @@ def match_jobs(config: dict = None, profile: dict = None):
     report += "### 权重方案\n\n"
     report += "| 类型 | 技能 | 经验 | 职级 | 行业 | 加分 |\n"
     report += "|------|------|------|------|------|------|\n"
-    for pname, pw in weight_profiles.items():
+    for pname in weight_profiles:
+        pw, _ = get_weights(pname, weight_profiles)
         report += f"| {pname} | {pw['skill']}% | {pw['experience']}% | {pw['level']}% | {pw['industry']}% | {pw['bonus']}% |\n"
     report += "\n"
 
@@ -543,6 +583,16 @@ def match_jobs(config: dict = None, profile: dict = None):
     with open(matched_path, "w", encoding="utf-8") as f:
         json.dump(qualified, f, ensure_ascii=False, indent=2)
     track_file(matched_path, f"匹配结果数据 JSON（{len(qualified)} 个岗位评分，供生成简历用）")
+
+    # 保存兜底触发报告
+    fallback_path = os.path.join(run_dir, "fallback_report.json")
+    with open(fallback_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "direction_fallbacks": {"count": len(_dir_fallbacks), "details": _dir_fallbacks},
+            "weight_fallbacks": {"count": len(_weight_fallbacks), "details": _weight_fallbacks},
+            "score_errors": {"count": len(_score_errors), "details": _score_errors},
+        }, f, ensure_ascii=False, indent=2)
+    track_file(fallback_path, f"兜底触发报告（方向{len(_dir_fallbacks)} 权重{len(_weight_fallbacks)} 评分{len(_score_errors)}）")
 
     # 保存未达标岗位（低于 min_score 的）
     unmatched = [s for s in all_scored if s.get("total_score", 0) < min_score]
@@ -634,12 +684,12 @@ def list_matched_jobs():
 #  单条 JD 评分（供评估脚本使用）
 # ============================================================
 
-def _load_examples(strategy: str) -> str:
-    """根据当前策略方向，加载对应的 few-shot 示例。"""
+def _load_direction_examples(strategy: str) -> str:
+    """根据当前策略方向，加载对应的方向分类 few-shot 示例。"""
     import yaml as _yaml
     from pathlib import Path as _Path
 
-    examples_dir = _Path(__file__).parent / "prompts" / "examples" / "job_match"
+    examples_dir = _Path(__file__).parent / "prompts" / "examples" / "job_match" / "direction"
     example_texts = []
 
     # 始终加载 common.yaml
@@ -677,6 +727,49 @@ def _load_examples(strategy: str) -> str:
     return ""
 
 
+def _load_scoring_examples(strategy: str) -> str:
+    """根据当前策略方向，加载对应的评分 few-shot 示例。"""
+    import yaml as _yaml
+    from pathlib import Path as _Path
+
+    examples_dir = _Path(__file__).parent / "prompts" / "examples" / "job_match" / "scoring"
+    example_texts = []
+
+    # 始终加载 common.yaml
+    common_file = examples_dir / "common.yaml"
+    if common_file.exists():
+        with open(common_file, "r", encoding="utf-8") as f:
+            data = _yaml.safe_load(f)
+        for ex in data.get("examples", []):
+            inp = ex.get("input", "").strip()
+            out = ex.get("ideal_output", {})
+            example_texts.append(
+                f"示例：\n"
+                f"  JD: {inp}\n"
+                f"  正确方向: {out.get('direction', '')}\n"
+                f"  理由: {out.get('reason', '')}"
+            )
+
+    # 加载 strategy 对应的评分示例文件
+    scoring_file = examples_dir / f"{strategy}.yaml"
+    if scoring_file.exists():
+        with open(scoring_file, "r", encoding="utf-8") as f:
+            data = _yaml.safe_load(f)
+        for ex in data.get("examples", []):
+            inp = ex.get("input", "").strip()
+            out = ex.get("ideal_output", {})
+            example_texts.append(
+                f"示例：\n"
+                f"  JD: {inp}\n"
+                f"  正确方向: {out.get('direction', '')}\n"
+                f"  理由: {out.get('reason', '')}"
+            )
+
+    if example_texts:
+        return "===== 参考示例 =====\n\n" + "\n\n".join(example_texts)
+    return ""
+
+
 def _build_profile_summary(user_profile: dict) -> str:
     """从用户画像构造 profile_summary（与 match_jobs 中的逻辑一致）。"""
     return json.dumps({
@@ -694,141 +787,57 @@ def _build_profile_summary(user_profile: dict) -> str:
     }, ensure_ascii=False, indent=2)
 
 
-# TODO: llm_call 需要返回 usage 信息以支持 token 统计
 def score_single_jd(jd_text: str, user_profile: dict, config: dict = None,
-                    weights: dict = None, jd_title: str = "") -> dict:
-    """对单条 JD 进行五维匹配评分。
+                    jd_title: str = "") -> dict:
+    """对单条 JD 进行方向预判 + 五维匹配评分。
 
-    Args:
-        jd_text: 完整的 JD 文本
-        user_profile: 用户画像字典（从 me.yaml 加载）
-        config: 搜索配置字典（不传则从 search_config.yaml 加载）
-        weights: 权重字典（不传则使用 default 权重）
-        jd_title: JD 标题（用于方向回退）
-
-    Returns:
-        dict: {
-            "direction": str,
-            "scores": {"skill", "experience", "level", "industry", "bonus"},
-            "total_score": int,
-            "reason": str,
-            "input_tokens": int,
-            "output_tokens": int
-        }
+    内部全部复用 Pipeline 的核心函数：classify_direction_batch + _score_batch。
+    与 match_jobs 走完全相同的代码路径，确保评估结果反映线上实际表现。
     """
     if config is None:
         raise RuntimeError("score_single_jd 需要 config 参数，请从 Campaign 提供。")
-    config = config or {}
 
+    # ── Step 1: 方向预判（复用 classify_direction_batch）──
+    job = {
+        "title": jd_title or "未知岗位",
+        "description": jd_text,
+        "index": 1,
+        "url": "",
+        "company": "",
+    }
+    jobs = classify_direction_batch([job], config)
+    direction = jobs[0].get("llm_direction", "default")
+
+    # ── Step 2: 获取该方向权重 ──
     matching_cfg = config.get("matching", {})
-    weight_profiles = matching_cfg.get("weight_profiles", {"default": {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}})
-    weight_rules = matching_cfg.get("weight_rules", {})
+    weight_profiles = matching_cfg.get("weight_profiles", {})
+    dir_weights, _ = get_weights(direction, weight_profiles)
 
-    if weights is None:
-        weights = get_weights("default", weight_profiles)
-
-    # ── 构造 profile_summary ──
+    # ── Step 3: 评分（复用 _score_batch）──
     profile_summary = _build_profile_summary(user_profile)
-
-    # ── 加载并渲染评分 prompt（不注入方向，方向由 classify_job 确定）──
-    prompts = load_prompts()
-    template = _load_scoring_prompt()
-    system_prompt = render_prompt(template,
-        profile_summary=profile_summary,
-        weights_text=_build_weights_text(weights),
-        score_formula=_build_score_formula(weights),
+    scored_list = _score_batch(
+        [job], profile_summary, dir_weights,
+        batch_label=f"评估 {jd_title[:30]}" if jd_title else "评估",
+        strategy=direction,
+        config=config,
     )
 
-    # 注入 few-shot 示例（默认方向为 default，确保通用示例加载）
-    default_strategy = "default"
-    examples_text = _load_examples(default_strategy)
-    if examples_text:
-        system_prompt += "\n\n" + examples_text
-
-    # ── 构造单条 JD 的 user message（截断规则与 _score_batch 一致）──
-    desc = jd_text
-    max_chars = (config or {}).get("search", {}).get("jd_max_chars", 4000)
-    if len(desc) > max_chars:
-        desc = desc[:max_chars] + "\n...(截断)"
-
-    user_message = f"--- 岗位 1 ---\n"
-    if jd_title:
-        user_message += f"标题: {jd_title}\n"
-    user_message += f"职位描述:\n{desc}\n"
-
-    # ── 调用 LLM（Instructor 模式优先，失败回退旧方式）──
-    from engine.contracts import MatchResult
-    try:
-        parsed_result = llm_call(
-            [{"role": "system", "content": system_prompt},
-             {"role": "user", "content": user_message}],
-            temperature=0, thinking={"type": "disabled"},
-            response_model=MatchResult,
-        )
-        # Instructor 返回 MatchResult 对象，字段已校验
-        llm_dir = parsed_result.direction
-        valid_directions = {"payment", "solutions", "web3", "technical", "default"}
-        direction = llm_dir if llm_dir in valid_directions else classify_job(jd_title, weight_rules)
-        scores = {
-            "skill": parsed_result.scores.skill,
-            "experience": parsed_result.scores.experience,
-            "level": parsed_result.scores.level,
-            "industry": parsed_result.scores.industry,
-            "bonus": parsed_result.scores.bonus,
-        }
-        reason = parsed_result.reason
-        # 提取 token 用量
-        if hasattr(parsed_result, '_usage'):
-            usage = parsed_result._usage
-            tokens_in = usage.get("input_tokens", 0)
-            tokens_out = usage.get("output_tokens", 0)
-        else:
-            tokens_in = 0
-            tokens_out = 0
-    except Exception:
-        # 回退：旧方式（_score_batch 同款逻辑）
-        msg = llm_call(
-            [{"role": "system", "content": system_prompt},
-             {"role": "user", "content": user_message}],
-            temperature=0, thinking={"type": "disabled"},
-        )
-        result_text = msg.content
-        parsed = parse_json_response(result_text)
-
-        if isinstance(parsed, list):
-            if len(parsed) > 0:
-                parsed = parsed[0]
-            else:
-                parsed = {}
-
-        if not isinstance(parsed, dict) or not parsed:
-            return {
-                "direction": classify_job(jd_title, weight_rules),
-                "scores": {},
-                "total_score": 0,
-                "reason": f"LLM 返回格式异常: {result_text[:200]}",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "error": "parse_failed",
-            }
-
-        llm_dir = parsed.get("direction", "")
-        valid_directions = {"payment", "solutions", "web3", "technical", "default"}
-        direction = llm_dir if llm_dir in valid_directions else classify_job(jd_title, weight_rules)
-        scores = parsed.get("scores", {})
-        reason = parsed.get("reason", "")
-        tokens_in = 0
-        tokens_out = 0
-
-    # ── 计算总分 ──
-    direction_weights = get_weights(direction, weight_profiles)
-    total_score = _calc_total_score(scores, direction_weights) if scores else 0
+    # ── Step 4: 组装返回 ──
+    if scored_list:
+        s = scored_list[0]
+        scores = s.get("scores", {})
+        reason = s.get("reason", "")
+        total_score = _calc_total_score(scores, dir_weights) if scores else 0
+    else:
+        scores = {}
+        total_score = 0
+        reason = "LLM 评分调用失败"
 
     return {
         "direction": direction,
         "scores": scores,
         "total_score": total_score,
         "reason": reason,
-        "input_tokens": tokens_in,
-        "output_tokens": tokens_out,
+        "input_tokens": 0,
+        "output_tokens": 0,
     }

@@ -18,7 +18,7 @@ import config
 from config import (
     llm_call, set_emit_target, get_session_files, get_system_prompt,
     OUTPUT_DIR, get_current_run_dir, get_latest_run_dir,
-    _db_fetch_one, _db_fetch_all, _get_db,
+    _db_fetch_one, _db_fetch_all, _get_db, emit,
 )
 from tools_defs import tools, execute_tool, deduplicate_tool_calls
 from scraper import cleanup_playwright
@@ -131,15 +131,6 @@ def _run_agent_turn(sid, user_message):
         set_emit_target(q)
 
         # ── 注入 campaign 配置 ──
-        # 未选择 campaign 时自动选择第一个可用 campaign
-        if not session.get("campaign"):
-            import glob as _glob
-            campaign_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "campaigns")
-            files = sorted(_glob.glob(os.path.join(campaign_dir, "*.yaml")))
-            if files:
-                first = os.path.splitext(os.path.basename(files[0]))[0]
-                session["campaign"] = first
-                q.put({"type": "status", "text": f"自动选择求职方向: {first}"})
 
         if session.get("campaign"):
             try:
@@ -219,15 +210,6 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
 
         # ── 注入 campaign 配置（Pipeline 不经过 execute_tool，需显式传入）──
         cfg = None
-        # 未选择 campaign 时自动选择第一个可用 campaign
-        if not session.get("campaign"):
-            import glob as _glob
-            campaign_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "campaigns")
-            files = sorted(_glob.glob(os.path.join(campaign_dir, "*.yaml")))
-            if files:
-                first = os.path.splitext(os.path.basename(files[0]))[0]
-                session["campaign"] = first
-                q.put({"type": "status", "text": f"自动选择求职方向: {first}"})
 
         if session.get("campaign"):
             try:
@@ -287,6 +269,147 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
         set_emit_target(None)
         session["busy"] = False
         _agent_lock.release()
+
+
+def _run_eval_sse(set_name):
+    """对标注数据集运行评估，通过 SSE emit 推送进度。"""
+    import json, os, time
+    from datetime import datetime
+    from collections import Counter
+    from config import load_profile, OUTPUT_DIR
+    from config_assembler import load_campaign
+    from job_match import score_single_jd
+
+    # 保存 SSE queue 引用
+    import config as _cfg
+    q = getattr(_cfg._emit_local, "queue", None)
+
+    # ── 加载数据集 ──
+    input_path = os.path.join("instances", "eval", f"{set_name}.json")
+    with open(input_path, "r", encoding="utf-8") as f:
+        cases = json.load(f)
+    emit(f"加载 {set_name}.json: {len(cases)} 条")
+
+    # ── 加载画像 ──
+    profile = load_profile()
+
+    # ── 加载 Campaign 配置 ──
+    CAMPAIGN_NAME = "default"
+    config = load_campaign(CAMPAIGN_NAME)
+    emit(f"Campaign: {CAMPAIGN_NAME}")
+
+    # ── 逐条评分 ──
+    results = []
+    errors = 0
+
+    for i, case in enumerate(cases, 1):
+        jd_id = case["id"]
+        jd_text = case.get("description", "")
+        jd_title = case.get("title", "")
+        expected_dir = case.get("expected_direction", "default")
+
+        try:
+            result = score_single_jd(
+                jd_text=jd_text,
+                user_profile=profile,
+                config=config,
+                jd_title=jd_title,
+            )
+        except Exception as e:
+            result = {
+                "direction": "default",
+                "scores": {},
+                "total_score": 0,
+                "reason": f"评分异常: {e}",
+            }
+            errors += 1
+
+        predicted_dir = result.get("direction", "default")
+        match = "✓" if predicted_dir == expected_dir else f"✗ (expected {expected_dir})"
+        emit(f"[{i}/{len(cases)}] {jd_id}: {jd_title[:60]} → {predicted_dir} {match}")
+
+        results.append({
+            "id": jd_id,
+            "title": jd_title,
+            "expected_direction": expected_dir,
+            "predicted_direction": predicted_dir,
+            "direction_correct": predicted_dir == expected_dir,
+            "scores": result.get("scores", {}),
+            "total_score": result.get("total_score", 0),
+            "reason": result.get("reason", ""),
+        })
+        time.sleep(0.5)
+
+    # ── 方向准确率 ──
+    dir_correct = sum(1 for r in results if r.get("direction_correct"))
+    dir_total = len(results)
+    dir_accuracy = dir_correct / dir_total if dir_total > 0 else 0
+
+    dir_counts = Counter()
+    dir_hits = Counter()
+    for r in results:
+        d = r["expected_direction"]
+        dir_counts[d] += 1
+        if r.get("direction_correct"):
+            dir_hits[d] += 1
+
+    emit(f"方向准确率: {dir_correct}/{dir_total} = {dir_accuracy:.1%}")
+    for d in sorted(dir_counts):
+        emit(f"  {d}: {dir_hits[d]}/{dir_counts[d]}")
+
+    # ── 保存结果 ──
+    eval_dir = os.path.join(OUTPUT_DIR, "eval")
+    os.makedirs(eval_dir, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    result_path = os.path.join(eval_dir, f"eval_{set_name}_{ts}.json")
+
+    output_data = {
+        "meta": {
+            "set": set_name,
+            "run_time": datetime.now().isoformat(),
+            "num_cases": len(cases),
+            "errors": errors,
+            "direction_accuracy": dir_accuracy,
+        },
+        "results": results,
+    }
+    with open(result_path, "w", encoding="utf-8") as f:
+        json.dump(output_data, f, ensure_ascii=False, indent=2)
+
+    # ── 历史对比 ──
+    history_files = sorted(
+        [f for f in os.listdir(eval_dir) if f.startswith(f"eval_{set_name}_") and f != os.path.basename(result_path)],
+        reverse=True,
+    )
+    delta_acc = 0
+    prev_acc = None
+    arrow = "="
+    if history_files:
+        prev_path = os.path.join(eval_dir, history_files[0])
+        with open(prev_path, "r", encoding="utf-8") as f:
+            prev = json.load(f)
+        prev_meta = prev.get("meta", {})
+        prev_acc = prev_meta.get("direction_accuracy", 0)
+        delta_acc = dir_accuracy - prev_acc
+        arrow = "↑" if delta_acc > 0 else "↓" if delta_acc < 0 else "="
+        emit(f"历史对比 (上次: {history_files[0]}): {prev_acc:.1%} → {dir_accuracy:.1%} ({arrow}{abs(delta_acc):.1%})")
+
+    # ── 推送 done ──
+    files_data = [[fp, desc] for fp, desc in get_session_files()]
+    summary = {
+        "set_name": set_name,
+        "num_cases": len(cases),
+        "direction_accuracy": f"{dir_accuracy:.1%}",
+        "dir_correct": dir_correct,
+        "dir_total": dir_total,
+        "dir_details": {d: f"{dir_hits[d]}/{dir_counts[d]}" for d in sorted(dir_counts)},
+        "errors": errors,
+        "result_file": os.path.basename(result_path),
+        "delta_accuracy": f"{arrow}{abs(delta_acc):.1%}" if history_files else "首次运行",
+        "prev_accuracy": f"{prev_acc:.1%}" if prev_acc is not None else None,
+    }
+    if q:
+        q.put({"type": "done", "reply": json.dumps(summary, ensure_ascii=False), "files": files_data})
 
 
 # ============================================================
@@ -537,6 +660,25 @@ def market_files():
     return jsonify(files)
 
 
+@app.route("/api/eval/files")
+def eval_files():
+    """列出 output/eval/ 下所有评估结果文件"""
+    eval_dir = os.path.join(OUTPUT_DIR, "eval")
+    files = []
+    if os.path.exists(eval_dir):
+        for fname in os.listdir(eval_dir):
+            full = os.path.join(eval_dir, fname)
+            if os.path.isfile(full):
+                files.append({
+                    "name": fname,
+                    "path": f"eval/{fname}",
+                    "size": os.path.getsize(full),
+                    "mtime": os.path.getmtime(full),
+                })
+    files.sort(key=lambda x: x["mtime"], reverse=True)
+    return jsonify(files)
+
+
 # ── 匹配结果 API ──
 
 @app.route("/api/runs/<run_id>/matches")
@@ -768,6 +910,82 @@ def api_market_batch():
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "started"})
+
+
+# ── 评估 API ──
+
+@app.route("/api/eval", methods=["POST"])
+@login_required
+def run_eval_api():
+    """运行评估：对标注数据集跑方向预判 + 评分全链路。仅管理员。"""
+    if session.get("role") != "admin":
+        return jsonify({"error": "仅管理员可运行评估"}), 403
+
+    data = request.json or {}
+    sid = data.get("sid", "").strip()
+    set_name = data.get("set_name", "").strip()
+
+    if not sid or set_name not in ("dev_set", "holdout"):
+        return jsonify({"error": "Missing sid or invalid set_name"}), 400
+
+    session_obj = _get_or_create_session(sid)
+    if session_obj["busy"]:
+        return jsonify({"error": "Agent is busy"}), 429
+    if not _agent_lock.acquire(blocking=False):
+        return jsonify({"error": "Another session is running"}), 429
+    session_obj["busy"] = True
+
+    q = session_obj["queue"]
+    while not q.empty():
+        try: q.get_nowait()
+        except queue.Empty: break
+
+    def _run():
+        try:
+            set_emit_target(q)
+            _run_eval_sse(set_name)
+        except Exception as e:
+            q.put({"type": "error", "text": str(e)})
+        finally:
+            set_emit_target(None)
+            session_obj["busy"] = False
+            _agent_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/eval/history", methods=["GET"])
+@login_required
+def eval_history():
+    """返回最近一次评估结果摘要。仅管理员。"""
+    if session.get("role") != "admin":
+        return jsonify({"error": "仅管理员"}), 403
+
+    import json, os
+    from config import OUTPUT_DIR
+
+    eval_dir = os.path.join(OUTPUT_DIR, "eval")
+    if not os.path.exists(eval_dir):
+        return jsonify({})
+
+    result = {}
+    for set_name in ("dev_set", "holdout"):
+        files = sorted(
+            [f for f in os.listdir(eval_dir) if f.startswith(f"eval_{set_name}_")],
+            reverse=True,
+        )
+        if files:
+            with open(os.path.join(eval_dir, files[0]), "r", encoding="utf-8") as f:
+                data = json.load(f)
+            meta = data.get("meta", {})
+            result[set_name] = {
+                "file": files[0],
+                "accuracy": meta.get("direction_accuracy", 0),
+                "run_time": meta.get("run_time", ""),
+                "num_cases": meta.get("num_cases", 0),
+            }
+    return jsonify(result)
 
 
 # ── YAML 配置读写 API ──
@@ -1073,7 +1291,7 @@ def delete_campaign(id):
 # ── 策略 CRUD API ──
 
 def _ensure_user_strategies(user_id):
-    """确保用户拥有自己的策略副本。如果没有，从 is_default=1 的策略复制。"""
+    """确保用户拥有自己的策略副本。如果没有，从已有策略中复制。"""
     count = _db_fetch_one(
         "SELECT COUNT(*) as cnt FROM strategies WHERE owner_id = ?", (user_id,)
     )
@@ -1081,12 +1299,8 @@ def _ensure_user_strategies(user_id):
         return  # 已有策略，跳过
 
     defaults = _db_fetch_all(
-        "SELECT name, display_name, description, data FROM strategies WHERE is_default = 1 AND owner_id IS NOT NULL"
+        "SELECT name, description, data FROM strategies WHERE owner_id IS NOT NULL ORDER BY id LIMIT 20"
     )
-    if not defaults:
-        defaults = _db_fetch_all(
-            "SELECT name, display_name, description, data FROM strategies WHERE is_default = 1"
-        )
 
     if not defaults:
         return  # 没有任何默认策略
@@ -1103,8 +1317,8 @@ def _ensure_user_strategies(user_id):
         if exist:
             continue
         cursor.execute(
-            "INSERT INTO strategies (name, display_name, description, data, owner_id) VALUES (?, ?, ?, ?, ?)",
-            (d["name"], d["display_name"], d["description"], d["data"], user_id)
+            "INSERT INTO strategies (name, description, data, owner_id) VALUES (?, ?, ?, ?)",
+            (d["name"], d["description"], d["data"], user_id)
         )
         copied += 1
     conn.commit()
@@ -1119,9 +1333,9 @@ def list_strategies():
     """列出当前用户的策略 + 全局默认策略（供 campaign 编辑下拉使用）。"""
     user_id = session.get("user_id")
     rows = _db_fetch_all(
-        "SELECT id, name, display_name, description, data, is_default, created_at "
-        "FROM strategies WHERE owner_id = ? OR (owner_id IS NULL AND is_default = 1) "
-        "ORDER BY is_default DESC, id",
+        "SELECT id, name, description, data, created_at "
+        "FROM strategies WHERE owner_id = ? "
+        "ORDER BY id",
         (user_id,)
     )
     result = []
@@ -1133,10 +1347,8 @@ def list_strategies():
         result.append({
             "id": r["id"],
             "name": r["name"],
-            "display_name": r["display_name"] or r["name"],
             "description": r["description"],
             "data": data,
-            "is_default": bool(r["is_default"]),
             "created_at": r["created_at"],
         })
     return jsonify(result)
@@ -1148,7 +1360,6 @@ def create_strategy():
     """创建新策略。验证五维权重之和等于 100。"""
     data = request.json or {}
     name = data.get("name", "").strip()
-    display_name = data.get("display_name", name)
     description = data.get("description", "")
     strategy_data = data.get("data", {})
 
@@ -1175,9 +1386,9 @@ def create_strategy():
         conn = _get_db()
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO strategies (name, display_name, description, data, owner_id) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (name, display_name, description, json.dumps(strategy_data, ensure_ascii=False), user_id)
+            "INSERT INTO strategies (name, description, data, owner_id) "
+            "VALUES (?, ?, ?, ?)",
+            (name, description, json.dumps(strategy_data, ensure_ascii=False), user_id)
         )
         conn.commit()
         new_id = cursor.lastrowid
@@ -1193,8 +1404,8 @@ def get_strategy(id):
     """获取单个策略（仅限自己的或全局默认）。"""
     user_id = session.get("user_id")
     row = _db_fetch_one(
-        "SELECT id, name, display_name, description, data, is_default, created_at, updated_at "
-        "FROM strategies WHERE id = ? AND (owner_id = ? OR is_default = 1)",
+        "SELECT id, name, description, data, created_at, updated_at "
+        "FROM strategies WHERE id = ? AND owner_id = ?",
         (id, user_id)
     )
     if not row:
@@ -1206,10 +1417,8 @@ def get_strategy(id):
     return jsonify({
         "id": row["id"],
         "name": row["name"],
-        "display_name": row["display_name"],
         "description": row["description"],
         "data": data,
-        "is_default": bool(row["is_default"]),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     })
@@ -1221,7 +1430,6 @@ def update_strategy(id):
     """更新策略（仅限自己的策略）。"""
     data = request.json or {}
     name = data.get("name", "").strip()
-    display_name = data.get("display_name", name)
     description = data.get("description", "")
     strategy_data = data.get("data", {})
 
@@ -1238,7 +1446,7 @@ def update_strategy(id):
 
     user_id = session.get("user_id")
     row = _db_fetch_one(
-        "SELECT id, is_default FROM strategies WHERE id = ? AND owner_id = ?",
+        "SELECT id FROM strategies WHERE id = ? AND owner_id = ?",
         (id, user_id)
     )
     if not row:
@@ -1255,9 +1463,9 @@ def update_strategy(id):
         conn = _get_db()
         cursor = conn.cursor()
         cursor.execute(
-            "UPDATE strategies SET name = ?, display_name = ?, description = ?, data = ?, "
+            "UPDATE strategies SET name = ?, description = ?, data = ?, "
             "updated_at = CURRENT_TIMESTAMP WHERE id = ? AND owner_id = ?",
-            (name, display_name, description, json.dumps(strategy_data, ensure_ascii=False), id, user_id)
+            (name, description, json.dumps(strategy_data, ensure_ascii=False), id, user_id)
         )
         conn.commit()
         conn.close()
@@ -1272,7 +1480,7 @@ def delete_strategy(id):
     """删除策略（仅限自己的，且不能是被 Campaign 引用的）。"""
     user_id = session.get("user_id")
     row = _db_fetch_one(
-        "SELECT id, name, is_default FROM strategies WHERE id = ? AND owner_id = ?",
+        "SELECT id, name FROM strategies WHERE id = ? AND owner_id = ?",
         (id, user_id)
     )
     if not row:

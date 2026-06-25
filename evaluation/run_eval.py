@@ -25,6 +25,7 @@ if sys.stdout.encoding != 'utf-8':
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import load_profile, load_search_config_dict, OUTPUT_DIR
+from config_assembler import load_campaign
 from job_match import score_single_jd
 
 # ── 价格常量（单位：USD / 1M tokens）──
@@ -127,15 +128,14 @@ def main():
     else:
         print("用户画像已加载，包含完整个人信息")
 
-    # ── 加载配置 ──
-    config, _ = load_search_config_dict()
-    config = config or {}
+    # ── 加载配置（使用 default campaign，确保评估可复现）──
+    CAMPAIGN_NAME = "default"
+    print(f"Campaign: {CAMPAIGN_NAME}")
+    campaign_config = load_campaign(CAMPAIGN_NAME)
+    config = campaign_config
     matching_cfg = config.get("matching", {})
-    weight_profiles = matching_cfg.get("weight_profiles", {})
-    if "default" not in weight_profiles:
-        weight_profiles["default"] = {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}
     weight_rules = matching_cfg.get("weight_rules", {})
-    default_weights = weight_profiles.get("default", {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15})
+    weight_profiles = matching_cfg.get("weight_profiles", {})
 
     model_name = _load_model_name()
     print(f"模型: {model_name}")
@@ -160,7 +160,6 @@ def main():
                 jd_text=jd_text,
                 user_profile=profile,
                 config=config,
-                weights=default_weights,
                 jd_title=jd_title,
             )
         except Exception as e:
