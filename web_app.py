@@ -378,6 +378,8 @@ def _run_eval_sse(set_name):
             "num_cases": len(cases),
             "errors": errors,
             "direction_accuracy": dir_accuracy,
+            "total_input_tokens": total_usage["input_tokens"],
+            "total_output_tokens": total_usage["output_tokens"],
         },
         "results": results,
     }
@@ -415,6 +417,8 @@ def _run_eval_sse(set_name):
         "result_file": os.path.basename(result_path),
         "delta_accuracy": f"{arrow}{abs(delta_acc):.1%}" if history_files else "首次运行",
         "prev_accuracy": f"{prev_acc:.1%}" if prev_acc is not None else None,
+        "total_input_tokens": total_usage["input_tokens"],
+        "total_output_tokens": total_usage["output_tokens"],
     }
     if q:
         q.put({"type": "done", "reply": json.dumps(summary, ensure_ascii=False), "files": files_data})
