@@ -287,13 +287,14 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
 
         scored = [m.model_dump() for m in results]
         if scored:
-            # 诊断：数量不匹配时，输出已保存的原始返回文本
+            # 诊断：每批输出 LLM 原始返回文本（不截断）
+            if raw_text:
+                emit(f"   📝 [诊断] {batch_label}: 解析得{len(scored)}/{len(batch)}个, LLM原始返回({len(raw_text)}字符):\n{raw_text}")
+            else:
+                emit(f"   📝 [诊断] {batch_label}: 解析得{len(scored)}/{len(batch)}个, 无法获取原始文本")
+            # 数量不匹配时额外警告
             if len(scored) < len(batch):
-                emit(f"   ⚠️ [诊断] {batch_label}: 期望{len(batch)}个, Instructor解析得{len(scored)}个")
-                if raw_text:
-                    emit(f"   ⚠️ [诊断] LLM原始返回({len(raw_text)}字符):\n{raw_text[:3000]}")
-                else:
-                    emit(f"   ⚠️ [诊断] 无法获取LLM原始返回（_raw_response不可用）")
+                emit(f"   ⚠️ [诊断] {batch_label}: 期望{len(batch)}个, 丢失eval_id: {[j.get('eval_id', '?') for j in batch[len(scored):]]}")
             return scored
         else:
             emit(f"   ⚠️ {batch_label}返回格式异常，跳过")
