@@ -213,6 +213,9 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
             if choices:
                 msg = choices[0].message
                 _llm_raw_local.text = getattr(msg, 'content', '') or ''
+                if not _llm_raw_local.text and hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    func = msg.tool_calls[0].function
+                    _llm_raw_local.text = getattr(func, 'arguments', '') or ''
             if not _llm_raw_local.text:
                 emit(f"[诊断raw] choices count={len(choices)}")
                 if choices:
