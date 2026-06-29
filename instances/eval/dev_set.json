@@ -7,7 +7,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/unmatched_jobs.json",
-    "source_index": 3
+    "source_index": 3,
+    "url": "https://hk.jobsdb.com/job/91549504",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_001",
@@ -17,7 +20,10 @@
     "expected_direction": "web3",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 5
+    "source_index": 5,
+    "url": "https://hk.jobsdb.com/job/91541807",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_011",
@@ -27,7 +33,10 @@
     "expected_direction": "solutions",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 3
+    "source_index": 3,
+    "url": "https://hk.jobsdb.com/job/91567079",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_015",
@@ -37,7 +46,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/unmatched_jobs.json",
-    "source_index": 4
+    "source_index": 4,
+    "url": "https://hk.jobsdb.com/job/91506639",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_016",
@@ -47,7 +59,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 1
+    "source_index": 1,
+    "url": "https://hk.jobsdb.com/job/91552563",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_019",
@@ -57,7 +72,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/matched_jobs.json",
-    "source_index": 5
+    "source_index": 5,
+    "url": "https://hk.jobsdb.com/job/91535445",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_007",
@@ -67,7 +85,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 4
+    "source_index": 4,
+    "url": "https://hk.jobsdb.com/job/91543459",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_021",
@@ -77,7 +98,10 @@
     "expected_direction": "default",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 2
+    "source_index": 2,
+    "url": "https://hk.jobsdb.com/job/91579898",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_002",
@@ -87,7 +111,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 4
+    "source_index": 4,
+    "url": "https://hk.jobsdb.com/job/91543459",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_003",
@@ -97,7 +124,10 @@
     "expected_direction": "default",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/matched_jobs.json",
-    "source_index": 1
+    "source_index": 1,
+    "url": "https://hk.jobsdb.com/job/91507418",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_023",
@@ -107,7 +137,10 @@
     "expected_direction": "default",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 5
+    "source_index": 5,
+    "url": "https://hk.jobsdb.com/job/91541807",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_024",
@@ -117,7 +150,10 @@
     "expected_direction": "default",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/matched_jobs.json",
-    "source_index": 4
+    "source_index": 4,
+    "url": "https://hk.jobsdb.com/job/91316354",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_018",
@@ -127,7 +163,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 3
+    "source_index": 3,
+    "url": "https://hk.jobsdb.com/job/91567079",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_025",
@@ -137,7 +176,10 @@
     "expected_direction": "solutions",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/unmatched_jobs.json",
-    "source_index": 4
+    "source_index": 4,
+    "url": "https://hk.jobsdb.com/job/91506639",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_017",
@@ -147,7 +189,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 4
+    "source_index": 4,
+    "url": "https://hk.jobsdb.com/job/91543459",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_006",
@@ -157,7 +202,10 @@
     "expected_direction": "payment",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260417_221145/matched_jobs.json",
-    "source_index": 4
+    "source_index": 4,
+    "url": "https://hk.jobsdb.com/job/91543459",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_014",
@@ -167,7 +215,10 @@
     "expected_direction": "default",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/matched_jobs.json",
-    "source_index": 2
+    "source_index": 2,
+    "url": "https://hk.jobsdb.com/job/91393330",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_013",
@@ -177,7 +228,10 @@
     "expected_direction": "technical",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/matched_jobs.json",
-    "source_index": 2
+    "source_index": 2,
+    "url": "https://hk.jobsdb.com/job/91393330",
+    "location": "",
+    "salary": ""
   },
   {
     "id": "jd_005",
@@ -187,6 +241,9 @@
     "expected_direction": "web3",
     "expected_score_range": "PENDING",
     "source_file": "output/run_20260418_015732/matched_jobs.json",
-    "source_index": 1
+    "source_index": 1,
+    "url": "https://hk.jobsdb.com/job/91507418",
+    "location": "",
+    "salary": ""
   }
 ]

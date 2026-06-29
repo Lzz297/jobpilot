@@ -306,9 +306,9 @@ def _run_eval_sse(set_name):
             "eval_id": case["id"],
             "title": case["title"],
             "company": case.get("company", "评估测试"),
-            "url": "",
-            "location": "未知",
-            "salary": "未知",
+            "url": case.get("url", ""),
+            "location": case.get("location", "未知"),
+            "salary": case.get("salary", "未知"),
             "description": case["description"],
             "index": i + 1,
         })
