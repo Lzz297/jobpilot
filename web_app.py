@@ -326,6 +326,7 @@ def _run_eval_sse(set_name):
         "prev_accuracy": f"{history['prev_accuracy']:.1%}" if history.get("prev_accuracy") is not None else None,
         "total_input_tokens": meta["total_input_tokens"],
         "total_output_tokens": meta["total_output_tokens"],
+        "confusion_matrix": meta.get("confusion_matrix"),
     }
     if q:
         q.put({"type": "done", "reply": json.dumps(summary, ensure_ascii=False), "files": files_data})

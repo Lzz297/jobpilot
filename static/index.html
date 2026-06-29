@@ -1991,6 +1991,8 @@ async function renderEvalTab() {
   refreshIcons();
 }
 
+function escapeHtml(str) { var s = String(str); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
 function startEval(set_name) {
   if (guardBusy()) return;
   if (!STATE.sid) { toast('Session 未建立', 'warn'); return; }
@@ -2005,6 +2007,34 @@ function startEval(set_name) {
   startSSE(box, function(reply, files) {
     var data;
     try { data = JSON.parse(reply); } catch(e) { data = {raw: reply}; }
+
+    // 构建混淆矩阵 HTML
+    var cmHtml = '';
+    var cm = data.confusion_matrix;
+    if (cm && cm.labels && cm.matrix) {
+      cmHtml = '<div class="mt-3"><div class="text-xs font-medium text-slate-500 mb-1.5">方向混淆矩阵</div>';
+      cmHtml += '<table class="w-full text-xs text-center border-collapse"><thead><tr>';
+      cmHtml += '<th class="border border-slate-200 px-2 py-1 bg-slate-50 font-medium text-slate-500">实\\预</th>';
+      for (var i = 0; i < cm.labels.length; i++) {
+        cmHtml += '<th class="border border-slate-200 px-2 py-1 bg-slate-50 font-medium text-slate-500">' + escapeHtml(cm.labels[i]) + '</th>';
+      }
+      cmHtml += '</tr></thead><tbody>';
+      for (var i = 0; i < cm.matrix.length; i++) {
+        cmHtml += '<tr>';
+        cmHtml += '<td class="border border-slate-200 px-2 py-1 bg-slate-50 font-medium text-slate-500">' + escapeHtml(cm.labels[i]) + '</td>';
+        var row = cm.matrix[i] || [];
+        for (var j = 0; j < cm.labels.length; j++) {
+          var v = row[j] || 0;
+          var cls = '';
+          if (i === j) { cls = ' bg-emerald-50 text-emerald-700 font-medium'; }
+          else if (v > 0) { cls = ' bg-red-50 text-red-700'; }
+          cmHtml += '<td class="border border-slate-200 px-2 py-1' + cls + '">' + v + '</td>';
+        }
+        cmHtml += '</tr>';
+      }
+      cmHtml += '</tbody></table></div>';
+    }
+
     var html = '<div class="bg-white border border-emerald-200 rounded-xl p-4 fade-in">' +
       '<div class="font-semibold text-slate-800 text-sm mb-2">评估完成</div>' +
       '<div class="grid grid-cols-3 gap-3 text-center mb-3">' +
@@ -2013,6 +2043,7 @@ function startEval(set_name) {
         '<div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold ' + ((data.delta_accuracy||'').startsWith('↑')?'text-emerald-600':'text-red-600') + '">' + (data.delta_accuracy||'首次') + '</div><div class="text-[11px] text-slate-400">历史对比</div></div>' +
       '</div>' +
       '<div class="text-xs text-slate-500">各方向: ' + Object.entries(data.dir_details||{}).map(function(e){return e[0]+' '+e[1]}).join(' · ') + '</div>' +
+      cmHtml +
       (data.errors ? '<p class="text-xs text-red-500 mt-1">' + data.errors + ' 条异常</p>' : '') +
     '</div>';
     document.getElementById('eval-result').innerHTML = html;
