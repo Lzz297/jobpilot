@@ -196,7 +196,7 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
         kwargs_instruct = {}
         if thinking is not None:
             kwargs_instruct["extra_body"] = {"thinking": thinking}
-        result = client_instruct.chat.completions.create(
+        result, raw_completion = client_instruct.chat.completions.create_with_completion(
             model=MODEL_NAME,
             messages=messages,
             temperature=temperature if temperature is not None else 1.0,
@@ -204,10 +204,12 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
             max_retries=max_retries,
             **kwargs_instruct
         )
-        # Token 用量存入线程安全 storage
-        if hasattr(result, '_raw_response') and hasattr(result._raw_response, 'usage'):
-            usage = result._raw_response.usage
-            _store_usage(usage.prompt_tokens, usage.completion_tokens)
+        # Token 用量
+        if hasattr(raw_completion, 'usage') and raw_completion.usage:
+            _store_usage(raw_completion.usage.prompt_tokens, raw_completion.usage.completion_tokens)
+        # 存储原始返回文本供诊断使用（线程安全）
+        if raw_completion.choices and raw_completion.choices[0].message.content:
+            _llm_raw_local.text = raw_completion.choices[0].message.content
         return result
 
     last_error = None
@@ -404,6 +406,14 @@ def get_campaign_config() -> dict | None:
 
 # ── Token 用量追踪（线程安全）──
 _usage_local = threading.local()
+
+# ── LLM 原始返回文本（线程安全，供诊断使用）──
+_llm_raw_local = threading.local()
+
+
+def get_last_raw_response_text() -> str:
+    """获取最近一次 Instructor 调用的 LLM 原始返回文本。用于诊断。"""
+    return getattr(_llm_raw_local, 'text', '')
 
 
 def _store_usage(input_tokens: int, output_tokens: int) -> None:

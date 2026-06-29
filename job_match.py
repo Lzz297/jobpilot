@@ -281,15 +281,9 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
             temperature=0, thinking={"type": "disabled"},
             response_model=list[MatchResult],
         )
-        # 在迭代 results 之前捕获原始返回文本（迭代后 _raw_response 可能被消耗）
-        raw_text = ""
-        try:
-            if hasattr(results, '_raw_response'):
-                raw_resp = results._raw_response
-                if hasattr(raw_resp, 'choices') and raw_resp.choices:
-                    raw_text = raw_resp.choices[0].message.content or ""
-        except Exception:
-            pass
+        # 从 llm_call 存储的线程本地变量中读取本次调用的 LLM 原始返回文本
+        from config import get_last_raw_response_text
+        raw_text = get_last_raw_response_text()
 
         scored = [m.model_dump() for m in results]
         if scored:
