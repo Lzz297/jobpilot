@@ -273,152 +273,58 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
 
 def _run_eval_sse(set_name):
     """对标注数据集运行评估，通过 SSE emit 推送进度。"""
-    import json, os
-    from datetime import datetime
-    from collections import Counter
-    from config import load_profile, OUTPUT_DIR
+    import json, os, sys
+    from config import load_profile
     from config_assembler import load_campaign
-    from job_match import execute_matching_pipeline
-    from config import clear_usage_accumulator, get_accumulated_usage
+    # 确保 evaluation/ 在 sys.path 中，使 eval_core 可从项目根目录导入
+    _eval_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "evaluation")
+    if _eval_path not in sys.path:
+        sys.path.insert(0, _eval_path)
+    from eval_core import run_evaluation
 
     # 保存 SSE queue 引用
     import config as _cfg
     q = getattr(_cfg._emit_local, "queue", None)
 
-    # ── 加载数据集 ──
-    input_path = os.path.join("instances", "eval", f"{set_name}.json")
-    with open(input_path, "r", encoding="utf-8") as f:
-        cases = json.load(f)
-    emit(f"加载 {set_name}.json: {len(cases)} 条")
-
-    # ── 加载画像 ──
+    # ── 加载画像与配置 ──
     profile = load_profile()
-
-    # ── 加载 Campaign 配置 ──
     CAMPAIGN_NAME = "default"
     config = load_campaign(CAMPAIGN_NAME)
     emit(f"Campaign: {CAMPAIGN_NAME}")
 
-    # ── 补全字段，构建 jobs_list ──
-    jobs_list = []
-    for i, case in enumerate(cases):
-        jobs_list.append({
-            "eval_id": case["id"],
-            "title": case["title"],
-            "company": case.get("company", "评估测试"),
-            "url": case.get("url", ""),
-            "location": case.get("location", "未知"),
-            "salary": case.get("salary", "未知"),
-            "description": case["description"],
-            "index": i + 1,
-        })
-
-    # ── 批量调用纯函数 ──
-    clear_usage_accumulator()
-    all_scored = execute_matching_pipeline(jobs_list, profile, config)
-    total_usage = get_accumulated_usage()
-
-    # ── 按 eval_id 匹配 ──
-    scored_dict = {s["eval_id"]: s for s in all_scored if s.get("eval_id")}
-    results = []
-    errors = 0
-
-    for case in cases:
-        scored = scored_dict.get(case["id"])
-        if scored:
-            predicted_dir = scored.get("llm_direction", "default")
-        else:
-            predicted_dir = "default"
-            errors += 1
-
-        expected_dir = case.get("expected_direction", "default")
-        match = "✓" if predicted_dir == expected_dir else f"✗ (expected {expected_dir})"
-        emit(f"[{case['id']}] {case['title'][:60]} → {predicted_dir} {match}")
-
-        results.append({
-            "id": case["id"],
-            "title": case["title"],
-            "expected_direction": expected_dir,
-            "predicted_direction": predicted_dir,
-            "direction_correct": predicted_dir == expected_dir,
-            "scores": scored.get("scores", {}) if scored else {},
-            "total_score": scored.get("total_score", 0) if scored else 0,
-            "reason": scored.get("reason", "") if scored else "未在匹配结果中找到",
-            "input_tokens": 0,
-            "output_tokens": 0,
-        })
-
-    # ── 方向准确率 ──
-    dir_correct = sum(1 for r in results if r.get("direction_correct"))
-    dir_total = len(results)
-    dir_accuracy = dir_correct / dir_total if dir_total > 0 else 0
-
-    dir_counts = Counter()
-    dir_hits = Counter()
-    for r in results:
-        d = r["expected_direction"]
-        dir_counts[d] += 1
-        if r.get("direction_correct"):
-            dir_hits[d] += 1
-
-    emit(f"方向准确率: {dir_correct}/{dir_total} = {dir_accuracy:.1%}")
-    for d in sorted(dir_counts):
-        emit(f"  {d}: {dir_hits[d]}/{dir_counts[d]}")
-
-    # ── 保存结果 ──
-    eval_dir = os.path.join(OUTPUT_DIR, "eval")
-    os.makedirs(eval_dir, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    result_path = os.path.join(eval_dir, f"eval_{set_name}_{ts}.json")
-
-    output_data = {
-        "meta": {
-            "set": set_name,
-            "run_time": datetime.now().isoformat(),
-            "num_cases": len(cases),
-            "errors": errors,
-            "direction_accuracy": dir_accuracy,
-            "total_input_tokens": total_usage["input_tokens"],
-            "total_output_tokens": total_usage["output_tokens"],
-        },
-        "results": results,
-    }
-    with open(result_path, "w", encoding="utf-8") as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=2)
-
-    # ── 历史对比 ──
-    history_files = sorted(
-        [f for f in os.listdir(eval_dir) if f.startswith(f"eval_{set_name}_") and f != os.path.basename(result_path)],
-        reverse=True,
+    # ── 调用核心评估流水线 ──
+    output_data, result_path = run_evaluation(
+        set_name, profile, config,
+        progress_callback=emit,
     )
-    delta_acc = 0
-    prev_acc = None
-    arrow = "="
-    if history_files:
-        prev_path = os.path.join(eval_dir, history_files[0])
-        with open(prev_path, "r", encoding="utf-8") as f:
-            prev = json.load(f)
-        prev_meta = prev.get("meta", {})
-        prev_acc = prev_meta.get("direction_accuracy", 0)
-        delta_acc = dir_accuracy - prev_acc
-        arrow = "↑" if delta_acc > 0 else "↓" if delta_acc < 0 else "="
-        emit(f"历史对比 (上次: {history_files[0]}): {prev_acc:.1%} → {dir_accuracy:.1%} ({arrow}{abs(delta_acc):.1%})")
 
-    # ── 推送 done ──
+    meta = output_data["meta"]
+    history = meta.get("history", {})
+
+    # 构建 dir_details（从 results 重新聚合，避免核心模块额外返回）
+    dir_counts = {}
+    dir_hits = {}
+    for r in output_data["results"]:
+        d = r["expected_direction"]
+        dir_counts[d] = dir_counts.get(d, 0) + 1
+        if r.get("direction_correct"):
+            dir_hits[d] = dir_hits.get(d, 0) + 1
+
+    # ── 构建前端 SSE summary ──
     files_data = [[fp, desc] for fp, desc in get_session_files()]
     summary = {
         "set_name": set_name,
-        "num_cases": len(cases),
-        "direction_accuracy": f"{dir_accuracy:.1%}",
-        "dir_correct": dir_correct,
-        "dir_total": dir_total,
-        "dir_details": {d: f"{dir_hits[d]}/{dir_counts[d]}" for d in sorted(dir_counts)},
-        "errors": errors,
+        "num_cases": meta["num_cases"],
+        "direction_accuracy": f"{meta['direction_accuracy']:.1%}",
+        "dir_correct": meta["dir_correct"],
+        "dir_total": meta["dir_total"],
+        "dir_details": {d: f"{dir_hits.get(d, 0)}/{dir_counts[d]}" for d in sorted(dir_counts)},
+        "errors": meta["errors"],
         "result_file": os.path.basename(result_path),
-        "delta_accuracy": f"{arrow}{abs(delta_acc):.1%}" if history_files else "首次运行",
-        "prev_accuracy": f"{prev_acc:.1%}" if prev_acc is not None else None,
-        "total_input_tokens": total_usage["input_tokens"],
-        "total_output_tokens": total_usage["output_tokens"],
+        "delta_accuracy": f"{history['arrow']}{abs(history['delta']):.1%}" if history.get("prev_file") else "首次运行",
+        "prev_accuracy": f"{history['prev_accuracy']:.1%}" if history.get("prev_accuracy") is not None else None,
+        "total_input_tokens": meta["total_input_tokens"],
+        "total_output_tokens": meta["total_output_tokens"],
     }
     if q:
         q.put({"type": "done", "reply": json.dumps(summary, ensure_ascii=False), "files": files_data})
