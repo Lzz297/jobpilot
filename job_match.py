@@ -281,23 +281,25 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
             temperature=0, thinking={"type": "disabled"},
             response_model=list[MatchResult],
         )
+        # 在迭代 results 之前捕获原始返回文本（迭代后 _raw_response 可能被消耗）
+        raw_text = ""
+        try:
+            if hasattr(results, '_raw_response'):
+                raw_resp = results._raw_response
+                if hasattr(raw_resp, 'choices') and raw_resp.choices:
+                    raw_text = raw_resp.choices[0].message.content or ""
+        except Exception:
+            pass
+
         scored = [m.model_dump() for m in results]
         if scored:
-            # 诊断：数量不匹配时，取出本次调用的 LLM 原始返回文本
+            # 诊断：数量不匹配时，输出已保存的原始返回文本
             if len(scored) < len(batch):
-                try:
-                    raw_text = ""
-                    if hasattr(results, '_raw_response'):
-                        raw_resp = results._raw_response
-                        if hasattr(raw_resp, 'choices') and raw_resp.choices:
-                            raw_text = raw_resp.choices[0].message.content or ""
-                    emit(f"   ⚠️ [诊断] {batch_label}: 期望{len(batch)}个, Instructor解析得{len(scored)}个")
-                    if raw_text:
-                        emit(f"   ⚠️ [诊断] LLM原始返回({len(raw_text)}字符):\n{raw_text[:3000]}")
-                    else:
-                        emit(f"   ⚠️ [诊断] 无法获取LLM原始返回（_raw_response不可用）")
-                except Exception as diag_err:
-                    emit(f"   ⚠️ [诊断] 获取原始返回异常: {diag_err}")
+                emit(f"   ⚠️ [诊断] {batch_label}: 期望{len(batch)}个, Instructor解析得{len(scored)}个")
+                if raw_text:
+                    emit(f"   ⚠️ [诊断] LLM原始返回({len(raw_text)}字符):\n{raw_text[:3000]}")
+                else:
+                    emit(f"   ⚠️ [诊断] 无法获取LLM原始返回（_raw_response不可用）")
             return scored
         else:
             emit(f"   ⚠️ {batch_label}返回格式异常，跳过")
