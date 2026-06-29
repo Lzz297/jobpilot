@@ -708,6 +708,16 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
                                   batch_label=f"{direction} 第 {batch_num} 批",
                                   strategy=direction, config=config)
 
+            # 诊断：检查 LLM 返回数量是否与输入一致
+            if len(scored) < len(batch):
+                matched_ids = set()
+                for pos, s in enumerate(scored):
+                    if pos < len(batch):
+                        matched_ids.add(batch[pos].get("eval_id", "?"))
+                all_ids = [j.get("eval_id", "?") for j in batch]
+                missing = [eid for eid in all_ids if eid not in matched_ids]
+                emit(f"   ⚠️ [诊断] {direction} 第{batch_num}批: 输入{len(batch)}个 → LLM返回{len(scored)}个，丢失eval_id: {missing}")
+
             # 按位置匹配：LLM 按输入顺序返回结果，不依赖其是否返回 index 字段
             for pos, s in enumerate(scored):
                 if pos < len(batch):
@@ -792,6 +802,11 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
                     scored2_list = _score_batch(local_batch, profile_summary, dir_weights,
                                                 batch_label=f"复评 {direction} 第 {batch_num}/{total_batches} 批",
                                                 strategy=direction, config=config)
+
+                    # 诊断：检查复评 LLM 返回数量是否与输入一致
+                    if len(scored2_list) < len(batch):
+                        missing = [batch[pos].get("eval_id", "?") for pos in range(len(scored2_list), len(batch))]
+                        emit(f"   ⚠️ [诊断] 复评{direction} 第{batch_num}批: 输入{len(batch)}个 → LLM返回{len(scored2_list)}个，丢失eval_id: {missing}")
 
                     # 按位置匹配复评结果
                     for pos, s in enumerate(batch):
