@@ -208,8 +208,18 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
         if hasattr(raw_completion, 'usage') and raw_completion.usage:
             _store_usage(raw_completion.usage.prompt_tokens, raw_completion.usage.completion_tokens)
         # 存储原始返回文本供诊断使用（线程安全）
-        if raw_completion.choices and raw_completion.choices[0].message.content:
-            _llm_raw_local.text = raw_completion.choices[0].message.content
+        try:
+            choices = getattr(raw_completion, 'choices', [])
+            if choices:
+                msg = choices[0].message
+                _llm_raw_local.text = getattr(msg, 'content', '') or ''
+            if not _llm_raw_local.text:
+                print(f"[诊断raw] choices count={len(choices)}")
+                if choices:
+                    print(f"[诊断raw] message keys={list(choices[0].message.__dict__.keys()) if hasattr(choices[0].message, '__dict__') else dir(choices[0].message)}")
+                    print(f"[诊断raw] content={repr(choices[0].message.content)}")
+        except Exception as e:
+            print(f"[诊断raw] 异常: {e}")
         return result
 
     last_error = None
