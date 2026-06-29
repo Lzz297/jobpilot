@@ -1991,8 +1991,6 @@ async function renderEvalTab() {
   refreshIcons();
 }
 
-function escapeHtml(str) { var s = String(str); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-
 function startEval(set_name) {
   if (guardBusy()) return;
   if (!STATE.sid) { toast('Session 未建立', 'warn'); return; }
