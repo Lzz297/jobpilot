@@ -697,16 +697,21 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
             total_batches = (len(dir_jobs) + batch_size - 1) // batch_size
             emit(f"   📊 {direction} 第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
 
-            scored = _score_batch(batch, profile_summary, dir_weights,
+            # 构建带有局部 index 的副本传给 LLM，让 prompt 中岗位编号为 1-N
+            local_batch = []
+            for local_idx, job in enumerate(batch, 1):
+                temp_job = job.copy()
+                temp_job["index"] = local_idx
+                local_batch.append(temp_job)
+
+            scored = _score_batch(local_batch, profile_summary, dir_weights,
                                   batch_label=f"{direction} 第 {batch_num} 批",
                                   strategy=direction, config=config)
 
-            # 构建当前 batch 的 index 映射字典，精确匹配
-            idx_to_job = {j.get("index"): j for j in batch}
-
-            for s in scored:
-                orig_job = idx_to_job.get(s.get("index"))
-                if orig_job:
+            # 按位置匹配：LLM 按输入顺序返回结果，不依赖其是否返回 index 字段
+            for pos, s in enumerate(scored):
+                if pos < len(batch):
+                    orig_job = batch[pos]
                     s["url"] = orig_job.get("url", "")
                     s["description"] = orig_job.get("description", "")
                     if not s.get("title"):
@@ -715,6 +720,8 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
                         s["company"] = orig_job.get("company", "")
                     s["llm_direction"] = orig_job.get("llm_direction", "default")
                     s["weight_profile"] = s["llm_direction"]
+                    # 恢复全局 index 供后续 B.5 使用
+                    s["index"] = orig_job.get("index")
                     # 透传 eval_id
                     if orig_job.get("eval_id"):
                         s["eval_id"] = orig_job["eval_id"]
@@ -756,6 +763,7 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
 
                 for i in range(0, len(dir_jobs), rescore_batch_size):
                     batch = dir_jobs[i:i + rescore_batch_size]
+                    # 构建 original_batch：用 url 查找原始 job，找不到则用 scored 对象自身
                     original_batch = []
                     for s in batch:
                         norm = normalize_jobsdb_url(s.get("url", ""))
@@ -769,38 +777,45 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
                                 "description": s.get("description", ""),
                                 "url": s.get("url", ""),
                                 "eval_id": s.get("eval_id", ""),
+                                "index": s.get("index"),
                             })
+
+                    # 构建 local_batch 给 LLM（局部 index 1-N）
+                    local_batch = []
+                    for local_idx, job in enumerate(original_batch, 1):
+                        temp_job = job.copy()
+                        temp_job["index"] = local_idx
+                        local_batch.append(temp_job)
 
                     batch_num = i // rescore_batch_size + 1
                     total_batches = (len(dir_jobs) + rescore_batch_size - 1) // rescore_batch_size
-                    scored2_list = _score_batch(original_batch, profile_summary, dir_weights,
+                    scored2_list = _score_batch(local_batch, profile_summary, dir_weights,
                                                 batch_label=f"复评 {direction} 第 {batch_num}/{total_batches} 批",
                                                 strategy=direction, config=config)
 
-                    # 构建复评结果的 index 映射字典，精确匹配
-                    scored2_map = {s2.get("index"): s2 for s2 in scored2_list}
+                    # 按位置匹配复评结果
+                    for pos, s in enumerate(batch):
+                        if pos < len(scored2_list):
+                            s2 = scored2_list[pos]
+                            if s2.get("scores"):
+                                round2_total = _calc_total_score(s2["scores"], dir_weights)
+                                round1_total = s["score_rounds"][0]
+                                avg_scores = {}
+                                for dim in ["skill", "experience", "level", "industry", "bonus"]:
+                                    avg_scores[dim] = round(
+                                        (s.get("scores", {}).get(dim, 0) + s2["scores"].get(dim, 0)) / 2
+                                    )
+                                avg_total = _calc_total_score(avg_scores, dir_weights)
+                                variance = abs(round1_total - round2_total)
 
-                    for s in batch:
-                        s2 = scored2_map.get(s.get("index"))
-                        if s2 and s2.get("scores"):
-                            round2_total = _calc_total_score(s2["scores"], dir_weights)
-                            round1_total = s["score_rounds"][0]
-                            avg_scores = {}
-                            for dim in ["skill", "experience", "level", "industry", "bonus"]:
-                                avg_scores[dim] = round(
-                                    (s.get("scores", {}).get(dim, 0) + s2["scores"].get(dim, 0)) / 2
-                                )
-                            avg_total = _calc_total_score(avg_scores, dir_weights)
-                            variance = abs(round1_total - round2_total)
+                                s["scores"] = avg_scores
+                                s["total_score"] = avg_total
+                                s["score_rounds"] = [round1_total, round2_total]
+                                s["score_variance"] = variance
+                                s["confidence"] = "verified" if variance <= 10 else "uncertain"
 
-                            s["scores"] = avg_scores
-                            s["total_score"] = avg_total
-                            s["score_rounds"] = [round1_total, round2_total]
-                            s["score_variance"] = variance
-                            s["confidence"] = "verified" if variance <= 10 else "uncertain"
-
-                            if variance > 10:
-                                s["reason"] = f"⚠️ 评分波动较大（{round1_total} vs {round2_total}）| " + s.get("reason", "")
+                                if variance > 10:
+                                    s["reason"] = f"⚠️ 评分波动较大（{round1_total} vs {round2_total}）| " + s.get("reason", "")
 
                             emit(f"     📊 {s.get('title', '?')[:35]}: "
                                  f"{round1_total}→{round2_total}（平均 {avg_total}，波动 {variance}）")
