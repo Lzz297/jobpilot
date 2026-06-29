@@ -214,12 +214,12 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
                 msg = choices[0].message
                 _llm_raw_local.text = getattr(msg, 'content', '') or ''
             if not _llm_raw_local.text:
-                print(f"[诊断raw] choices count={len(choices)}")
+                emit(f"[诊断raw] choices count={len(choices)}")
                 if choices:
-                    print(f"[诊断raw] message keys={list(choices[0].message.__dict__.keys()) if hasattr(choices[0].message, '__dict__') else dir(choices[0].message)}")
-                    print(f"[诊断raw] content={repr(choices[0].message.content)}")
+                    emit(f"[诊断raw] message keys={list(choices[0].message.__dict__.keys()) if hasattr(choices[0].message, '__dict__') else dir(choices[0].message)}")
+                    emit(f"[诊断raw] content={repr(choices[0].message.content)}")
         except Exception as e:
-            print(f"[诊断raw] 异常: {e}")
+            emit(f"[诊断raw] 异常: {e}")
         return result
 
     last_error = None
