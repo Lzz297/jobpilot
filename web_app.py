@@ -280,23 +280,24 @@ def _run_eval_sse(set_name):
     _eval_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "evaluation")
     if _eval_path not in sys.path:
         sys.path.insert(0, _eval_path)
-    from eval_core import run_evaluation
+    from eval_core import run_evaluation, is_placeholder_profile
 
     # 保存 SSE queue 引用
     import config as _cfg
     q = getattr(_cfg._emit_local, "queue", None)
 
-    # ── 加载画像与配置 ──
+    # ── 1. 加载画像并检查是否为占位模板 ──
     profile = load_profile()
+    if is_placeholder_profile(profile):
+        emit("⚠️ 用户画像可能为占位模板，评分结果仅供流程验证")
+
+    # ── 2. 加载 Campaign 配置 ──
     CAMPAIGN_NAME = "default"
     config = load_campaign(CAMPAIGN_NAME)
     emit(f"Campaign: {CAMPAIGN_NAME}")
 
-    # ── 调用核心评估流水线 ──
-    output_data, result_path = run_evaluation(
-        set_name, profile, config,
-        progress_callback=emit,
-    )
+    # ── 3. 调用核心评估流水线 ──
+    output_data, result_path = run_evaluation(set_name, profile, config)
 
     meta = output_data["meta"]
     history = meta.get("history", {})

@@ -1,15 +1,99 @@
 """
 eval_core.py — 评估公共核心模块
 
-CLI (run_eval.py) 和 Web (_run_eval_sse) 共享的评估逻辑。
-提供 load_eval_dataset / build_eval_jobs_list / compute_metrics /
-compare_with_history / cleanup_old_results / run_evaluation 六个函数。
+Web UI (_run_eval_sse) 调用的评估逻辑。
+提供 load_eval_dataset / build_eval_jobs_list / is_placeholder_profile /
+compute_metrics / compare_with_history / cleanup_old_results /
+run_evaluation 七个函数。
 """
 import json
 import os
 import re
 from datetime import datetime
 from collections import Counter
+
+from config import emit, OUTPUT_DIR
+from config import clear_usage_accumulator, get_accumulated_usage
+from config import load_search_config_dict
+
+
+# ============================================================
+#  价格常量（单位：USD / 1M tokens）
+# ============================================================
+
+PRICES = {
+    "deepseek": {"input": 0.55, "output": 2.19},
+    "deepseek-v4-pro": {"input": 0.55, "output": 2.19},
+    "qwen": {"input": 0.40, "output": 1.60},
+    "qwen3.6-plus": {"input": 0.40, "output": 1.60},
+    "glm": {"input": 1.00, "output": 1.50},
+    "glm-5.1": {"input": 1.00, "output": 1.50},
+}
+
+
+# ============================================================
+#  工具函数
+# ============================================================
+
+def _load_model_name() -> str:
+    """从 search_config 读取当前模型名。"""
+    try:
+        cfg, _ = load_search_config_dict()
+        return (cfg or {}).get("llm", {}).get("model", "unknown")
+    except Exception:
+        return "unknown"
+
+
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """估算单次调用的美元成本。"""
+    price = PRICES.get(model, PRICES["deepseek-v4-pro"])
+    return (input_tokens / 1_000_000) * price["input"] + (output_tokens / 1_000_000) * price["output"]
+
+
+def is_placeholder_profile(profile: dict) -> bool:
+    """判断用户画像是否实质有内容。
+
+    返回 True 表示是空模板，False 表示有实质内容。
+    """
+    if not profile:
+        return True
+    score = 0
+
+    # 1. 工作经历：有实质描述
+    work = profile.get("work_experience", [])
+    if work and len(work) > 0:
+        first = work[0]
+        if first.get("description") or first.get("highlights") or first.get("core_modules"):
+            score += 3
+        elif first.get("company") and first.get("title"):
+            score += 1
+
+    # 2. 技能：有多个类别或具体条目
+    skills = profile.get("skills", {})
+    skill_count = 0
+    for category, items in skills.items():
+        if isinstance(items, list) and len(items) > 0:
+            skill_count += len(items)
+    if skill_count >= 5:
+        score += 3
+    elif skill_count >= 2:
+        score += 2
+    elif skill_count >= 1:
+        score += 1
+
+    # 3. 项目经历：有实质描述
+    projects = profile.get("projects", [])
+    if projects and len(projects) > 0:
+        if any(p.get("description") or p.get("resume_bullets") for p in projects):
+            score += 2
+
+    # 4. 自我评价：有足够长度的描述
+    summary = profile.get("summary", "")
+    if summary and len(summary.strip()) > 50:
+        score += 1
+
+    # 判定：总分 >= 3 认为画像有实质内容
+    return score < 3
 
 
 # ============================================================
@@ -53,18 +137,17 @@ def build_confusion_matrix(results: list) -> dict:
 
     Returns:
         {
-            "labels": ["default", "payment", "solutions", "technical", "web3"],
-            "matrix": [[8, 0, 1, 2, 0], ...]  # matrix[i][j] = expected=labels[i] 被预测为 labels[j] 的数量
+            "labels": ["default", "payment", ...],
+            "matrix": [[8, 0, 1, ...], ...]
+            # matrix[i][j] = expected=labels[i] 被预测为 labels[j] 的数量
         }
     """
-    # 收集所有出现过的方向标签
     all_dirs = set()
     for r in results:
         all_dirs.add(r["expected_direction"])
         all_dirs.add(r["predicted_direction"])
-    labels = sorted(all_dirs)  # 字母序保证稳定
+    labels = sorted(all_dirs)
 
-    # 构建 label -> index 映射
     idx = {label: i for i, label in enumerate(labels)}
     n = len(labels)
     matrix = [[0] * n for _ in range(n)]
@@ -84,22 +167,9 @@ def build_confusion_matrix(results: list) -> dict:
 def compute_metrics(cases: list, all_scored: list, profile_summary: str) -> dict:
     """将 all_scored 按 eval_id 匹配到 cases，计算结果列表和各项指标。
 
-    Args:
-        cases: 原始标注数据列表
-        all_scored: execute_matching_pipeline 返回的评分结果列表
-        profile_summary: 用户画像摘要 JSON 字符串（注入每条 result）
-
-    Returns:
-        {
-            "results": [...],
-            "dir_correct": 15,
-            "dir_total": 20,
-            "dir_accuracy": 0.75,
-            "dir_counts": {"technical": 10, "web3": 5, ...},
-            "dir_hits": {"technical": 8, "web3": 4, ...},
-            "confusion_matrix": {...},
-            "errors": 0,
-        }
+    每条 result 包含：id, title, expected_direction, predicted_direction,
+    direction_correct, scores, total_score, reason, input_tokens, output_tokens,
+    description, profile_summary, expected_score_range, score_range_correct。
     """
     scored_dict = {s["eval_id"]: s for s in all_scored if s.get("eval_id")}
     results = []
@@ -120,6 +190,19 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str) -> dict
             errors += 1
 
         expected_dir = case.get("expected_direction", "default")
+        match = "✓" if predicted_dir == expected_dir else f"✗ (expected {expected_dir})"
+        emit(f"[{case['id']}] {case['title'][:60]} → {predicted_dir} {match}")
+
+        # ── 分数档位准确率 ──
+        expected_range = case.get("expected_score_range", "PENDING")
+        if expected_range == "high":
+            range_correct = total_score >= 70
+        elif expected_range == "medium":
+            range_correct = 45 <= total_score <= 69
+        elif expected_range == "low":
+            range_correct = total_score < 45
+        else:
+            range_correct = None  # PENDING 或未知，不判断
 
         results.append({
             "id": case["id"],
@@ -135,6 +218,9 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str) -> dict
             # ── 离线分析支撑字段 ──
             "description": case["description"],
             "profile_summary": profile_summary,
+            # ── 分数档位 ──
+            "expected_score_range": expected_range,
+            "score_range_correct": range_correct,
         })
 
     # 方向准确率
@@ -172,16 +258,7 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str) -> dict
 
 def compare_with_history(set_name: str, eval_dir: str, current_result_path: str,
                          current_accuracy: float) -> dict:
-    """查找上一次同数据集的结果文件，计算准确率变化。
-
-    Returns:
-        {
-            "prev_file": "eval_dev_set_20260628_120000.json" or None,
-            "prev_accuracy": 0.72 or None,
-            "delta": 0.03,
-            "arrow": "↑" or "↓" or "=",
-        }
-    """
+    """查找上一次同数据集的结果文件，计算准确率变化。"""
     history_files = sorted(
         [f for f in os.listdir(eval_dir)
          if f.startswith(f"eval_{set_name}_") and f != os.path.basename(current_result_path)],
@@ -222,11 +299,9 @@ def cleanup_old_results(eval_dir: str, keep: int = 20) -> int:
     if not os.path.exists(eval_dir):
         return 0
 
-    # 匹配文件名格式: eval_{set_name}_YYYYMMDD_HHMMSS.json
     pattern = re.compile(r"^eval_(.+)_\d{8}_\d{6}\.json$")
 
-    # 按 set_name 分组
-    groups = {}  # set_name -> [(mtime, filepath), ...]
+    groups = {}
     for fname in os.listdir(eval_dir):
         m = pattern.match(fname)
         if not m:
@@ -235,10 +310,9 @@ def cleanup_old_results(eval_dir: str, keep: int = 20) -> int:
         full_path = os.path.join(eval_dir, fname)
         groups.setdefault(set_name, []).append((os.path.getmtime(full_path), full_path))
 
-    # 每个 set 独立排序并删除多余文件
     deleted = 0
     for set_name, files in groups.items():
-        files.sort(key=lambda x: x[0], reverse=True)  # mtime 降序
+        files.sort(key=lambda x: x[0], reverse=True)
         for _, filepath in files[keep:]:
             os.remove(filepath)
             deleted += 1
@@ -247,37 +321,16 @@ def cleanup_old_results(eval_dir: str, keep: int = 20) -> int:
 
 
 # ============================================================
-#  7. 核心编排函数（CLI 和 Web 共用入口）
+#  7. 核心编排函数（Web 评估入口）
 # ============================================================
 
-def run_evaluation(set_name: str, profile: dict, config: dict,
-                   progress_callback=None) -> tuple:
+def run_evaluation(set_name: str, profile: dict, config: dict) -> tuple:
     """执行完整评估流水线，返回 (output_data, result_path)。
 
-    Args:
-        set_name: 数据集名称 ("dev_set" 或 "holdout")
-        profile: 用户画像字典
-        config:  Campaign 配置字典
-        progress_callback: 可选的进度回调函数，签名为 callback(msg: str)
-
-    Returns:
-        (output_data, result_path)
-        output_data 的格式：
-        {
-            "meta": { "set", "run_time", "num_cases", "errors",
-                      "direction_accuracy", "dir_correct", "dir_total",
-                      "total_input_tokens", "total_output_tokens",
-                      "confusion_matrix", "history" },
-            "results": [ ... ]
-        }
+    所有进度通过 emit() 推送到 SSE，meta 自动包含 model 和 estimated_cost_usd。
     """
-    from config import clear_usage_accumulator, get_accumulated_usage, OUTPUT_DIR
     from job_match import execute_matching_pipeline
     from job_match import _build_profile_summary
-
-    def emit(msg: str):
-        if progress_callback:
-            progress_callback(msg)
 
     # ── 1. 加载数据集 ──
     cases = load_eval_dataset(set_name)
@@ -297,12 +350,12 @@ def run_evaluation(set_name: str, profile: dict, config: dict,
     # ── 5. 计算指标 ──
     metrics = compute_metrics(cases, all_scored, profile_summary)
 
-    # ── 6. 打印结果 ──
+    # ── 6. 打印方向统计 ──
     emit(f"方向准确率: {metrics['dir_correct']}/{metrics['dir_total']} = {metrics['dir_accuracy']:.1%}")
     for d in sorted(metrics["dir_counts"]):
         emit(f"  {d}: {metrics['dir_hits'].get(d, 0)}/{metrics['dir_counts'][d]}")
 
-    # 混淆矩阵日志
+    # ── 7. 打印混淆矩阵 ──
     cm = metrics["confusion_matrix"]
     emit(f"混淆矩阵 (行=expected, 列=predicted):")
     header = "           " + " ".join(f"{l:<12}" for l in cm["labels"])
@@ -311,7 +364,13 @@ def run_evaluation(set_name: str, profile: dict, config: dict,
         row = " ".join(f"{n:<12}" for n in cm["matrix"][i])
         emit(f"  {label:<8} {row}")
 
-    # ── 7. 保存结果 ──
+    # ── 8. 自动计算模型与成本 ──
+    model_name = _load_model_name()
+    total_cost = _estimate_cost(model_name,
+                                total_usage["input_tokens"],
+                                total_usage["output_tokens"])
+
+    # ── 9. 保存结果 ──
     eval_dir = os.path.join(OUTPUT_DIR, "eval")
     os.makedirs(eval_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -323,6 +382,7 @@ def run_evaluation(set_name: str, profile: dict, config: dict,
         "meta": {
             "set": set_name,
             "run_time": datetime.now().isoformat(),
+            "model": model_name,
             "num_cases": len(cases),
             "errors": metrics["errors"],
             "direction_accuracy": metrics["dir_accuracy"],
@@ -330,6 +390,7 @@ def run_evaluation(set_name: str, profile: dict, config: dict,
             "dir_total": metrics["dir_total"],
             "total_input_tokens": total_usage["input_tokens"],
             "total_output_tokens": total_usage["output_tokens"],
+            "estimated_cost_usd": total_cost,
             "confusion_matrix": cm,
             "history": {
                 "prev_file": history["prev_file"],
@@ -343,13 +404,13 @@ def run_evaluation(set_name: str, profile: dict, config: dict,
     with open(result_path, "w", encoding="utf-8") as f:
         json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-    # ── 8. 历史对比日志 ──
+    # ── 10. 历史对比日志 ──
     if history["prev_file"]:
         emit(f"历史对比 (上次: {history['prev_file']}): "
              f"{history['prev_accuracy']:.1%} → {metrics['dir_accuracy']:.1%} "
              f"({history['arrow']}{abs(history['delta']):.1%})")
 
-    # ── 9. 清理旧结果 ──
+    # ── 11. 清理旧结果 ──
     deleted = cleanup_old_results(eval_dir, keep=20)
     if deleted:
         emit(f"🧹 已清理 {deleted} 个旧评估文件（每组保留最近 20 个）")
