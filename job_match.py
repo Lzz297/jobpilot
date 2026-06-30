@@ -350,6 +350,7 @@ def match_jobs(config: dict = None, profile: dict = None):
     min_score = matching_cfg.get("min_match_score", 50)
     top_n = matching_cfg.get("top_n", 10)
     borderline_rescore = matching_cfg.get("borderline_rescore", False)
+    borderline_range = matching_cfg.get("borderline_range", 8)
     weight_profiles = matching_cfg.get("weight_profiles", {})
 
     # ── 核心逻辑：纯函数调用 ──

@@ -69,6 +69,18 @@ def login():
     # 确保新用户有默认策略
     _ensure_user_strategies(user["id"])
 
+    # 自动激活登录用户对应的画像
+    profile_row = _db_fetch_one(
+        "SELECT name FROM user_profiles WHERE name = ?", (username,)
+    )
+    if profile_row:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE user_profiles SET is_current = 0")
+        cursor.execute("UPDATE user_profiles SET is_current = 1 WHERE name = ?", (username,))
+        conn.commit()
+        conn.close()
+
     return jsonify({"status": "ok", "username": username, "role": user["role"]})
 
 @app.route("/api/auth/logout", methods=["POST"])
@@ -200,7 +212,7 @@ def _run_agent_turn(sid, user_message):
 #  Pipeline 直接执行（不经过 LLM）
 # ============================================================
 
-def _run_pipeline(sid, action, sort_by=None, languages=None):
+def _run_pipeline(sid, action, sort_by=None, languages=None, skip_resume=False):
     """直接执行 search_jobs + match_jobs 流水线，不经过 LLM 决策。"""
     session = _get_or_create_session(sid)
     q = session["queue"]
@@ -232,10 +244,13 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
                 q.put({"type": "progress", "text": match_result})
 
                 if not match_result.startswith("错误"):
-                    q.put({"type": "status", "text": "Generating direction-based resumes..."})
-                    resume_result = generate_resume(by_direction=True, output_langs=languages, profile=cfg.get("user_profile") if cfg else None)
-                    q.put({"type": "progress", "text": resume_result})
-                    reply = resume_result
+                    if not skip_resume:
+                        q.put({"type": "status", "text": "Generating direction-based resumes..."})
+                        resume_result = generate_resume(by_direction=True, output_langs=languages, profile=cfg.get("user_profile") if cfg else None)
+                        q.put({"type": "progress", "text": resume_result})
+                        reply = resume_result
+                    else:
+                        reply = match_result
                 else:
                     reply = match_result
             else:
@@ -245,15 +260,16 @@ def _run_pipeline(sid, action, sort_by=None, languages=None):
             reply = f"Unknown pipeline action: {action}"
 
         # 推送核查报告（review 事件在 done 之前）
-        try:
-            import resume_gen as _rg
-            cr = getattr(_rg, 'last_check_report', [])
-            if cr:
-                q.put({"type": "review", "bullets": cr, "flagged_count": len(cr)})
-            else:
-                q.put({"type": "review", "bullets": [], "flagged_count": 0})
-        except Exception:
-            pass
+        if not skip_resume:
+            try:
+                import resume_gen as _rg
+                cr = getattr(_rg, 'last_check_report', [])
+                if cr:
+                    q.put({"type": "review", "bullets": cr, "flagged_count": len(cr)})
+                else:
+                    q.put({"type": "review", "bullets": [], "flagged_count": 0})
+            except Exception:
+                pass
 
         files = get_session_files()
         q.put({
@@ -370,6 +386,7 @@ def pipeline():
     action = data.get("action", "")
     sort_by = data.get("sort_by")  # optional: "date" or "relevance"
     languages = data.get("languages")  # optional: ["en","hk","cn"] subset
+    skip_resume = data.get("skip_resume", False)
 
     if not sid or not action:
         return jsonify({"error": "Missing sid or action"}), 400
@@ -393,7 +410,7 @@ def pipeline():
     t = threading.Thread(
         target=_run_pipeline,
         args=(sid, action),
-        kwargs={"sort_by": sort_by, "languages": languages},
+        kwargs={"sort_by": sort_by, "languages": languages, "skip_resume": skip_resume},
         daemon=True,
     )
     t.start()
@@ -1446,7 +1463,7 @@ def delete_strategy(id):
 @app.route("/api/users", methods=["GET"])
 def list_users():
     """列出所有可用用户画像。优先从 SQLite 读取。"""
-    rows = _db_fetch_all("SELECT name, data FROM user_profiles")
+    rows = _db_fetch_all("SELECT name, data, is_current FROM user_profiles")
     if rows:
         result = []
         for r in rows:
@@ -1458,6 +1475,7 @@ def list_users():
             result.append({
                 "name": r["name"],
                 "user_name": user_name,
+                "is_current": bool(r["is_current"]),
             })
         return jsonify(result)
     return jsonify([])

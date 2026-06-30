@@ -268,16 +268,24 @@
           <h1 class="text-lg font-bold text-slate-900">工作台</h1>
           <p class="text-sm text-slate-500">自然语言对话，或用快捷操作一键触发完整流程</p>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-            <button onclick="startPipeline()" class="agent-trigger text-left p-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition">
+            <button onclick="startPipeline()" class="agent-trigger group text-left p-3 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 transition w-full">
               <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm"><i data-lucide="zap" class="w-4 h-4"></i> 一键找工作</div>
-              <div class="text-xs text-slate-500 mt-1">搜索 → 匹配 → 方向聚合简历</div>
-              <div class="text-[11px] text-indigo-500 mt-1.5">点击后先选简历语言 · 排序：<span id="qa-sort">按发布时间</span></div></button>
-            <button onclick="switchView('market')" class="text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition">
+              <div class="text-xs text-slate-500 mt-1" id="qa-desc">搜索 → 匹配 → 方向聚合简历</div>
+              <div class="flex items-center justify-between mt-2">
+                <label class="flex items-center gap-1.5 cursor-pointer select-none" onclick="event.stopPropagation()">
+                  <input id="qa-resume-toggle" type="checkbox" checked onchange="updateQAToggle()" class="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                  <span class="text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors">生成简历</span>
+                </label>
+                <span class="text-[11px] text-indigo-500"><span id="qa-hint-prefix">选语言后开始 — </span>排序：<span id="qa-sort">按发布时间</span></span>
+              </div></button>
+            <button onclick="switchView('market')" class="group text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition w-full">
               <div class="flex items-center gap-2 text-slate-700 font-semibold text-sm"><i data-lucide="line-chart" class="w-4 h-4"></i> 市场调研</div>
-              <div class="text-xs text-slate-500 mt-1">指定岗位类别，分析市场行情</div></button>
-            <button onclick="switchView('resume')" class="text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition">
+              <div class="text-xs text-slate-500 mt-1">指定岗位类别，分析市场行情</div>
+              <div class="mt-2"><span class="text-[11px] text-slate-400">点击进入 — 类别 · 行业可配置</span></div></button>
+            <button onclick="switchView('resume')" class="group text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition w-full">
               <div class="flex items-center gap-2 text-slate-700 font-semibold text-sm"><i data-lucide="file-text" class="w-4 h-4"></i> 简历生成</div>
-              <div class="text-xs text-slate-500 mt-1">5 种模式 · 三语可选</div></button>
+              <div class="text-xs text-slate-500 mt-1">基于匹配结果 · 多模式 · 三语</div>
+              <div class="mt-2"><span class="text-[11px] text-slate-400">点击进入 — 5 种生成模式可选</span></div></button>
           </div>
         </div>
         <div id="chat-messages" class="flex-1 overflow-y-auto px-6 py-5 space-y-5 bg-slate-50"></div>
@@ -1113,20 +1121,33 @@ function confirmLang(){
   if(cb) cb(langs);
 }
 
+function updateQAToggle() {
+  var on = document.getElementById('qa-resume-toggle').checked;
+  document.getElementById('qa-desc').textContent = on ? '搜索 → 匹配 → 方向聚合简历' : '搜索 → 匹配（不含简历）';
+  var prefix = document.getElementById('qa-hint-prefix');
+  if (prefix) prefix.textContent = on ? '选语言后开始 — ' : '搜索+匹配 — ';
+}
+
 function startPipeline(){
   if(guardBusy()) return;
   if(!STATE.sid){ toast('正在连接服务器…','warn'); return; }
-  openLangModal(PIPE_LANGS, langs => { PIPE_LANGS=langs; runPipeline(langs); });
+  var skipResume = !document.getElementById('qa-resume-toggle').checked;
+  if(skipResume) {
+    runPipeline(['en'], true);
+  } else {
+    openLangModal(PIPE_LANGS, function(langs) { PIPE_LANGS = langs; runPipeline(langs, false); });
+  }
 }
-function runPipeline(langs){
+function runPipeline(langs, skipResume){
   if(guardBusy()) return; setBusy(true); switchView('workspace');
-  chatUser('一键找工作（产出语言：'+langs.map(l=>LANG_SHORT[l]).join('/')+'）');
+  var label = skipResume ? '一键找工作（仅搜索评分）' : '一键找工作（产出语言：'+langs.map(function(l){return LANG_SHORT[l];}).join('/')+'）';
+  chatUser(label);
   const t = chatTurn(); const box = t.log;
   startSSE(box, (reply, files) => {
     t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="font-semibold text-slate-800 text-sm mb-1">✅ 找工作流程完成</div><p class="text-sm text-slate-600">结果已写入当前 Run。</p><div class="grid grid-cols-3 gap-2 my-3 text-center"><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-slate-800">—</div><div class="text-[11px] text-slate-400">抓取岗位</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-emerald-600">—</div><div class="text-[11px] text-slate-400">达标匹配</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-indigo-600">${files.filter(f=>Array.isArray(f)?(f[0]||'').includes('resume_'):String(f).includes('resume_')).length||'—'}</div><div class="text-[11px] text-slate-400">简历文件</div></div></div>${fileChips(files)}<div class="flex gap-2 mt-3"><button onclick="switchView('matches')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button><button onclick="switchView('files')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button></div></div>`;
     refreshIcons(); scrollChat();
   }, null, 0, () => {
-    apiPost('/api/pipeline', {sid:STATE.sid, action:'search_match', sort_by:STATE.sort, languages:langs});
+    apiPost('/api/pipeline', {sid:STATE.sid, action:'search_match', sort_by:STATE.sort, languages:langs, skip_resume: skipResume});
   });
 }
 
@@ -2191,8 +2212,11 @@ async function loadUserList(){
     if(!sel) return;
     if(data && data.length){
       sel.innerHTML = data.map(c =>
-        `<option value="${c.name}" ${c.name===STATE.user?'selected':''}>${c.user_name} · ${c.name}</option>`
+        `<option value="${c.name}" ${c.is_current?'selected':''}>${c.user_name} · ${c.name}</option>`
       ).join('');
+      // 同步 STATE.user 为后端真实的当前画像
+      const current = data.find(c => c.is_current);
+      if (current) STATE.user = current.name;
     }
   } catch(e){ console.warn('加载画像列表失败', e); }
 }
@@ -2210,6 +2234,7 @@ document.getElementById('user-select').addEventListener('change', async function
         renderSettings();
     }
     toast(`已切换画像：${user}`,'ok');
+    await loadUserList();  // 重新渲染，确保选中态真实反映后端 is_current
   } catch(e){
     toast('切换失败: '+e.message,'err');
     this.value = STATE.user||'';
