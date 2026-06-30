@@ -616,40 +616,6 @@ def _build_html_title_map(soup):
 # 从列表页提取岗位链接
 # ─────────────────────────────────────
 
-def extract_job_links_from_listing(url: str, max_links: int = 15) -> list:
-    links = []
-    try:
-        html = _fetch_html(url)
-        if not html:
-            return links
-        soup = BeautifulSoup(html, 'lxml')
-
-        next_tag = soup.find('script', id='__NEXT_DATA__')
-        if next_tag and next_tag.string:
-            try:
-                data = json.loads(next_tag.string)
-                jobs_data = _find_jobs_array(data)
-                for item in jobs_data[:max_links]:
-                    job_id = _extract_id(item)
-                    if job_id:
-                        links.append(f"https://hk.jobsdb.com/job/{job_id}")
-            except (json.JSONDecodeError, AttributeError):
-                pass
-
-        if not links:
-            for a_tag in soup.find_all('a', href=True):
-                href = a_tag['href']
-                full_url = href if href.startswith('http') else f"https://hk.jobsdb.com{href}"
-                if is_job_detail_url(full_url) and full_url not in links:
-                    links.append(full_url)
-                    if len(links) >= max_links:
-                        break
-
-    except Exception as e:
-        emit(f"   ⚠️ 提取列表页链接失败: {e}")
-    return links
-
-
 # ─────────────────────────────────────
 # 第一层：扫描 JobsDB 搜索列表页
 # ─────────────────────────────────────
@@ -852,15 +818,6 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
 # ─────────────────────────────────────
 # 兼容旧接口
 # ─────────────────────────────────────
-
-def search_jobsdb_direct(keyword: str, location: str = "Hong Kong",
-                         pages: int = 2, max_per_page: int = 15,
-                         sort_by: str = "date") -> list:
-    items = scan_jobsdb_listings(keyword, location, max_pages=pages, sort_by=sort_by)
-    return [{"url": it["url"], "title": it["title"],
-             "company": it["company"], "snippet": it["snippet"]}
-            for it in items[:pages * max_per_page]]
-
 
 # ─────────────────────────────────────
 # 抓取单个岗位详情

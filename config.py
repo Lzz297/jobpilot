@@ -46,23 +46,7 @@ def _db_fetch_all(query, params=()):
 
 # ── 密码哈希工具 ──
 
-from werkzeug.security import generate_password_hash, check_password_hash
-
-def set_user_password(username, password):
-    """设置或更新用户密码。返回 True 成功，False 用户不存在。"""
-    try:
-        pw_hash = generate_password_hash(password)
-        conn = _get_db()
-        cursor = conn.cursor()
-        cursor.execute("UPDATE users SET password_hash = ? WHERE username = ?", (pw_hash, username))
-        if cursor.rowcount == 0:
-            conn.close()
-            return False
-        conn.commit()
-        conn.close()
-        return True
-    except Exception:
-        return False
+from werkzeug.security import check_password_hash
 
 def verify_user_password(username, password):
     """验证用户密码。返回 (True, user_dict) 或 (False, None)。"""
@@ -435,21 +419,6 @@ def _store_usage(input_tokens: int, output_tokens: int) -> None:
     _usage_local.last_output = output_tokens
     _usage_local.batch_input = getattr(_usage_local, 'batch_input', 0) + input_tokens
     _usage_local.batch_output = getattr(_usage_local, 'batch_output', 0) + output_tokens
-
-
-def get_last_usage() -> dict | None:
-    """获取最近一次 LLM 调用的 token 用量。无数据返回 None。"""
-    inp = getattr(_usage_local, 'last_input', 0)
-    out = getattr(_usage_local, 'last_output', 0)
-    if inp == 0 and out == 0:
-        return None
-    return {"input_tokens": inp, "output_tokens": out}
-
-
-def clear_last_usage() -> None:
-    """清空最近一次 token 记录。每次独立 LLM 调用前使用，防止异常时串台。"""
-    _usage_local.last_input = 0
-    _usage_local.last_output = 0
 
 
 def clear_usage_accumulator() -> None:
