@@ -1186,8 +1186,8 @@ function runPipeline(langs, skipResume){
           (m.mode ? '<div class="text-[11px] text-slate-400">' + m.mode + '</div>' : '') +
           (m.rescoreN && +m.rescoreN > 0 ? '<div class="flex items-center gap-1.5 text-[11px] text-slate-500"><span class="w-1 h-1 rounded-full bg-amber-400"></span> 复评 ' + m.rescoreN + ' 个' + (m.rescoreRange ? '（' + m.rescoreRange + ' 分区间）' : '') + '</div>' : '') +
           (llmCount + kwCount > 0 ? '<div class="flex items-center gap-3 text-[11px] flex-wrap">' +
-            '<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> LLM 判定 ' + llmCount + ' 个</span>' +
-            '<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full ' + (kwCount > 0 ? 'bg-amber-400' : 'bg-emerald-400') + '"></span> 关键词兜底 ' + kwCount + ' 个</span>' +
+            '<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> 方向 LLM 判定 ' + llmCount + ' 个</span>' +
+            '<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full ' + (kwCount > 0 ? 'bg-amber-400' : 'bg-emerald-400') + '"></span> 方向关键词兜底 ' + kwCount + ' 个</span>' +
           '</div>' : '') +
           (fbCount > 0 ? '<div class="text-[11px] text-red-400">兜底触发 ' + fbCount + ' 次（方向' + (stats.direction_fb||0) + ' / 权重' + (stats.weight_fb||0) + ' / 评分异常' + (stats.score_err||0) + '）</div>' : '') +
         '</div>' +
