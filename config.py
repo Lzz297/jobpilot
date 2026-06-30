@@ -453,7 +453,13 @@ def emit(text):
 def get_session_files():
     """获取并清空本轮生成的文件列表（Web 模式用）。"""
     global _session_files
-    files = [(os.path.abspath(fp), desc) for fp, desc in _session_files]
+    files = []
+    for fp, desc in _session_files:
+        try:
+            rel = os.path.relpath(fp, OUTPUT_DIR)
+        except ValueError:
+            rel = fp
+        files.append((rel, desc))
     _session_files = []
     return files
 

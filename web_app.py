@@ -272,10 +272,33 @@ def _run_pipeline(sid, action, sort_by=None, languages=None, skip_resume=False):
                 pass
 
         files = get_session_files()
+
+        # ── 构建结构化统计 ──
+        stats = {}
+        run_dir = get_current_run_dir()
+        if run_dir:
+            # 方向来源统计（direction_results.json）
+            dir_path = os.path.join(run_dir, "direction_results.json")
+            if os.path.exists(dir_path):
+                with open(dir_path, "r", encoding="utf-8") as f:
+                    dir_data = json.load(f)
+                stats["direction_llm"] = sum(1 for d in dir_data if d.get("direction_source") == "llm")
+                stats["direction_keyword"] = sum(1 for d in dir_data if d.get("direction_source") == "keyword_fallback")
+
+            # 兜底统计（fallback_report.json）
+            fb_path = os.path.join(run_dir, "fallback_report.json")
+            if os.path.exists(fb_path):
+                with open(fb_path, "r", encoding="utf-8") as f:
+                    fb_data = json.load(f)
+                stats["direction_fb"] = fb_data.get("direction_fallbacks", {}).get("count", 0)
+                stats["weight_fb"] = fb_data.get("weight_fallbacks", {}).get("count", 0)
+                stats["score_err"] = fb_data.get("score_errors", {}).get("count", 0)
+
         q.put({
             "type": "done",
             "reply": reply,
             "files": [[fp, desc] for fp, desc in files],
+            "stats": stats,
         })
 
     except Exception as e:

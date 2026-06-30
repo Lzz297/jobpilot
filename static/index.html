@@ -773,12 +773,12 @@ function startSSE(box, resultCb, doneCb, retryCount, startApiCb){
     if(d.files) d.files.forEach(f => files.push(f));
     // If review hasn't arrived or no flags, render immediately
     if(!_reviewState.arrived || _reviewState.flagged === 0){
-      if(resultCb) resultCb(d.reply||'', files);
+      if(resultCb) resultCb(d.reply||'', files, d.stats||{});
     } else {
       // Has review flags — defer download until confirmed
       _pendingFiles = files;
       // Show reply text only (no download links yet)
-      if(resultCb) resultCb(d.reply||'', []);
+      if(resultCb) resultCb(d.reply||'', [], d.stats||{});
       updateReviewConfirmUI();
     }
     if(doneCb) doneCb();
@@ -1143,8 +1143,64 @@ function runPipeline(langs, skipResume){
   var label = skipResume ? '一键找工作（仅搜索评分）' : '一键找工作（产出语言：'+langs.map(function(l){return LANG_SHORT[l];}).join('/')+'）';
   chatUser(label);
   const t = chatTurn(); const box = t.log;
-  startSSE(box, (reply, files) => {
-    t.result.innerHTML = `<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in"><div class="font-semibold text-slate-800 text-sm mb-1">✅ 找工作流程完成</div><p class="text-sm text-slate-600">结果已写入当前 Run。</p><div class="grid grid-cols-3 gap-2 my-3 text-center"><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-slate-800">—</div><div class="text-[11px] text-slate-400">抓取岗位</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-emerald-600">—</div><div class="text-[11px] text-slate-400">达标匹配</div></div><div class="bg-slate-50 rounded-lg py-2"><div class="text-lg font-bold text-indigo-600">${files.filter(f=>Array.isArray(f)?(f[0]||'').includes('resume_'):String(f).includes('resume_')).length||'—'}</div><div class="text-[11px] text-slate-400">简历文件</div></div></div>${fileChips(files)}<div class="flex gap-2 mt-3"><button onclick="switchView('matches')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button><button onclick="switchView('files')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button></div></div>`;
+  startSSE(box, (reply, files, stats) => {
+    // ── 从 reply 解析基础统计 ──
+    var m = {};
+    var p = function(pat){ var r = reply.match(pat); return r ? r[1] : null; };
+    m.job = p(/分析了 (\d+) 个岗位/) || '—';
+    m.match = p(/达标 (\d+) 个/) || '—';
+    m.fail = p(/评分失败 (\d+) 个/) || '0';
+    m.tokenIn = p(/Token: 输入 ([\d,]+)/);
+    m.tokenOut = p(/ \/ 输出 ([\d,]+)/);
+    m.mode = p(/评分模式: (.+)/);
+    m.rescoreN = p(/复评岗位: (\d+) 个/);
+    m.rescoreRange = p(/（(\d+±\d+) 分区间）/);
+
+    var llmCount = stats.direction_llm || 0;
+    var kwCount = stats.direction_keyword || 0;
+    var fbCount = (stats.direction_fb||0) + (stats.weight_fb||0) + (stats.score_err||0);
+
+    var resumeCount = files.filter(function(f){ var n = Array.isArray(f) ? f[0] : f; return (n||'').indexOf('resume_') !== -1; }).length;
+
+    t.result.innerHTML =
+      '<div class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden fade-in">' +
+        // 标题栏
+        '<div class="flex items-center justify-between px-5 py-3 border-b border-slate-100">' +
+          '<div class="flex items-center gap-2">' +
+            '<div class="w-7 h-7 rounded-lg bg-emerald-100 flex items-center justify-center"><i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i></div>' +
+            '<span class="font-semibold text-sm text-slate-800">找工作流程完成</span>' +
+          '</div>' +
+        '</div>' +
+
+        // 核心指标行（固定 4 列）
+        '<div class="grid grid-cols-4 gap-4 px-5 py-4">' +
+          '<div class="text-center"><div class="text-2xl font-bold text-slate-800">' + m.job + '</div><div class="text-[11px] text-slate-400 mt-0.5">抓取岗位</div></div>' +
+          '<div class="text-center"><div class="text-2xl font-bold text-emerald-600">' + m.match + '</div><div class="text-[11px] text-slate-400 mt-0.5">达标匹配</div></div>' +
+          '<div class="text-center"><div class="text-2xl font-bold ' + (+m.fail > 0 ? 'text-red-500' : 'text-slate-300') + '">' + m.fail + '</div><div class="text-[11px] text-slate-400 mt-0.5">评分失败</div></div>' +
+          '<div class="text-center"><div class="text-2xl font-bold ' + (resumeCount > 0 ? 'text-indigo-600' : 'text-slate-300') + '">' + (resumeCount || '—') + '</div><div class="text-[11px] text-slate-400 mt-0.5">简历文件</div></div>' +
+        '</div>' +
+
+        // 详情区
+        '<div class="border-t border-slate-100 px-5 py-3 space-y-1.5">' +
+          (m.tokenIn ? '<div class="text-[11px] text-slate-400">Token ' + m.tokenIn + ' / ' + (m.tokenOut||'0') + '</div>' : '') +
+          (m.mode ? '<div class="text-[11px] text-slate-400">' + m.mode + '</div>' : '') +
+          (m.rescoreN && +m.rescoreN > 0 ? '<div class="flex items-center gap-1.5 text-[11px] text-slate-500"><span class="w-1 h-1 rounded-full bg-amber-400"></span> 复评 ' + m.rescoreN + ' 个' + (m.rescoreRange ? '（' + m.rescoreRange + ' 分区间）' : '') + '</div>' : '') +
+          (llmCount + kwCount > 0 ? '<div class="flex items-center gap-3 text-[11px] flex-wrap">' +
+            '<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> LLM 判定 ' + llmCount + ' 个</span>' +
+            '<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full ' + (kwCount > 0 ? 'bg-amber-400' : 'bg-emerald-400') + '"></span> 关键词兜底 ' + kwCount + ' 个</span>' +
+          '</div>' : '') +
+          (fbCount > 0 ? '<div class="text-[11px] text-red-400">兜底触发 ' + fbCount + ' 次（方向' + (stats.direction_fb||0) + ' / 权重' + (stats.weight_fb||0) + ' / 评分异常' + (stats.score_err||0) + '）</div>' : '') +
+        '</div>' +
+
+        // 文件 + 操作
+        '<div class="border-t border-slate-100 px-5 py-3">' +
+          fileChips(files) +
+          '<div class="flex gap-2 mt-3">' +
+            '<button onclick="switchView(\'matches\')" class="text-xs bg-indigo-600 text-white rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="target" class="w-3.5 h-3.5"></i> 查看匹配结果</button>' +
+            '<button onclick="switchView(\'files\')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 flex items-center gap-1"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 查看文件</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
     refreshIcons(); scrollChat();
   }, null, 0, () => {
     apiPost('/api/pipeline', {sid:STATE.sid, action:'search_match', sort_by:STATE.sort, languages:langs, skip_resume: skipResume});
