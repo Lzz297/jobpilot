@@ -521,7 +521,9 @@ def _call_llm_and_save(system_content, user_content, file_label,
     translate_resume_tpl = _load_resume_prompt("translate_resume_prompt")
     translate_cl_tpl = _load_resume_prompt("translate_cl_prompt")
 
-    for lang in ["hk", "cn"]:
+    for lang in langs:
+        if lang == "en":
+            continue
         lang_label = _LANG_LABELS[lang]
         target_lang = _TRANSLATE_LANG_NAMES[lang]
 

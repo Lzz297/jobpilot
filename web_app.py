@@ -248,7 +248,7 @@ def _run_pipeline(sid, action, sort_by=None, languages=None, skip_resume=False):
                         q.put({"type": "status", "text": "Generating direction-based resumes..."})
                         resume_result = generate_resume(by_direction=True, output_langs=languages, profile=cfg.get("user_profile") if cfg else None)
                         q.put({"type": "progress", "text": resume_result})
-                        reply = resume_result
+                        reply = match_result
                     else:
                         reply = match_result
                 else:
