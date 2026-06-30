@@ -164,29 +164,37 @@ def build_confusion_matrix(results: list) -> dict:
 #  4. 计算评估指标
 # ============================================================
 
-def compute_metrics(cases: list, all_scored: list, profile_summary: str) -> dict:
-    """将 all_scored 按 eval_id 匹配到 cases，计算结果列表和各项指标。
+def compute_metrics(cases: list, all_scored: list, profile_summary: str,
+                    direction_results: list | None = None) -> dict:
+    """将 direction_results 作为主表，all_scored 通过 eval_id LEFT JOIN。
 
-    每条 result 包含：id, title, expected_direction, predicted_direction,
-    direction_correct, scores, total_score, reason, input_tokens, output_tokens,
-    description, profile_summary, expected_score_range, score_range_correct。
+    遍历全量方向结果，去评分结果中查找对应分数。
+    找到评分 → 合并方向和分数；找不到 → 方向取 Step 1 结果，分数填 0。
     """
     scored_dict = {s["eval_id"]: s for s in all_scored if s.get("eval_id")}
+    case_dict = {c["id"]: c for c in cases}
+
     results = []
     errors = 0
 
-    for case in cases:
-        scored = scored_dict.get(case["id"])
+    # 主表 = direction_results（Step 1 全量结果），LEFT JOIN all_scored
+    for dr in (direction_results or []):
+        eid = dr.get("eval_id", "")
+        case = case_dict.get(eid)
+        if not case:
+            continue  # 跳过不属于评估数据集的条目
+
+        scored = scored_dict.get(eid)
         if scored:
-            predicted_dir = scored.get("llm_direction", "default")
+            predicted_dir = dr.get("llm_direction", "default")
             scores = scored.get("scores", {})
             total_score = scored.get("total_score", 0)
             reason = scored.get("reason", "")
         else:
-            predicted_dir = "default"
+            predicted_dir = dr.get("llm_direction", "default")
             scores = {}
             total_score = 0
-            reason = "未在匹配结果中找到该岗位"
+            reason = "评分缺失，方向来自 Step 1 分类"
             errors += 1
 
         expected_dir = case.get("expected_direction", "default")
@@ -209,12 +217,11 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str) -> dict
             "title": case["title"],
             "expected_direction": expected_dir,
             "predicted_direction": predicted_dir,
+            "direction_source": dr.get("direction_source", "unknown"),
             "direction_correct": predicted_dir == expected_dir,
             "scores": scores,
             "total_score": total_score,
             "reason": reason,
-            "input_tokens": 0,
-            "output_tokens": 0,
             # ── 离线分析支撑字段 ──
             "description": case["description"],
             "profile_summary": profile_summary,
@@ -340,15 +347,15 @@ def run_evaluation(set_name: str, profile: dict, config: dict) -> tuple:
     jobs_list = build_eval_jobs_list(cases)
 
     # ── 3. 批量调用管道（与生产环境完全一致）──
-    clear_usage_accumulator()
-    all_scored = execute_matching_pipeline(jobs_list, profile, config)
+    direction_results, all_scored = execute_matching_pipeline(jobs_list, profile, config)
     total_usage = get_accumulated_usage()
 
     # ── 4. 生成 profile_summary ──
     profile_summary = _build_profile_summary(profile)
 
     # ── 5. 计算指标 ──
-    metrics = compute_metrics(cases, all_scored, profile_summary)
+    metrics = compute_metrics(cases, all_scored, profile_summary,
+                              direction_results=direction_results)
 
     # ── 6. 打印方向统计 ──
     emit(f"方向准确率: {metrics['dir_correct']}/{metrics['dir_total']} = {metrics['dir_accuracy']:.1%}")

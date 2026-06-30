@@ -311,6 +311,16 @@ def _run_eval_sse(set_name):
         if r.get("direction_correct"):
             dir_hits[d] = dir_hits.get(d, 0) + 1
 
+    # 统计方向来源
+    llm_direction_count = 0
+    keyword_fallback_count = 0
+    for r in output_data["results"]:
+        src = r.get("direction_source", "unknown")
+        if src == "llm":
+            llm_direction_count += 1
+        elif src == "keyword_fallback":
+            keyword_fallback_count += 1
+
     # ── 构建前端 SSE summary ──
     files_data = [[fp, desc] for fp, desc in get_session_files()]
     summary = {
@@ -327,6 +337,9 @@ def _run_eval_sse(set_name):
         "total_input_tokens": meta["total_input_tokens"],
         "total_output_tokens": meta["total_output_tokens"],
         "confusion_matrix": meta.get("confusion_matrix"),
+        "direction_llm": llm_direction_count,
+        "direction_keyword": keyword_fallback_count,
+        "estimated_cost_usd": meta.get("estimated_cost_usd"),
     }
     if q:
         q.put({"type": "done", "reply": json.dumps(summary, ensure_ascii=False), "files": files_data})

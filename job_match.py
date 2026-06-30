@@ -163,10 +163,6 @@ def classify_direction_batch(jobs, config):
     jd_max_chars = (config or {}).get("search", {}).get("jd_max_chars", 4000)
     valid_directions = set(weight_rules.keys()) | {"default"}
 
-    from config import clear_usage_accumulator
-
-    clear_usage_accumulator()
-
     all_labels = []
 
     for i in range(0, len(jobs), direction_batch_size):
@@ -220,9 +216,11 @@ def classify_direction_batch(jobs, config):
 
         if llm_dir and llm_dir in valid_directions:
             job["llm_direction"] = llm_dir
+            job["direction_source"] = "llm"
         else:
             fallback = classify_job(job.get("title", ""), weight_rules)
             job["llm_direction"] = fallback
+            job["direction_source"] = "keyword_fallback"
             if llm_dir:
                 emit(f"   ⚠️ 方向兜底: {job.get('title', '?')[:40]} LLM方向={llm_dir} 无效，回退为 {fallback}")
                 _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": llm_dir, "fallback_to": fallback, "reason": "LLM方向无效"})
@@ -272,6 +270,7 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         jobs_text += f"职位描述:\n{desc}\n"
         jobs_text += f"链接: {job.get('url', '')}\n"
 
+    emit(f"   📤 [诊断] {batch_label}: 发送 {len(batch)} 个 JD，prompt 共 {len(jobs_text)} 字符:\n{jobs_text}")
     try:
         # 主路径：Instructor + Pydantic 结构化输出
         from engine.contracts import MatchResult
@@ -354,7 +353,46 @@ def match_jobs(config: dict = None, profile: dict = None):
     weight_profiles = matching_cfg.get("weight_profiles", {})
 
     # ── 核心逻辑：纯函数调用 ──
-    all_scored = execute_matching_pipeline(jobs, profile, config)
+    direction_results, all_scored = execute_matching_pipeline(jobs, profile, config)
+
+    from config import get_accumulated_usage
+    total_usage = get_accumulated_usage()
+
+    # ── Step 1 结果独立落盘 ──
+    direction_path = os.path.join(run_dir, "direction_results.json")
+    with open(direction_path, "w", encoding="utf-8") as f:
+        json.dump(direction_results, f, ensure_ascii=False, indent=2)
+    track_file(direction_path, f"方向分类结果 JSON（{len(direction_results)} 个岗位）")
+
+    # ── 对比 Step 1 和 Step 2，找出 LLM 漏评的岗位（用 URL 做唯一键）──
+    scored_urls = {s["url"] for s in all_scored if s.get("url")}
+
+    scoring_failed = []
+    for dr in direction_results:
+        url = dr.get("url", "")
+        if url and url not in scored_urls:
+            scoring_failed.append({
+                "eval_id": dr.get("eval_id"),
+                "title": dr.get("title", ""),
+                "company": dr.get("company", ""),
+                "url": url,
+                "description": dr.get("description", ""),
+                "llm_direction": dr.get("llm_direction", "default"),
+                "weight_profile": dr.get("llm_direction", "default"),
+                "scores": {"skill": 0, "experience": 0, "level": 0, "industry": 0, "bonus": 0},
+                "total_score": -1,
+                "reason": "LLM 评分漏返，未参与打分",
+                "recommendation": "不推荐（评分异常）",
+                "score_rounds": [],
+                "score_variance": 0,
+                "confidence": "failed",
+                "skill_match": [],
+                "missing_skills": [],
+                "_score_missing": True,
+            })
+
+    if scoring_failed:
+        emit(f"   ⚠️ LLM 漏评 {len(scoring_failed)} 个岗位，已标记 total_score=-1")
 
     # ── 过滤 ──
     qualified = [s for s in all_scored
@@ -413,6 +451,16 @@ def match_jobs(config: dict = None, profile: dict = None):
         report += f"- 分析: {s.get('reason', '')}\n"
         report += f"- 建议: {s.get('recommendation', '')}\n\n"
 
+    # ── 评分失败岗位提醒 ──
+    if scoring_failed:
+        report += f"\n---\n\n"
+        report += f"## ⚠️ 以下 {len(scoring_failed)} 个岗位因 AI 评分异常未出分，请单独查看或重试\n\n"
+        report += f"| # | 岗位 | 公司 | 方向 |\n"
+        report += f"|---|------|------|------|\n"
+        for i, sf in enumerate(scoring_failed, 1):
+            report += f"| {i} | {sf.get('title', '未知')} | {sf.get('company', '-')} | {sf.get('llm_direction', '-')} |\n"
+        report += f"\n详情见 scoring_failed_jobs.json\n\n"
+
     # 保存报告到 run 目录
     report_path = os.path.join(run_dir, "job_report.md")
     with open(report_path, "w", encoding="utf-8") as f:
@@ -443,10 +491,20 @@ def match_jobs(config: dict = None, profile: dict = None):
             json.dump(unmatched, f, ensure_ascii=False, indent=2)
         track_file(unmatched_path, f"未达标岗位数据 JSON（{len(unmatched)} 个，低于 {min_score} 分）")
 
+    if scoring_failed:
+        failed_path = os.path.join(run_dir, "scoring_failed_jobs.json")
+        with open(failed_path, "w", encoding="utf-8") as f:
+            json.dump(scoring_failed, f, ensure_ascii=False, indent=2)
+        track_file(failed_path, f"评分失败岗位 JSON（{len(scoring_failed)} 个，LLM 漏返）")
+
     # 返回摘要
     rescore_count = sum(1 for s in qualified if len(s.get("score_rounds", [])) > 1)
     summary = f"✅ 匹配分析完成！\n"
-    summary += f"   分析了 {len(jobs)} 个岗位，达标 {len(qualified)} 个\n"
+    summary += f"   分析了 {len(jobs)} 个岗位，达标 {len(qualified)} 个"
+    if scoring_failed:
+        summary += f"，评分失败 {len(scoring_failed)} 个"
+    summary += "\n"
+    summary += f"   Token: 输入 {total_usage['input_tokens']:,} / 输出 {total_usage['output_tokens']:,}\n"
     summary += f"   评分模式: 动态权重 + {'及格线复评' if borderline_rescore else '单轮评分'}\n"
     if rescore_count:
         summary += f"   复评岗位: {rescore_count} 个（{min_score}±{borderline_range} 分区间）\n"
@@ -628,7 +686,7 @@ def _build_profile_summary(user_profile: dict) -> str:
     }, ensure_ascii=False, indent=2)
 
 
-def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> list:
+def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> tuple[list, list]:
     """纯函数：对 job 列表执行方向分类 → 五维评分 → 及格线复评。
 
     不涉及任何文件读写、过滤、排序后处理。
@@ -641,16 +699,23 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
         config: Campaign 配置字典。
 
     Returns:
-        all_scored 列表，按 total_score 降序排列。每条记录含：
-        eval_id（若有）、title、company、url、description、
-        llm_direction、weight_profile、scores、total_score、
-        reason、recommendation、score_rounds、score_variance、
-        confidence、skill_match、missing_skills。
+        (direction_results, all_scored) 元组。
+
+        - direction_results: 全量方向分类结果列表。
+          每条：{eval_id, title, company, url, description, llm_direction, direction_source}。
+          长度始终等于输入 jobs_list 的长度，是所有下游方向判断的权威数据源。
+
+        - all_scored: 评分结果列表，按 total_score 降序排列。
+          每条含 eval_id、title、scores、total_score、reason 等。
+          LLM 漏返回时，此列表长度可能小于 direction_results。
     """
     global _dir_fallbacks, _weight_fallbacks, _score_errors
     _dir_fallbacks = []
     _weight_fallbacks = []
     _score_errors = []
+
+    from config import clear_usage_accumulator
+    clear_usage_accumulator()
 
     if config is None:
         raise RuntimeError("execute_matching_pipeline 需要 config 参数")
@@ -674,6 +739,19 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
     emit(f"🏷️ Step 1: 方向分类（LLM 预判）")
     emit(f"{'='*50}")
     jobs = classify_direction_batch(jobs_list, config)
+
+    # ── 构建全量方向结果（独立于评分链路，作为方向的权威数据源）──
+    direction_results = []
+    for j in jobs:
+        direction_results.append({
+            "eval_id": j.get("eval_id"),
+            "title": j.get("title", ""),
+            "company": j.get("company", ""),
+            "url": j.get("url", ""),
+            "description": j.get("description", ""),
+            "llm_direction": j.get("llm_direction", "default"),
+            "direction_source": j.get("direction_source", "unknown"),
+        })
 
     dir_counts = {}
     for j in jobs:
@@ -740,8 +818,8 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
                         s["title"] = orig_job.get("title", "")
                     if not s.get("company"):
                         s["company"] = orig_job.get("company", "")
-                    s["llm_direction"] = orig_job.get("llm_direction", "default")
-                    s["weight_profile"] = s["llm_direction"]
+                    # 方向信息由 direction_results 独立管理，不再从评分链路传递
+                    s["weight_profile"] = orig_job.get("llm_direction", "default")
                     # 恢复全局 index 供后续 B.5 使用
                     s["index"] = orig_job.get("index")
                     # 透传 eval_id
@@ -758,6 +836,44 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
             for s in scored:
                 if s.get("_score_error"):
                     _score_errors.append({"title": s.get("title", "未知"), "reason": s.get("reason", "")})
+
+            # ── 定向重试漏评岗位（单条独立，仅一次，失败即放弃）──
+            if len(scored) < len(batch):
+                missed = batch[len(scored):]
+                emit(f"   🔄 定向重试 {len(missed)} 个漏评岗位（单条独立）: {[j.get('eval_id', j.get('title', '?')[:30]) for j in missed]}")
+
+                failed_retry = []
+                for job in missed:
+                    single = [job.copy()]
+                    single[0]["index"] = 1
+                    retry_result = _score_batch(single, profile_summary, dir_weights,
+                                                batch_label=f"{direction} 单条重试",
+                                                strategy=direction, config=config)
+                    if retry_result and len(retry_result) == 1:
+                        s = retry_result[0]
+                        s["url"] = job.get("url", "")
+                        s["description"] = job.get("description", "")
+                        if not s.get("title"):
+                            s["title"] = job.get("title", "")
+                        if not s.get("company"):
+                            s["company"] = job.get("company", "")
+                        s["weight_profile"] = job.get("llm_direction", "default")
+                        s["index"] = job.get("index")
+                        if job.get("eval_id"):
+                            s["eval_id"] = job["eval_id"]
+                        if s.get("scores"):
+                            s["total_score"] = _calc_total_score(s["scores"], dir_weights)
+                        s["score_rounds"] = [s.get("total_score", 0)]
+                        s["score_variance"] = 0
+                        s["confidence"] = "high"
+                        all_scored.append(s)
+                        if s.get("_score_error"):
+                            _score_errors.append({"title": s.get("title", "未知"), "reason": s.get("reason", "")})
+                    else:
+                        failed_retry.append(job.get("eval_id", job.get("title", "?")[:30]))
+
+                if failed_retry:
+                    emit(f"   ⚠️ 重试后仍失败 {len(failed_retry)} 个: {failed_retry}，理由：单条重试后仍然失败，已交由下游 scoring_failed 兜底")
 
     # ── B.4: 排序 ──
     all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
@@ -849,4 +965,4 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> l
 
             all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
 
-    return all_scored
+    return direction_results, all_scored
