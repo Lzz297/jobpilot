@@ -1225,7 +1225,7 @@ function switchView(v){
   if(v==='market') renderMarketPresets();
   if(v==='resume') loadRunsForSelect();
   if(v==='settings'){ renderSettings(); setTab(STATE.settingsTab); }
-  if(v==='eval') renderEvalView();
+  if(v==='eval' && !STATE.busy) renderEvalView();
   if(window.innerWidth<768){ $('#sidebar').classList.add('hidden'); $('#sidebar').classList.remove('flex'); }
   refreshIcons();
 }
