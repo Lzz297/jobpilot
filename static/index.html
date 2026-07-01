@@ -2657,13 +2657,15 @@ function renderLangChips(){
 async function loadRunsForSelect(){
   const data = await apiGet('/api/runs');
   const mr = (data||[]).filter(r=>r.has_matched);
-  RS.run = (mr.find(r=>r.is_current)||mr[0]||{}).id;
+  RS.run = (mr.find(r=>r.is_current)||mr[0]||{}).id || null;
   $('#rs-run').innerHTML = mr.length ? mr.map(r=>`<option value="${r.id}" ${r.id===RS.run?'selected':''}>${r.id}${r.is_current?'（当前）':''} · ${r.match_count} 个达标</option>`).join('') : '<option>暂无匹配数据</option>';
+  if (!RS.run) { $('#resume-modes').innerHTML = '<div class="text-sm text-slate-400 py-6 text-center bg-white border border-slate-200 rounded-xl col-span-full">还没有匹配数据，先去工作台搜索岗位。</div>'; return; }
   renderResumeModes();
 }
 async function renderResumeModes(){
-  const data = await apiGet('/api/runs/'+(RS.run||'')+'/matches');
-  const matched = data||[];
+  if (!RS.run) return;
+  const data = await apiGet('/api/runs/'+RS.run+'/matches');
+  const matched = Array.isArray(data) ? data : [];
   $('#resume-modes').innerHTML = RESUME_MODES.map(m=>{
     let inputHtml = '';
     if(m.input==='select') inputHtml = `<select id="rs-job" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white">${matched.map((j,i)=>`<option value="${i+1}">#${i+1} · ${escapeHtml(j.title||'')}（${j.total_score||0}分）</option>`).join('')}</select>`;
