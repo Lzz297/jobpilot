@@ -1,23 +1,67 @@
 # prompts/examples/job_match/solutions.yaml
 # solutions 方向示例
-
 direction: solutions
-
 examples:
+  # 正例 1：为外部客户写智能合约（领域核心产出优先，不判 solutions）
+  - input: |
+      某 Web3 咨询公司招聘 Blockchain Solution Architect。
+      岗位职责：面向外部企业客户，提供去中心化金融 协议的架构设计；带领团队为客户编写并部署智能合约；主导区块链项目的端到端交付与 POC 验证。
+      技能要求：Solidity, EVM, 智能合约安全审计, 客户需求分析。
+    ideal_output:
+      direction: "web3"
+      reason: "第一步领域核心产出优先：该岗位虽面向外部客户且带 Solution 头衔，但其主导产出是'编写智能合约和设计 DeFi 协议架构'，这是 web3 领域的核心技术产物。按规则，无论服务于内部还是外部客户，一律直接归 web3，不进入第二步 solutions 判定。"
+      rule_demo: "正例：为客户写智能合约做 POC，领域核心产出优先→web3"
+  # 正例 2：区块链售前方案工程师（通用产出面向客户判 solutions）
   - input: |
       某区块链基础设施公司招聘售前方案工程师。
       岗位职责：为客户设计区块链集成方案、主导客户 POC 验证、编写技术方案文档、协助销售团队完成技术答疑。
       技能要求：了解区块链基础概念、有客户沟通经验、能独立完成方案演示。
     ideal_output:
       direction: "solutions"
-      reason: "主导工作是面向客户——设计集成方案、做 POC、技术答疑、方案演示，全部是客户服务行为。按定位优先规则，即便身处 blockchain 赛道也直接判 solutions。"
-      rule_demo: "区块链公司售前/方案工程师→solutions（定位优先，覆盖技术赛道）"
-
+      reason: "第一步领域核心产出：主导产出是'集成方案设计、技术答疑、方案文档'，属于通用技术方案产出，非写合约等 web3 核心产物，不判 web3。第二步客户判定：工作对象是外部客户，产出是方案/POC，直接面向客户交付方案，判 solutions。"
+      rule_demo: "正例：区块链公司售前，产出通用方案非写合约→solutions"
+  # 正例 3：SaaS 客户成功经理
   - input: |
       某 SaaS 平台公司招聘客户成功经理。
       岗位职责：维护已有客户关系、定期回访了解使用情况、推动续约和增购、协调内部资源解决客户问题。
       技能要求：沟通能力、项目管理、了解 SaaS 产品逻辑。
     ideal_output:
       direction: "solutions"
-      reason: "角色核心定位是客户关系维护——定期回访、推动续约、解决客户问题。这是典型的'为客户服务'，按定位优先直接判 solutions，不进 default。"
-      rule_demo: "客户成功经理→solutions（面向客户，维护客户关系）"
+      reason: "第一步领域核心产出：非 web3/payment。第二步客户判定：角色核心定位是面向外部客户维护关系、推动续费，属于直接面向客户交付服务，判 solutions，不进 default。"
+      rule_demo: "正例：客户成功经理，维护客户关系→solutions"
+  # 反例 1：内部架构师不等于售前（对应 jd_015）
+  - input: |
+      某大型企业 AI Lab 招聘 Solution Architect / Manager。
+      岗位职责：领导 AI solution design 和端到端交付，与内部的 LLM scientists, platform architects 跨部门合作，将业务需求转化为 AI 架构，主导 PoC 和企业级部署。
+      技能要求：AI 全生命周期理解、跨部门协调、企业架构标准。
+    ideal_output:
+      direction: "technical"
+      reason: "第一步领域核心产出：主导产出是企业内部 AI 平台架构，非 web3/payment 核心产物。第二步客户判定：工作对象是内部研发和架构团队，不面向外部客户，被防穿透硬约束拦截。第三步兜底归类：主导产出是通用 AI 平台架构，归 technical。"
+      rule_demo: "反例：AI Lab 内部架构师，跨部门协调非服务外部客户→technical"
+  # 反例 2：驻场数据标注协调不等于客户方案（对应 jd_024）
+  - input: |
+      某公司招聘 AI Data Project Specialist (One-Year Contract)。
+      岗位职责：在客户现场独立工作，监督数据标注和质量检查；与客户沟通代表数据团队；协助 Data Manager 管理兼职团队确保项目按时交付。
+      技能要求：粤语、沟通能力、细节导向。
+    ideal_output:
+      direction: "default"
+      reason: "第一步领域核心产出：非 web3/payment。第二步客户判定：虽在客户现场且需沟通，但产出是数据标注成果和项目进度协调，被防穿透约束②（非交付方案/咨询）拦截。第三步兜底归类：属于通用非技术项目执行职能，归 default。"
+      rule_demo: "反例：驻场数据项目专员，协调标注进度非交付客户方案→default"
+  # 反例 3：内部业务分析师不等于客户方案（对应 jd_021）
+  - input: |
+      某保险公司招聘 Technical Business Analyst。
+      岗位职责：作为业务和技术团队的桥梁，收集分析业务需求；利用 AI 工具撰写大规模结构化文档和流程规范；协调内部团队和外部供应商。
+      技能要求：业务分析、文档撰写、AI 工具使用。
+    ideal_output:
+      direction: "default"
+      reason: "第一步领域核心产出：非 web3/payment。第二步客户判定：作为 bridge 产出需求文档，工作对象是内部业务和技术团队，不面向外部客户，被防穿透约束①拦截。第三步兜底归类：属于通用非技术职能，归 default。"
+      rule_demo: "反例：内部业务分析师，产出需求文档非客户方案→default"
+  # 反例 4：披着咨询外衣的 AI 训练岗不等于客户方案（对应 jd_013）
+  - input: |
+      某商业智能公司招聘 AI Analytics Specialist。
+      岗位职责：将复杂的营销方法论转化为结构化 Prompt 供 AI Agent 使用；作为咨询团队和 AI 工程师的翻译官；主导测试验证 AI 输出；为 luxury/retail 客户提供 AI 辅助洞察。
+      技能要求：AI 工具重度使用者、逻辑拆解能力、营销分析经验。
+    ideal_output:
+      direction: "technical"
+      reason: "第一步领域核心产出：非 web3/payment。第二步客户判定：虽服务外部客户，但核心产出是'为 AI 写 prompt'和'验证 AI 输出逻辑'，被防穿透约束②（属于通用技术产出，非方案咨询）拦截。第三步兜底归类：属于通用 AI 技术调优，归 technical。"
+      rule_demo: "反例：为 AI 写 prompt 并测试逻辑，虽服务客户但产出是技术调优→technical"
