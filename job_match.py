@@ -151,11 +151,16 @@ def classify_direction_batch(jobs, config):
         direction_list=direction_list,
     )
 
-    # 注入方向分类 few-shot 示例（每个方向单独加载）
+    # 注入公共 few-shot 示例（仅一次）
+    common_text = _load_common_direction_examples()
+    if common_text:
+        system_prompt += "\n\n" + common_text
+
+    # 注入各方向专属 few-shot 示例
     for dir_name in direction_names:
-        examples_text = _load_direction_examples(dir_name)
-        if examples_text:
-            system_prompt += "\n\n" + examples_text
+        dir_text = _load_direction_examples(dir_name)
+        if dir_text:
+            system_prompt += "\n\n" + dir_text
 
     # ── 3. 分批调用 LLM ──
     # direction_batch_size: 将来可暴露到 Web UI
@@ -584,46 +589,61 @@ def list_matched_jobs():
 #  单条 JD 评分（供评估脚本使用）
 # ============================================================
 
-def _load_direction_examples(strategy: str) -> str:
-    """根据当前策略方向，加载对应的方向分类 few-shot 示例。"""
+def _load_common_direction_examples() -> str:
+    """加载公共方向分类 few-shot 示例（跨方向通用，仅加载一次）。"""
     import yaml as _yaml
     from pathlib import Path as _Path
 
     examples_dir = _Path(__file__).parent / "prompts" / "examples" / "job_match" / "direction"
-    example_texts = []
-
-    # 始终加载 common.yaml
     common_file = examples_dir / "common.yaml"
-    if common_file.exists():
-        with open(common_file, "r", encoding="utf-8") as f:
-            data = _yaml.safe_load(f)
-        for ex in data.get("examples", []):
-            inp = ex.get("input", "").strip()
-            out = ex.get("ideal_output", {})
-            example_texts.append(
-                f"示例：\n"
-                f"  JD: {inp}\n"
-                f"  正确方向: {out.get('direction', '')}\n"
-                f"  理由: {out.get('reason', '')}"
-            )
+    if not common_file.exists():
+        return ""
 
-    # 加载 strategy 对应的方向文件
+    with open(common_file, "r", encoding="utf-8") as f:
+        data = _yaml.safe_load(f)
+
+    lines = []
+    for ex in data.get("examples", []):
+        inp = ex.get("input", "").strip()
+        out = ex.get("ideal_output", {})
+        lines.append(
+            f"示例：\n"
+            f"  JD: {inp}\n"
+            f"  正确方向: {out.get('direction', '')}\n"
+            f"  理由: {out.get('reason', '')}"
+        )
+
+    if lines:
+        return "===== 参考示例 =====\n\n" + "\n\n".join(lines)
+    return ""
+
+
+def _load_direction_examples(strategy: str) -> str:
+    """根据方向名，加载该方向的专属 few-shot 示例。"""
+    import yaml as _yaml
+    from pathlib import Path as _Path
+
+    examples_dir = _Path(__file__).parent / "prompts" / "examples" / "job_match" / "direction"
     direction_file = examples_dir / f"{strategy}.yaml"
-    if direction_file.exists():
-        with open(direction_file, "r", encoding="utf-8") as f:
-            data = _yaml.safe_load(f)
-        for ex in data.get("examples", []):
-            inp = ex.get("input", "").strip()
-            out = ex.get("ideal_output", {})
-            example_texts.append(
-                f"示例：\n"
-                f"  JD: {inp}\n"
-                f"  正确方向: {out.get('direction', '')}\n"
-                f"  理由: {out.get('reason', '')}"
-            )
+    if not direction_file.exists():
+        return ""
 
-    if example_texts:
-        return "===== 参考示例 =====\n\n" + "\n\n".join(example_texts)
+    with open(direction_file, "r", encoding="utf-8") as f:
+        data = _yaml.safe_load(f)
+
+    lines = []
+    for ex in data.get("examples", []):
+        inp = ex.get("input", "").strip()
+        out = ex.get("ideal_output", {})
+        lines.append(
+            f"示例：\n"
+            f"  JD: {inp}\n"
+            f"  正确方向: {out.get('direction', '')}\n"
+            f"  理由: {out.get('reason', '')}"
+        )
+
+    if lines:
+        return "===== 参考示例 =====\n\n" + "\n\n".join(lines)
     return ""
 
 
