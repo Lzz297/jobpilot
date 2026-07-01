@@ -830,7 +830,9 @@ function logLine(box,ev){
   else if(ev.t==='ok') el.innerHTML=`<span class="text-emerald-400">✓</span> <span class="text-slate-200">${escapeHtml(ev.x)}</span>`;
   else if(ev.t==='err') el.innerHTML=`<span class="text-red-400">✗ ${escapeHtml(ev.x)}</span>`;
   else el.innerHTML=`<span class="text-slate-400">${escapeHtml(ev.x)}</span>`;
-  box.appendChild(el); box.scrollTop=box.scrollHeight; scrollChat();
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  box.appendChild(el);
+  if (atBottom) { box.scrollTop = box.scrollHeight; scrollChat(); }
 }
 function updateReviewConfirmUI(){
   const panel = document.getElementById('review-panel');
