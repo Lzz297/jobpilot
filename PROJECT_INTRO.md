@@ -45,7 +45,7 @@ D:\job-agent/
 ├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 ├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
 │
-├── scraper.py                # [爬虫] JobsDB 页面抓取（~1031 行），4 层列表解析 + 3 层详情解析
+├── scraper.py                # [爬虫] JobsDB 页面抓取（~988 行），4 层列表解析 + 3 层详情解析
 ├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
 ├── job_match.py              # [匹配] LLM 五维评分 + 动态权重 + 及格线复评 + 方向分类
 ├── resume_gen.py             # [简历] 3 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
@@ -231,9 +231,9 @@ search_jobs()  →  match_jobs()  →  generate_resume(by_direction=True)
 
 ```python
 _LLM_PRESETS = {
-    "deepseek": {"base_url": "https://api.deepseek.com", "default_model": "deepseek-v4-pro"},
-    "qwen":     {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "default_model": "qwen3.6-plus"},
-    "glm":      {"base_url": "https://open.bigmodel.cn/api/paas/v4", "default_model": "glm-5.1"},
+    "deepseek": {"base_url": "https://api.deepseek.com", "api_key_env": "DEEPSEEK_API_KEY", "default_model": "deepseek-v4-pro"},
+    "qwen":     {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "api_key_env": "DASHSCOPE_API_KEY", "default_model": "qwen3.6-plus"},
+    "glm":      {"base_url": "https://open.bigmodel.cn/api/paas/v4", "api_key_env": "GLM_API_KEY", "default_model": "glm-5.1"},
 }
 ```
 
@@ -761,7 +761,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。`review` 事件（Checker 核查报告）在 `done` 之前自动推送。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / review / done / error。`review` 事件（Checker 核查报告）在 `done` 之前自动推送。
 
 ##### `POST /api/resume/fix` 🔒
 定点修正单条 resume bullet（配合 checker 系统使用），返回修正后的完整 Markdown。
@@ -1016,8 +1016,9 @@ _FIELD_SPECS = {
 | default | 30% | 25% | 15% | 15% | 15% | 无法分类的通用岗位 |
 | technical | 35% | 20% | 15% | 15% | 15% | 纯技术开发岗 |
 | solutions | 25% | 20% | 15% | 20% | 20% | 方案/集成工程师 |
-| web3 | 25% | 15% | 10% | 30% | 20% | Web3/区块链岗位 |
+| web3 | 35% | 20% | 15% | 15% | 15% | Web3/区块链岗位 |
 | payment | 25% | 20% | 10% | 25% | 20% | 支付/结算岗位 |
+| business_sales | 20% | 20% | 15% | 25% | 20% | 纯商务销售岗 |
 
 #### 方向分类流程（独立于评分）
 
@@ -1506,13 +1507,14 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 ### 4.3 profiles/prompts.yaml — LLM 提示词配置
 
-所有模块的 LLM 提示词均可通过此文件配置（共 15 个 prompt 模板）。**此文件是所有 prompt 的唯一来源**——任何 key 缺失时程序会抛出 `RuntimeError`，不允许静默回退。各模块通过 `_load_*_prompt()` helper 函数统一加载。
+所有模块的 LLM 提示词均可通过此文件配置（共 16 个 prompt 模板）。**此文件是所有 prompt 的唯一来源**——任何 key 缺失时程序会抛出 `RuntimeError`，不允许静默回退。各模块通过 `_load_*_prompt()` helper 函数统一加载。
 
 ```yaml
 agent:
   system_prompt                           # Agent 对话系统提示词
 
 job_match:
+  direction_classification_prompt         # 方向分类（<direction_list>）
   scoring_system_prompt                   # 匹配评分（<profile_summary> <weights_text> <score_formula>）
 
 market_analysis:
@@ -1799,5 +1801,5 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 9. **独立市场调研**：四阶段流程 + 11+ 维度分析 + 差距分析（含可执行学习路径）+ 批量分析
 10. **全流程文件追踪**：每轮对话后自动汇总生成的文件列表（路径 + 大小）
 11. **双模式 emit**：`threading.local()` 实现终端 print / Web SSE 自动切换
-12. **Prompt 全配置化**：15 个 prompt 模板通过 YAML 控制，`<key>` 模板引擎支持动态替换
+12. **Prompt 全配置化**：16 个 prompt 模板通过 YAML 控制，`<key>` 模板引擎支持动态替换
 13. **多层次降级**：详情页失败 → snippet 兜底；审查失败 → 跳过；报告生成失败 → JSON dump 保底；浏览器失效 → 自动重启
