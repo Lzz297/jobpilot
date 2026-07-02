@@ -4100,6 +4100,11 @@ async function saveYaml(name){
             if (!row) return;
             var span = card.querySelector('.text-sm.font-semibold');
             if (span) span.textContent = (row[cols[0].key] || cols[0].label || '') + ' · ' + (row[cols[1].key] || cols[1].label || '');
+            // 同步更新右侧小字（columns[2]，如 title / period）
+            if (cols.length >= 3) {
+              var periodSpan = card.querySelector('.hidden.text-xs.text-slate-400');
+              if (periodSpan) periodSpan.textContent = row[cols[2].key] || '';
+            }
           });
         });
         // 更新 details summary 计数
