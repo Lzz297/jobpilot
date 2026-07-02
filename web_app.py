@@ -35,6 +35,7 @@ from market_analysis import analyze_market, batch_analyze_market
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24).hex())
+app.json.sort_keys = False  # 保持 JSON key 原始顺序，不按字母排序
 
 # ── 用户认证 ──
 
