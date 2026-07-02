@@ -1,31 +1,29 @@
 # 配置使用手册
 
-本项目有两套配置体系，可独立使用也可组合使用：
+本项目使用 **SQLite + YAML** 混合存储。业务配置（画像、策略、Campaign、系统参数）全部在 SQLite 中，通过 Web UI 管理；LLM 提示词和简历规范保留为 YAML 文件。
 
-- **系统基础设施（`profiles/`）**：LLM 供应商、过滤条件、市场调研参数、画像选择。不随求职方向变化。支持 Web UI 直接编辑。
-- **业务配置（`instances/`）**：三层组装架构（User × Strategy × Campaign）— 搜索词、匹配权重、数量控制。换方向时主要改这里。通过 `python agent.py --campaign <name>` 启动。
-
-无论哪种方式，均**无需改动任何代码**。
+**核心原则：所有业务配置通过 Web UI 操作，无需编辑文件。**
 
 ---
 
 ## 目录
 
-| 配置文件 | 控制什么 | 修改方式 | 改动频率 |
+| 存储位置 | 控制什么 | 修改方式 | 改动频率 |
 |---------|---------|---------|---------|
-| [`.env`](#0-env--环境变量) | API 密钥 | 仅文件 | 极低（换供应商时改） |
-| [`instances/users/{user}.yaml`](#1-用户画像--个人档案) | 你是谁、会什么、想找什么 | 文件 / Web UI 设置面板 | 低（换方向时改） |
-| [`profiles/search_config.yaml`](#2-search_configyaml--系统基础设施) | LLM 供应商、过滤、市场参数、画像选择 | 文件 / Web UI 设置面板 | 低 |
-| [`instances/campaigns/` + `strategies/`](#6-instances--三层配置组装) | 搜索词、匹配权重、翻页数、JD 上限 | 仅文件 | 高（每次调方向都改） |
-| [`profiles/resume_guide.yaml`](#3-resume_guideyaml--简历撰写规范) | 简历内容怎么写 | 仅文件 | 低（基本不用动） |
-| [`profiles/resume_template.yaml`](#4-resume_templateyaml--简历模板结构) | 简历段落顺序和格式 | 仅文件 | 低（微调排版时改） |
-| [`profiles/prompts.yaml`](#5-promptsyaml--llm-提示词) | 教 LLM 怎么筛选、评分、分析、写简历 | 仅文件 | 中（优化判断逻辑时改） |
+| [`.env`](#0-env--环境变量) | API 密钥 | 编辑文件 | 极低 |
+| [SQLite `user_profiles`](#1-用户画像) | 你是谁、会什么、想找什么 | **Web UI 设置面板** | 低 |
+| [SQLite `search_config`](#2-系统配置) | LLM 供应商、过滤条件、市场/搜索参数 | **Web UI 设置面板** | 低 |
+| [SQLite `strategies`](#3-策略) | 五维权重 + 关键词分类规则 | **Web UI 设置 → 策略 Tab** | 中 |
+| [SQLite `campaigns`](#4-campaign) | 搜索词 + 策略绑定 | **Web UI 设置 → Campaign Tab** | 高 |
+| [`profiles/prompts.yaml`](#5-promptsyaml) | LLM 提示词（评分/简历/市场分析） | 编辑文件 | 中 |
+| [`profiles/resume_guide.yaml`](#6-resume_guideyaml) | 简历内容怎么写 | 编辑文件 | 低 |
+| [`profiles/resume_template.yaml`](#7-resume_templateyaml) | 简历段落顺序和格式 | 编辑文件 | 低 |
 
 ---
 
 ## 0. `.env` — 环境变量
 
-**作用：** 存放 API 密钥，不同的 LLM 供应商需要不同的密钥。
+**作用：** 存放 API 密钥。
 
 ```env
 # DeepSeek
@@ -40,498 +38,405 @@ GLM_API_KEY=sk-your-key-here
 
 | 你想达到的效果 | 怎么改 |
 |--------------|-------|
-| 切换到其他 LLM 供应商 | 添加对应的 API Key，然后在 `search_config.yaml` 的 `llm` 段切换 `provider` |
+| 切换到其他 LLM 供应商 | 添加对应的 API Key，然后在 Web UI 侧边栏 LLM 下拉菜单切换 |
 | API 调用报错 "key not set" | 检查 `.env` 文件中对应的 Key 是否正确填写 |
 
 **安全提醒：** 不要把 `.env` 文件提交到 git。
 
 ---
 
-## 1. 用户画像 — 个人档案
+## 1. 用户画像
 
 **作用：** 这是 Agent 认识你的唯一来源。搜索过滤、匹配评分、简历生成全部依赖它。
 
-**文件位置：** `instances/users/{user}.yaml`（由 `search_config.yaml` 的 `user` 字段指定，如 `user: "li_ming"` → 加载 `instances/users/li_ming.yaml`）。
+**存储位置：** SQLite `user_profiles` 表（`data` 字段存完整 JSON）。通过 `is_current = 1` 标记当前活跃画像。
 
-> **💡 修改方式：** 除了直接编辑文件外，也可在 Web UI 侧边栏点击「设置」进入编辑面板（实际读写 `instances/users/` 目录），或通过画像下拉框切换不同用户。
+**修改方式：** Web UI → 设置 → 个人画像 Tab。侧边栏画像下拉框可切换不同用户（更新 `is_current` 标记）。
 
-### 结构一览
+### 画像字段全览（由 Schema 驱动）
 
-```yaml
-# 基本信息
-name / phone / email / linkedin / github / location
+画像结构由 SQLite `field_schemas` 表中 `name='user_field'` 的 JSON Schema 定义。前端根据 Schema 动态渲染表单控件。
 
-# 求职意向
-job_intent:
-  target_titles: [...]      # 目标岗位列表
-  target_industries: [...]  # 目标行业列表
-  location_preference: [...]
-  salary_expectation: { min, max, currency, note }
-  job_type / notice_period
+#### 分组 1：基本信息 (`basic_info`)
 
-# 专业技能
-skills:
-  programming_languages: [{ name, level, years }]
-  frameworks / databases / tools / blockchain / business_skills
-  languages: [{ name, level, note }]
+| 字段 key | 显示标签 | 控件类型 |
+|----------|----------|----------|
+| `name` | 姓名 | 单行文本 |
+| `name_en` | 英文名 | 单行文本 |
+| `location` | 所在地 | 单行文本 |
+| `phone` | 电话 | 单行文本 |
+| `email` | 邮箱 | 单行文本 |
+| `linkedin` | LinkedIn | 单行文本 |
+| `github` | GitHub | 单行文本 |
+| `hk_permanent_resident` | 工作权利 / 居留身份 | 下拉单选（香港永久居民/持有工作签证/需要工作签证/其他） |
 
-# 工作经历
-work_experience:
-  - company / title / period / description / tech_stack / highlights
+#### 分组 2：自我评价与定位 (`profile_summary`)
 
-# 教育 / 项目 / 证书 / 自我评价
-education / projects / certifications / summary
-```
+| 字段 key | 显示标签 | 控件类型 | 用途 |
+|----------|----------|----------|------|
+| `strategic_positioning` | 战略定位 | 多行文本 (15 行) | LLM 用于匹配 JD 方向 |
+| `summary` | 自我评价 | 多行文本 (18 行) | LLM 用于判断岗位匹配度 + 简历 Summary 素材 |
 
-### 使用场景
+#### 分组 3：求职意向 (`job_intent`)
 
-| 你想达到的效果 | 怎么改 |
-|--------------|-------|
-| **转换求职方向**（如从后端开发转 Web3 产品） | 修改 `job_intent.target_titles` 和 `target_industries` |
-| **匹配评分偏向特定技能** | 在 `skills` 中添加/突出相关技能，评分时 LLM 会据此判断技能匹配度 |
-| **简历突出不同的工作亮点** | 修改 `work_experience.highlights` 和 `description`，简历生成会优先引用这些内容 |
-| **投不同城市的岗位** | 修改 `location` 和 `job_intent.location_preference` |
-| **薪资预期调整** | 修改 `salary_expectation`（目前未用于自动过滤，但 Agent 对话时会参考） |
+| 字段 key | 显示标签 | 控件类型 | 说明 |
+|----------|----------|----------|------|
+| `target_titles` | 目标岗位 | 多行文本 | 换行/逗号分隔 |
+| `target_industries` | 目标行业 | 多行文本 | 换行/逗号分隔 |
+| `job_type` | 工作类型 | 下拉单选 | 全职/兼职/合同/实习 |
+| `salary_expectation.min` | 最低薪资 | 数字 | — |
+| `salary_expectation.max` | 最高薪资 | 数字 | — |
+| `salary_expectation.currency` | 货币 | 下拉单选 | HKD/CNY/USD |
+| `salary_expectation.note` | 备注 | 单行文本 | — |
+| `notice_period` | 到岗时间 | 下拉单选 | 即时到岗/1个月内/3个月内/面议 |
+| `location_preference` | 目标城市 | 单行文本 | — |
+
+#### 分组 4：语言能力 (`languages`)
+
+表格控件，每行 3 列：
+
+| 列 key | 显示标签 | 控件类型 | 选项 |
+|--------|----------|----------|------|
+| `language` | 语言 | 单行文本 | — |
+| `proficiency` | 熟练度 | 下拉单选 | 母语/流利/良好/基础 |
+| `certificate` | 证书 / 考试 | 单行文本 | — |
+
+#### 分组 5：专业技能 (`skills`)
+
+分类标签组控件（`map` 类型）。key 是技能类别名（如 `programming_languages`、`frameworks`、`blockchain`、`business_skills` 等），每个类别下是表格：
+
+| 子列 key | 显示标签 | 控件类型 | 选项 |
+|----------|----------|----------|------|
+| `name` | 技能名 | 单行文本 | — |
+| `level` | 熟练度 | 下拉单选 | 精通/熟练/掌握/了解 |
+| `detail` | 说明 | 单行文本 | — |
+
+#### 分组 6：工作经历 (`work_experience`)
+
+卡片表格控件，每条经历一张卡片。列定义：
+
+| 列 key | 显示标签 | 控件类型 | 说明 |
+|--------|----------|----------|------|
+| `company` | 公司 | 单行文本 | — |
+| `title` | 职位 | 单行文本 | — |
+| `period` | 时间段 | 单行文本 | 如：2024.08 - 2026.05 |
+| `company_description` | 公司简介 | 多行文本 | 评估行业匹配度 |
+| `company_size` | 公司规模 | 下拉单选 | 初创/中小/中大型/大型 |
+| `overview` | 工作概述 | 多行文本 | 职责范围和技术环境 |
+| `tech_stack` | 技术栈 | 标签输入 | 数组，按回车添加 |
+| `highlights` | 工作亮点 | 多行列表 | 数组，每条一个要点 |
+| `key_achievements` | 关键成就 | 子表格 | 见下方 |
+
+**子表：关键成就** (`key_achievements`)：
+
+| 子列 key | 显示标签 | 控件类型 | 说明 |
+|----------|----------|----------|------|
+| `id` | ID | 单行文本 | 唯一标识（checker 溯源用） |
+| `category` | 类别 | 单行文本 | — |
+| `title` | 标题 | 单行文本 | — |
+| `resume_bullet` | 简历描述 | 多行文本 | STAR 法则，LLM 直接植入简历 |
+| `interview_keywords` | 面试关键词 | 标签输入 | — |
+| `story` | 详细故事 | 大文本弹窗 | 面试追问用 |
+
+#### 分组 7：项目经历 (`projects`)
+
+表格控件：
+
+| 列 key | 显示标签 | 控件类型 |
+|--------|----------|----------|
+| `name` | 项目名 | 单行文本 |
+| `role` | 角色 | 单行文本 |
+| `tech_stack` | 技术栈 | 标签输入 |
+| `description` | 描述 | 多行文本 |
+| `resume_bullets` | 简历要点 | 子表格（id + text） |
+
+#### 分组 8：教育背景 (`education`)
+
+表格控件：
+
+| 列 key | 显示标签 | 控件类型 |
+|--------|----------|----------|
+| `degree` | 学位 | 单行文本 |
+| `major` | 专业 | 单行文本 |
+| `school` | 学校 | 单行文本 |
+| `period` | 时间段 | 单行文本（如：2020-2024） |
+| `school_en` | 学校 (英文) | 单行文本 |
+
+#### 分组 9：证书 (`certifications`)
+
+标签集合控件（字符串数组）。
+
+### 评分时实际使用的字段
+
+`job_match.py:_build_profile_summary()` 只提取以下顶层 key 传给 LLM：
+
+- `job_intent`
+- `skills`
+- `work_experience`
+- `education`
+- `certifications`
+- `summary`
+
+`basic_info`、`profile_summary.strategic_positioning`、`projects`、`languages` 不会传入评分 prompt。
 
 ### 注意事项
 
-- `target_titles` 的顺序代表优先级，排在前面的是首选方向
-- `summary` 会被直接用于简历的 Summary 段落参考，所以要写得像简历而非日记
-- 工作经历中的 `highlights` 是简历 bullet points 的主要素材，**格式要求：动词开头 + 做了什么 + 量化结果**
-- `skills.blockchain` 等特定领域字段是自定义的，LLM 会读取但不会硬性匹配字段名
+- 工作经历中的 `highlights` 和 `key_achievements[].resume_bullet` 是简历 bullet 的主要素材
+- 所有字段无硬性必填校验，但关键字段（如 `skills`、`work_experience`、`summary`）填写越完整，LLM 评分和简历质量越高
+- 前端有脏字段追踪：未保存的修改会显示琥珀色标记 + 「已修改 N 个字段」悬浮条
 
 ---
 
-## 2. `search_config.yaml` — 系统基础设施
+## 2. 系统配置
 
-**作用：** 存放不随求职方向变化的系统级配置——LLM 供应商、公司过滤、市场调研参数、当前画像选择。**换方向时主要改 `instances/campaigns/` 和 `instances/strategies/`，而非此文件。**
+**存储位置：** SQLite `search_config` 表（`data` 字段存完整 JSON，单行）。
 
-> **💡 修改方式：** 除了直接编辑文件外，也可在 Web UI 侧边栏进行快速操作——「设置」面板可编辑完整 YAML 内容，LLM 下拉菜单可一键切换模型，排序按钮可切换按时间/按相关度。
+**修改方式：** Web UI → 设置 → 找工作配置 Tab / 市场调研配置 Tab。LLM 模型可通过侧边栏下拉菜单实时切换。
 
-当前文件完整内容：
+### 当前字段全览
 
-```yaml
-filters:
-  exclude_companies: []
-llm:
-  model: deepseek-v4-pro
-  provider: deepseek
-market_analysis:
-  batch_size: 5
-  jd_max_chars: 6000
-  max_fetch_jd: 100
-  max_pages: 4
-sort_mode: date
-user: li_ming
+```json
+{
+  "filters": { "exclude_companies": [] },
+  "llm": { "provider": "deepseek", "model": "deepseek-v4-pro" },
+  "market_analysis": { "max_pages": 10, "max_fetch_jd": 200, "batch_size": 3, "jd_max_chars": 6000 },
+  "market_presets": { "job_categories": [], "classifications": [] },
+  "matching": { "direction_batch_size": 1, "score_batch_size": 5, "rescore_batch_size": 1 },
+  "resume_gen": { "jd_max_chars": 3000 },
+  "search": { "max_pages": 1, "max_total_results": 15, "jd_max_chars": 6000 },
+  "sort_mode": "date"
+}
 ```
 
-### 2.1 `llm` — LLM 供应商
+### 字段说明
 
-```yaml
-llm:
-  provider: deepseek          # 可选: deepseek | qwen | glm
-  model: deepseek-v4-pro      # 对应供应商的模型名
-```
+| 配置段 | 配置项 | 默认值 | 说明 |
+|--------|--------|--------|------|
+| `llm.provider` | — | `"deepseek"` | `deepseek` / `qwen` / `glm` |
+| `llm.model` | — | `"deepseek-v4-pro"` | 模型名称 |
+| `sort_mode` | — | `"date"` | `"date"`（最新在前）/ `"relevance"`（相关度） |
+| `filters.exclude_companies` | `[]` | 排除的公司名（大小写不敏感） |
+| `search.max_pages` | 1 | 每组搜索词翻页数 |
+| `search.max_total_results` | 15 | JD 抓取上限 |
+| `search.jd_max_chars` | 6000 | LLM 评分时单条 JD 截断长度 |
+| `matching.direction_batch_size` | 1 | 方向分类每批发给 LLM 的 JD 数量 |
+| `matching.score_batch_size` | 5 | 评分每批发给 LLM 的 JD 数量 |
+| `matching.rescore_batch_size` | 1 | 复评每批发给 LLM 的 JD 数量 |
+| `market_analysis.max_pages` | 10 | 市场调研翻页数 |
+| `market_analysis.max_fetch_jd` | 200 | 市场调研 JD 抓取上限 |
+| `market_analysis.batch_size` | 3 | 市场调研 LLM 每批分析条数 |
+| `market_analysis.jd_max_chars` | 6000 | 市场调研单条 JD 截断长度 |
+| `market_presets.job_categories` | `[]` | 市场调研页面的预设岗位类别 |
+| `market_presets.classifications` | `[]` | 市场调研页面的预设行业分类 |
+| `resume_gen.jd_max_chars` | 3000 | 方向聚合时每条 JD 截断长度 |
 
-| 你想达到的效果 | 怎么改 |
-|--------------|-------|
-| 换模型供应商 | 改 `provider`，确保 `.env` 中有对应 Key |
-| 用更便宜/更强的模型 | 改 `model` 为供应商支持的模型名 |
-| **不编辑文件，一键切换** | Web UI 侧边栏 LLM 下拉菜单直接选择，切换**即时生效**并自动回写配置 |
-
-### 2.2 `user` — 当前用户画像
-
-```yaml
-user: li_ming
-```
-
-指定当前使用的用户画像文件名（不含 `.yaml` 后缀）。`load_profile()` 和 Web UI 的 `/api/config/yaml/me` 均通过此字段定位 `instances/users/{user}.yaml`。Web UI 侧边栏画像下拉框可切换，切换即时生效。
-
-### 2.3 `filters` — 过滤条件
-
-```yaml
-filters:
-  exclude_companies: [] # 排除特定公司
-```
-
-基础清洗阶段会排除空标题和 `exclude_companies` 中列出的公司。精确过滤交给 match_jobs 的五维评分完成。
-
-| 你想达到的效果 | 怎么改 |
-|--------------|-------|
-| 排除特定公司 | 在 `exclude_companies` 加公司名 |
-
-### 2.4 `market_analysis` — 市场调研设置
-
-```yaml
-market_analysis:
-  max_pages: 4            # 翻几页列表（代码级 fallback: 3）
-  max_fetch_jd: 100       # 最多抓几条 JD（代码级 fallback: 40）
-  batch_size: 5            # LLM 每批分析几条（代码级 fallback: 10）
-  jd_max_chars: 6000       # 每条 JD 截断长度（代码级 fallback: 2000）
-```
-
-**作用：** 仅在调用 `analyze_market` 工具时使用，与找工作流程独立。
-
-### 2.5 `sort_mode` — 排序设置
-
-```yaml
-sort_mode: "date"      # "date" = 按发布时间排序（最新在前）
-                       # "relevance" = 按相关度排序（JobsDB 默认）
-```
-
-**原理：** 控制 JobsDB 搜索结果的排序方式。Web UI 侧边栏排序切换按钮可临时覆盖，不写入配置文件。
+> **注意：** `search_config` 表**没有 `user` 字段**。当前活跃画像由 `user_profiles.is_current = 1` 标记决定，通过 Web UI 侧边栏画像下拉框切换。
 
 ---
 
-### ⚠️ 已迁移的配置项
+## 3. 策略
 
-以下字段原本在 `search_config.yaml` 中，现已迁移至 `instances/` 三层架构：
+**存储位置：** SQLite `strategies` 表。每个策略定义五维匹配权重 + 标题关键词分类规则。
 
-| 原字段 | 现位置 | 说明 |
-|--------|--------|------|
-| `search_queries` | `instances/campaigns/{name}.yaml` | 搜索关键词组 |
-| `max_pages_per_query` | `instances/campaigns/{name}.yaml` → `overrides` 段 | 每组关键词翻页数 |
-| `max_total_results` | `instances/campaigns/{name}.yaml` → `overrides` 段 | JD 抓取上限 |
-| `matching.weight_profiles` | `instances/strategies/{name}.yaml` | 五维权重方案 |
-| `matching.weight_rules` | `instances/strategies/{name}.yaml` | 标题关键词分类规则 |
-| `matching.min_match_score` | `instances/strategies/{name}.yaml` | 最低达标分数 |
-| `matching.borderline_rescore` | `instances/strategies/{name}.yaml` | 及格线复评开关 |
-| `matching.borderline_range` | `instances/strategies/{name}.yaml` | 复评区间 |
-| `matching.top_n` | `instances/strategies/{name}.yaml` | 保留 Top N |
+**修改方式：** Web UI → 设置 → 策略 Tab。支持新建/编辑/删除。
 
-详见 [§6 — `instances/` 三层配置组装](#6-instances--三层配置组装)。
+### 策略包含的字段
+
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `name` | 策略名称（标识符） | `web3` |
+| `description` | 描述文本 | "Web3/区块链方向" |
+| `weight_profile` | 五维权重（必须和为 100） | `{skill:35, experience:20, level:15, industry:15, bonus:15}` |
+| `weight_rules_keywords` | 标题关键词列表（用于 `classify_job()` 回退匹配） | `["blockchain", "crypto", "web3"]` |
+| `min_match_score` | 最低达标分数（默认 45） | 45 |
+| `top_n` | 保留 Top N（默认 999=全部） | 999 |
+| `borderline_rescore` | 是否启用及格线复评 | `true` |
+| `borderline_range` | 复评区间（分） | 8 |
+
+### 当前策略一览
+
+| 策略名 | 权重 (技能/经验/职级/行业/加分) | 适用场景 |
+|--------|-------------------------------|----------|
+| `default` | 30 / 25 / 15 / 15 / 15 | 无法分类的通用岗位 |
+| `technical` | 35 / 20 / 15 / 15 / 15 | 纯技术开发岗 |
+| `solutions` | 25 / 20 / 15 / 20 / 20 | 方案/集成工程师 |
+| `web3` | 35 / 20 / 15 / 15 / 15 | Web3/区块链岗位 |
+| `payment` | 25 / 20 / 10 / 25 / 20 | 支付/结算岗位 |
+| `business_sales` | 20 / 20 / 15 / 25 / 20 | 纯商务销售岗 |
+
+### 权重校验
+
+- 后端 `POST/PUT /api/strategies` 校验五维之和必须等于 100
+- `config_assembler.py` 加载时也会校验并打印警告
 
 ---
 
-## 3. `resume_guide.yaml` — 简历撰写规范
+## 4. Campaign
 
-**作用：** 告诉 LLM 怎么写简历内容。生成简历时会被注入到 LLM 的 system prompt 中。
+**存储位置：** SQLite `campaigns` 表。每个 Campaign 绑定一个策略 + 一组搜索关键词。
 
-### 结构一览
+**修改方式：** Web UI → 设置 → Campaign Tab。侧边栏 Campaign 下拉框切换当前激活的 Campaign（通过 `/api/session/campaign` 设置 session 级别）。
 
-```yaml
-general:              # 总体规则（页数、是否放照片、目标市场）
-ats_rules:            # ATS（简历解析系统）友好规则
-content_rules:        # 每个段落的内容写法
-  summary:            # Summary 段落：最多几句、侧重点
-  work_experience:    # 工作经历：每角色几个 bullet、好/坏示例
-  skills:             # 技能：分组方式、每组上限
-  education:          # 教育
-  certifications:     # 证书
-weakness_handling:    # 弱点处理策略（如何避免暴露年限不足、英语短板等）
-hk_specific:          # 香港市场特殊要求
-cover_letter:         # Cover Letter 规则
+### Campaign 包含的字段
+
+| 字段 | 说明 |
+|------|------|
+| `name` | Campaign 名称（如 `web3_hunt`） |
+| `strategy` | 绑定的策略名（如 `web3`） |
+| `search_queries` | 搜索关键词组数组，每组含 `keywords` / `location` / `classification` |
+
+### 使用方式
+
+```bash
+# 终端模式 — 加载 campaign（通过 config_assembler.py 组装）
+python agent.py --campaign web3_hunt
+
+# Web UI 模式 — 侧边栏「求职方向」下拉框选择
+python web_app.py
 ```
 
-| 你想达到的效果 | 怎么改 |
-|--------------|-------|
-| 简历从 2 页改为 1 页 | `general.max_pages: 1`，同时减少 `work_experience.max_bullet_points_per_role` |
-| 改变 bullet point 风格 | 修改 `content_rules.work_experience.style` 和 `good_examples` |
-| 投非香港市场 | 修改 `general.target_market`、`hk_specific` 中的规则 |
+`config_assembler.load_campaign()` 的组装流程：
+1. 从 SQLite `campaigns` 表读取 campaign
+2. 从 SQLite `user_profiles` 表读取当前活跃画像（`is_current=1`）
+3. 从 SQLite `strategies` 表读取全部用户策略 + 当前 campaign 绑定的策略
+4. 从 SQLite `search_config` 表读取通用配置
+5. 从 `profiles/` 加载 prompts.yaml / resume_template.yaml / resume_guide.yaml
+6. 合并输出完整配置字典
 
 ---
 
-## 4. `resume_template.yaml` — 简历模板结构
+## 5. `prompts.yaml`
 
-**作用：** 控制简历的段落顺序和输出格式。
+**作用：** 所有 LLM 提示词的唯一来源。共 15 个 prompt 模板。
 
-```yaml
-format: "markdown"
-output_style: "professional"
-
-sections_order:       # 段落排列顺序（从上到下）
-  - "summary"
-  - "skills"
-  - "work_experience"
-  - "projects"
-  - "education"
-  - "certifications"
-
-customization:
-  auto_reorder_skills: true    # 自动按 JD 相关性重排技能
-  auto_adjust_summary: true    # 自动根据目标岗位调整 Summary
-  max_pages: 2
-```
-
-| 你想达到的效果 | 怎么改 |
-|--------------|-------|
-| Skills 放在 Work Experience 后面 | 交换 `sections_order` 中的顺序 |
-| 不展示 Projects 段落 | 从 `sections_order` 中删除 "projects" |
-| 不要自动重排技能 | `auto_reorder_skills: false` |
-
----
-
-## 5. `prompts.yaml` — LLM 提示词
-
-**作用：** 这是本项目最关键的可调文件之一。它包含了**所有发送给 LLM 的指令**，决定了 LLM 如何筛选岗位、评分、分析市场、撰写简历。
+**存储位置：** `profiles/prompts.yaml`（YAML 文件，不从 SQLite 读取）。
 
 ### 结构总览
 
 | 段落 | 用途 | 影响什么功能 |
 |------|------|------------|
 | `agent.system_prompt` | Agent 的身份和行为规则 | 对话交互 |
-| `job_match.scoring_system_prompt` | 教 LLM 怎么从 5 个维度打分 | 匹配评分阶段 |
-| `market_analysis.analysis_system_prompt` | 教 LLM 怎么从 JD 中提取市场数据 | 市场分析 |
-| `market_analysis.report_prompt` | 教 LLM 怎么撰写市场分析报告 | 市场分析 → 报告撰写 |
-| `market_analysis.gap_analysis_prompt` | 教 LLM 怎么做候选人差距分析 | 市场分析 → 差距分析 |
-| `resume.base_rules` | 简历撰写的通用基础规则 | 所有简历生成模式 |
-| `resume.prompt_for_job` | 基于匹配岗位生成简历的指令 | 匹配岗位 |
-| `resume.prompt_for_jd_text` | 基于粘贴 JD 生成简历的指令 | JD 文本 |
-| `resume.cover_letter_prompt` | Cover Letter 撰写指令 | 求职信生成 |
-| `resume.resume_review_prompt` | 英文简历自检（审查定稿） | 简历审查 |
-| `resume.aggregate_system_prompt` | 方向聚合分析 + 三级技能分类 | 方向聚合（一键找工作） |
-| `resume.prompt_for_direction_data` | 基于聚合数据生成方向简历 | 方向聚合（一键找工作） |
-| `resume.cl_for_direction_data` | 方向通用 Cover Letter | 方向聚合（一键找工作） |
-| `resume.translate_resume_prompt` | 简历翻译（英→繁中/简中） | 所有模式翻译阶段 |
-| `resume.translate_cl_prompt` | Cover Letter 翻译 | 所有模式翻译阶段 |
+| `job_match.direction_classification_prompt` | LLM 方向分类规则 | 匹配 — 方向判定 |
+| `job_match.scoring_system_prompt` | LLM 五维评分指导 | 匹配 — 评分 |
+| `market_analysis.analysis_system_prompt` | JD 数据提取规则 | 市场分析 |
+| `market_analysis.gap_analysis_prompt` | 候选人差距分析 | 市场分析 |
+| `market_analysis.report_prompt` | 报告撰写指令 | 市场分析 |
+| `resume.base_rules` | 简历通用基础规则 | 所有简历模式 |
+| `resume.prompt_for_job` | 匹配岗位模式指令 | 简历 — 匹配岗位 |
+| `resume.prompt_for_jd_text` | JD 文本模式指令 | 简历 — JD 文本 |
+| `resume.cover_letter_prompt` | Cover Letter 指令 | 求职信 |
+| `resume.resume_review_prompt` | 简历审查定稿 | 简历审查 |
+| `resume.aggregate_system_prompt` | 方向聚合 + 三级技能分类 | 简历 — 方向聚合 |
+| `resume.prompt_for_direction_data` | 基于聚合数据生成简历 | 简历 — 方向聚合 |
+| `resume.cl_for_direction_data` | 方向通用 Cover Letter | 简历 — 方向聚合 |
+| `resume.translate_resume_prompt` | 简历翻译 | 所有模式翻译 |
+| `resume.translate_cl_prompt` | Cover Letter 翻译 | 所有模式翻译 |
 
 ### 占位符说明
 
-提示词中用 `<name>` 格式的占位符表示运行时自动替换的变量。
-
 | 占位符 | 出现在 | 替换为什么 |
 |--------|-------|-----------|
-| `<profile_summary>` | job_match, aggregate_system_prompt | 候选人完整档案的 YAML 文本 |
-| `<weights_text>` | job_match | 5 维度权重说明（自动从 Campaign 配置的 weight_profile 生成） |
+| `<profile_summary>` | job_match, aggregate | 候选人档案 JSON（从画像提取） |
+| `<weights_text>` | job_match | 五维权重描述（自动生成） |
 | `<score_formula>` | job_match | 总分计算公式（自动生成） |
-| `<job_category>` | market_analysis | 用户指定的岗位类别（如 "Web3"） |
-| `<location>` | market_analysis.report | 搜索地点（如 "Hong Kong"） |
-| `<sample_size>` | market_analysis.report | 分析的 JD 样本数量 |
-| `<analysis_json>` | market_analysis.report | 市场分析结构化数据（JSON） |
-| `<gap_analysis_json>` | market_analysis.report | 差距分析结构化数据（JSON） |
-| `<technical_skills>` | market_analysis.gap | 市场技术技能需求列表（JSON） |
-| `<profile>` | market_analysis.gap | 候选人技能画像（JSON） |
-| `<guide>` | resume.base_rules | 简历撰写指南（来自 resume_guide.yaml） |
-| `<template>` | resume.prompt_for_* | 简历模板配置（来自 resume_template.yaml） |
+| `<direction_list>` | direction_classification | 可用方向列表 |
+| `<job_category>` | market_analysis | 用户指定的岗位类别 |
+| `<guide>` | resume.base_rules | 简历指南（resume_guide.yaml） |
+| `<template>` | resume.prompt_for_* | 简历模板（resume_template.yaml） |
 | `<base_rules>` | resume.prompt_for_* | 渲染后的基础规则文本 |
-| `<direction>` | prompt_for_direction_data, cl_for_direction_data | 方向名称（如 "payment"） |
-| `<target_lang>` | translate_resume_prompt, translate_cl_prompt | 目标语言（如 "繁體中文（香港用語）"） |
+| `<direction>` | direction_data, cl_direction | 方向名称 |
+| `<target_lang>` | translate | 目标语言 |
 
-### 哪些可以改、哪些不能改
+### 修改原则
 
-文件中用注释标注了：
+- **可以改：** 角色设定、判断规则、评分标准、写作风格
+- **不要改：** `<占位符>` 名称、JSON 输出格式中的字段名
 
-- **✏️ 可以自由修改的部分：** 角色设定、判断规则、评分标准、写作风格
-- **⚠️ 不要修改的部分：** `<占位符>` 名称、JSON 输出格式中的字段名
+---
 
-**经验法则：** 中文自然语言描述的"规则""要求""注意"部分都可以改；花括号 `{}` 包裹的 JSON 结构不要改。
+## 6. `resume_guide.yaml`
 
-### 常见编辑场景
+**作用：** 告诉 LLM 怎么写简历内容。通过 `<guide>` 占位符注入到简历生成 prompt。
 
-#### 场景 A：让评分更关注行业匹配
+**存储位置：** `profiles/resume_guide.yaml`。
 
-找到 `job_match.scoring_system_prompt` 中的「注意」部分，添加额外评分指导：
+包含章节：`general`（页数/市场）、`ats_rules`（ATS 友好）、`content_rules`（段落写法）、`weakness_handling`（弱点处理）、`hk_specific`（香港市场）、`cover_letter`（Cover Letter 规则）。
 
-```yaml
-注意：
-- 总分由系统根据策略权重自动计算，你不需要输出 total_score
-- 如果岗位属于 Web3/区块链行业，industry 维度应该给予额外加分
-- 候选人有粤语母语优势，如果 JD 提到需要粤语/广东话，bonus 应给高分
-```
+---
 
-#### 场景 B：调整市场分析的侧重点
+## 7. `resume_template.yaml`
 
-找到 `market_analysis.analysis_system_prompt`，修改分析要求：
+**作用：** 控制简历的段落顺序和输出格式。
+
+**存储位置：** `profiles/resume_template.yaml`。
 
 ```yaml
-# 在「注意」部分添加：
-- 特别关注 AI/LLM 相关的技能需求，即使出现频次低也要列出
-- 对于远程工作岗位，单独标注
+format: "markdown"
+output_style: "professional"
+sections_order: [summary, skills, work_experience, projects, education, certifications]
+customization:
+  auto_reorder_skills: true
+  auto_adjust_summary: true
+  max_pages: 2
 ```
-
-#### 场景 C：改变简历写作风格
-
-找到 `resume.base_rules` 或具体模式的 prompt，修改风格要求：
-
-```yaml
-# 例如在 base_rules 中修改：
-# 原来：9. Summary 最多3句话
-# 改为：9. Summary 最多2句话，第一句必须包含最核心的技术关键词
-```
-
-### 多语言注意事项
-
-多语言简历采用「英文先行 + 翻译」机制：英文为主版本（审查定稿后），繁中/简中由 `resume.translate_resume_prompt` 和 `resume.translate_cl_prompt` 精确翻译生成。修改 resume prompt 只需关注英文版本即可。翻译规则也可在 `prompts.yaml` 中调整。
 
 ---
 
 ## 常见操作速查
 
-### 场景 1：换一个求职方向（如从后端开发转 Web3 产品）
+### 场景 1：换一个求职方向
 
-1. **用户画像** → 修改 `job_intent.target_titles` 和 `target_industries`
-2. **Campaign / Strategy** → 新建或修改 `instances/campaigns/{name}.yaml`（搜索词）和 `instances/strategies/{name}.yaml`（权重方案）
-3. （可选）用户画像 → 调整 `summary` 和 `highlights` 以突出新方向相关经验
-4. （可选）`prompts.yaml` → 在 `job_match.scoring_system_prompt` 中调整评分规则
+1. **Web UI 设置 → Campaign Tab** → 新建或编辑 Campaign（绑定策略 + 搜索词）
+2. **Web UI 侧边栏** → 切换到新 Campaign
+3. （可选）**Web UI 设置 → 个人画像 Tab** → 调整求职意向和目标岗位
+4. （可选）编辑 `prompts.yaml` → 调整评分规则
 
 ### 场景 2：搜索结果太少
 
-1. `instances/campaigns/{name}.yaml` → 增加更多 `search_queries` 关键词组
-2. `instances/campaigns/{name}.yaml` → 在 `overrides` 段调大 `max_pages_per_query`
-3. `instances/strategies/{name}.yaml` → 降低 `min_match_score`
+1. **Web UI 设置 → 找工作配置 Tab** → 调大 `max_pages` 和 `max_total_results`
+2. **Web UI 设置 → Campaign Tab** → 增加更多搜索关键词组
+3. **Web UI 设置 → 策略 Tab** → 降低 `min_match_score`
 
 ### 场景 3：搜索结果噪音太多
 
-1. `instances/campaigns/{name}.yaml` → 用更精确的关键词
-2. `instances/strategies/{name}.yaml` → 提高 `min_match_score`
-3. `instances/strategies/{name}.yaml` → 调整 `weight_profile` 增加相关维度的权重
+1. **Web UI 设置 → Campaign Tab** → 用更精确的关键词
+2. **Web UI 设置 → 策略 Tab** → 提高 `min_match_score`，调整权重
 
 ### 场景 4：简历不够突出
 
-1. 用户画像 → 优化 `work_experience.highlights`（用数据量化成果）
-2. 用户画像 → 完善 `summary`（突出核心竞争力）
-3. `resume_guide.yaml` → 调整 `content_rules.work_experience.good_examples` 给 LLM 更好的示范
-4. （可选）`prompts.yaml` → 在 `resume.base_rules` 中添加更具体的写作要求
+1. **Web UI 设置 → 个人画像 Tab** → 优化工作经历的 `highlights` 和 `key_achievements`
+2. 编辑 `resume_guide.yaml` → 调整 `content_rules`
+3. （可选）编辑 `prompts.yaml` → 添加更具体的写作要求
 
-### 场景 5：投不同城市
+### 场景 5：切换 LLM 模型
 
-1. 用户画像 → 修改 `location` 和 `job_intent.location_preference`
-2. `instances/campaigns/{name}.yaml` → 修改每组 `search_queries` 的 `location`
+**Web UI 侧边栏 LLM 下拉菜单** → 直接选择，**即时生效**，自动回写 SQLite。
 
 ### 场景 6：切换搜索结果排序
 
-1. **全局切换** → `search_config.yaml` 修改 `sort_mode` 为 `"relevance"`（按相关度）或 `"date"`（按发布时间）
-2. **单个搜索词** → 在对应 Campaign 的 `search_queries` 条目中加 `sort_by: "relevance"` 覆盖全局设置
-3. **临时切换** → Web UI 侧边栏排序切换按钮直接选择
+**Web UI 侧边栏排序按钮** → 按发布时间 / 按相关度。或 Web UI 设置 → 找工作配置 Tab → 修改 `sort_mode`。
 
 ---
 
-## 6. `instances/` — 三层配置组装（新架构）
-
-**作用：** 将配置按变化轴拆分为 User（谁）、Strategy（怎么评）、Campaign（搜什么）三层，支持灵活组合。通过 `config_assembler.py` 在运行时组装成完整配置。
-
-### 6.1 目录结构
-
-```text
-instances/
-├── campaigns/       # Campaign 定义：绑定 user + strategy + search_queries
-│   └── web3_hunt.yaml
-├── strategies/      # 策略文件：权重方案 + 关键词规则
-│   ├── default.yaml
-│   ├── payment.yaml
-│   ├── solutions.yaml
-│   ├── technical.yaml
-│   └── web3.yaml
-├── users/           # 用户画像（替代 profiles/me.yaml 的用户维度）
-│   └── li_ming.yaml
-└── eval/            # 评估数据集 + 标注规范
-    ├── all_cases.json
-    ├── dev_set.json
-    ├── holdout.json
-    ├── checker_test_cases.json
-    ├── ANNOTATION_GUIDE.md
-    └── ANNOTATION_TODO.md
-```
-
-### 6.2 三层组装流程
+## 配置体系架构图
 
 ```
-campaigns/web3_hunt.yaml
-  │
-  ├── user: li_ming     → 加载 instances/users/li_ming.yaml
-  ├── strategy: web3    → 加载 instances/strategies/web3.yaml（含 weight_profile + weight_rules_keywords）
-  │
-  └── 组装逻辑（config_assembler.py）：
-       1. 加载 profiles/search_config.yaml 获取通用配置（llm / filters / 市场参数）
-       2. 加载 profiles/prompts.yaml 获取 prompt 模板
-       3. 加载 profiles/resume_template.yaml + resume_guide.yaml
-       4. 从 strategy 构建 matching 段（weight_profiles + weight_rules）
-       5. 合并 campaign.overrides（如 max_total_results / min_match_score 覆盖）
-       → 输出完整配置字典
-```
+SQLite (job_agent.db)
+├── user_profiles     ← 用户画像（is_current=1 为当前活跃）
+├── search_config     ← 系统基础设施（LLM/过滤/市场/搜索参数）
+├── strategies        ← 五维权重 + 关键词规则（每人一套副本）
+├── campaigns         ← 搜索词 + 策略绑定（每人多个）
+└── field_schemas     ← 画像字段 Schema（驱动前端表单渲染）
 
-### 6.3 Campaign 文件格式
+YAML 文件 (profiles/)
+├── prompts.yaml          ← 15 个 LLM 提示词模板
+├── resume_template.yaml  ← 简历结构
+└── resume_guide.yaml     ← 简历撰写规范
 
-```yaml
-# instances/campaigns/web3_hunt.yaml
-user: "li_ming"               # 必填：用户 ID
-strategy: "web3"              # 必填：策略 ID
-search_queries:               # 必填：搜索关键词组
-  - keywords: "Web3"
-    location: "Hong Kong"
-  - keywords: "Blockchain Developer"
-    location: "Hong Kong"
-sort_mode: "date"             # 可选：覆盖全局 sort_mode
-overrides:                    # 可选：覆盖通用配置
-  max_total_results: 200
-  min_match_score: 45
-```
+.env                     ← API 密钥
 
-### 6.4 使用方式
-
-```bash
-# 终端模式 — 加载 campaign
-python agent.py --campaign web3_hunt
-
-# Web UI 模式 — 通过侧边栏「求职方向」下拉框选择 campaign
-python web_app.py
-```
-
-### 6.5 新旧体系对比
-
-| 维度 | 系统基础设施（profiles/） | 业务配置（instances/） |
-|------|-------------------|---------------------|
-| 用户画像 | `instances/users/{user}.yaml`（通过 `search_config.yaml` 的 `user` 字段选择） | 同左（同一套画像文件） |
-| 权重方案 | —（已迁移） | `instances/strategies/*.yaml`（独立文件，5 种预设） |
-| 搜索词 | —（已迁移） | `instances/campaigns/*.yaml`（显式声明） |
-| 数量控制 | —（已迁移） | `instances/campaigns/*.yaml` 的 `overrides` 段 |
-| LLM / 过滤 / 市场参数 | `search_config.yaml` | —（沿用 profiles/） |
-| 配置覆盖 | 直接修改 YAML | `overrides` 字段 + 深度合并 |
-| Web UI 支持 | ✅ 侧边栏设置面板、LLM 切换、排序切换 | ✅ 侧边栏 Campaign 下拉框、画像下拉框 |
-| 适用场景 | 个人日常使用（不改动的系统参数） | 换方向、批量实验、多用户 |
-
----
-
-## 配置文件之间的关系
-
-### 系统基础设施（profiles/）
-
-```
-.env (API 密钥)
-  └──→ config.py 初始化 LLM client
-
-search_config.yaml (LLM / 过滤 / 市场参数 / 画像选择)
-  │
-  ├──→ job_search.py   读取 filters
-  ├──→ market_analysis.py  读取 market_analysis 段
-  ├──→ config.py       读取 llm 段初始化客户端
-  └──→ config.py       load_profile() 通过 user 字段定位画像
-
-instances/users/{user}.yaml (你是谁)
-  │
-  ├──→ job_match.py    读取完整档案 → 作为 LLM 评分的参考基准
-  ├──→ resume_gen.py   读取全部字段 → 作为简历内容的唯一素材来源
-  └──→ market_analysis.py  读取技能 → 用于差距分析对比
-
-resume_guide.yaml (简历怎么写)
-  └──→ resume_gen.py   注入 LLM system prompt，指导内容写法
-
-resume_template.yaml (简历什么结构)
-  └──→ resume_gen.py   注入 LLM system prompt，控制段落顺序和格式
-
-prompts.yaml (教 LLM 怎么判断)
-  │
-  ├──→ agent.py / web_app.py   Agent 系统身份
-  ├──→ job_match.py            匹配评分指导
-  ├──→ market_analysis.py      市场分析 + 差距分析
-  └──→ resume_gen.py           简历撰写 + Cover Letter
-```
-
-### 三层组装体系（instances/）
-
-```
-instances/users/{user}.yaml         # 用户画像
-        │
-instances/strategies/{strategy}.yaml # 权重方案 + 匹配参数 + 关键词规则
-        │
-instances/campaigns/{name}.yaml     # 搜索词 + overrides
-        │
-        ├──→ config_assembler.py  合并组装
-        │         │
-        │         ├── base: profiles/search_config.yaml（llm / filters / 市场参数）
-        │         ├── + profiles/prompts.yaml
-        │         ├── + profiles/resume_template.yaml + resume_guide.yaml
-        │         └── → 输出完整配置字典
-        │
-        └──→ search_jobs / match_jobs 接收 config 参数（通过 _CONFIG_AWARE_TOOLS 自动注入）
+组装流程（config_assembler.py）:
+  search_config (SQLite) + user_profiles (SQLite) + strategies (SQLite)
+  + campaigns (SQLite) + prompts.yaml + resume_template.yaml + resume_guide.yaml
+  → 完整配置字典 → search_jobs / match_jobs / resume_gen
 ```

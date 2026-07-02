@@ -30,7 +30,7 @@
 | 网络搜索 | DuckDuckGo (ddgs) | 联网搜索 |
 | Web 框架 | Flask + SSE | Web UI 服务器，SSE 实时进度推送 |
 | 前端 | 原生 HTML/CSS/JS（单页应用） | Web UI，通过 SSE 实时推送进度，支持对话模式和快捷操作模式 |
-| 配置管理 | YAML | 用户画像、搜索策略、Prompt、简历模板/指南均为 YAML |
+| 配置管理 | SQLite + YAML | 画像/Campaign/策略/系统配置存 SQLite，Web UI 管理；prompts/简历模板/指南保留 YAML 文件 |
 | 环境管理 | python-dotenv | API Key 通过 `.env` 文件管理 |
 
 ### 1.3 项目结构
@@ -54,32 +54,21 @@ D:\job-agent/
 ├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
 ├── config_assembler.py       # [组装] Campaign 配置三层组装（user × strategy × campaign）
 │
-├── engine/                   # [契约] Pydantic 数据模型（6 个文件）
-│   ├── contracts/            #     14 个 Pydantic 模型
-│   │   ├── match_result.py   #       MatchResult + Scores
-│   │   ├── market_result.py  #       MarketAnalysisResult + TechnicalSkill
-│   │   ├── gap_result.py     #       GapAnalysisResult + 4 个子模型
-│   │   ├── resume.py         #       Resume + ResumeBullet
-│   │   ├── direction_result.py #     DirectionAggregationResult + CommonRequirements
-│   │   └── review_result.py  #       ResumeReviewResult
+├── engine/                   # [契约] Pydantic 数据模型
+│   └── contracts/            #     6 个 Pydantic 模型文件
 │
-├── evaluation/               # [评估] Prompt 评估脚本 + 数据集
-│   ├── run_eval.py           #     匹配评分评估
+├── evaluation/               # [评估] 评估核心 + 数据集拆分
+│   ├── eval_core.py          #     评估流水线（Web 调用入口）
 │   ├── run_checker_eval.py   #     Checker 用例评估
 │   └── split_eval.py         #     训练集/验证集拆分
 │
-├── instances/                # [实例] 新配置架构（三层组合）
-│   ├── campaigns/            #     Campaign 定义（用户 + 策略 + 搜索词组合）
-│   ├── strategies/           #     策略文件（权重方案 + 关键词规则）
-│   ├── users/                #     用户画像（按用户拆分）
+├── instances/                # [实例] 仅含评估数据
 │   └── eval/                 #     评估数据集 + 标注规范
 │
-├── prompts/                  # [示例] Prompt 模板示例
-│   └── examples/job_match/   #     各方向的评分 prompt 示例
+├── prompts/                  # [示例] Few-shot 示例
+│   └── examples/job_match/   #     方向分类示例 + 评分示例
 │
-├── profiles/                 # [配置文件目录] 系统基础设施配置
-│   ├── search_config.yaml    #     LLM 配置 + 过滤 + 市场参数 + user 字段（业务配置已迁移至 instances/）
-│   ├── search_config_fast.yaml #   快速测试用配置
+├── profiles/                 # [配置文件] YAML 文件（仍从文件读取）
 │   ├── prompts.yaml          #     15 个 LLM prompt 模板
 │   ├── resume_template.yaml  #     简历模板
 │   └── resume_guide.yaml     #     简历撰写指南
@@ -106,8 +95,13 @@ D:\job-agent/
 │   │   ├── unmatched_jobs.json
 │   │   ├── job_report.md
 │   │   ├── direction_analysis.json
+│   │   ├── direction_results.json
+│   │   ├── fallback_report.json
 │   │   └── resumes/
 │   └── market/               #     市场调研输出
+│
+├── data/
+│   └── job_agent.db          #     SQLite 数据库（8 张表，存储全部业务配置）
 │
 ├── .env                      # API Key
 ├── CONFIG_GUIDE.md           # 配置文件详细说明
@@ -248,9 +242,9 @@ _LLM_PRESETS = {
 }
 ```
 
-- `switch_model(provider, model)`：运行时切换 LLM，原地修改全局 `client` 的 `base_url` 和 `api_key`（所有模块持有同一引用，立即生效），同时回写 `search_config.yaml`
+- `switch_model(provider, model)`：运行时切换 LLM，原地修改全局 `client` 的 `base_url` 和 `api_key`（所有模块持有同一引用，立即生效），同时回写 SQLite `search_config` 表
 - `get_model_info()`：返回当前 provider、model 及所有可选预设列表
-- 启动时从 `search_config.yaml` 的 `llm` 段读取配置，支持自定义 `base_url` 和 `api_key_env`
+- 启动时从 SQLite `search_config` 表的 `llm` 段读取配置，支持自定义 `base_url` 和 `api_key_env`
 
 #### 3.1.3 emit 双模式输出
 
@@ -347,8 +341,8 @@ CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模
 | `read_file` | tools_basic | `filename` | — | 读取 `output/` 中的文件 |
 | `list_files` | tools_basic | 无 | — | 列出当前 run + market 目录中的所有文件 |
 | `web_search` | tools_basic | `query` | `max_results`（默认 5） | DuckDuckGo 联网搜索 |
-| `load_user_profile` | tools_basic | 无 | — | 查看用户画像 `instances/users/{user}.yaml` 内容（JSON 格式化，通过 `search_config.yaml` 的 `user` 字段定位） |
-| `load_search_config` | tools_basic | 无 | — | 查看 `profiles/search_config.yaml` 内容（JSON 格式化，仅系统基础设施配置段） |
+| `load_user_profile` | tools_basic | 无 | — | 查看用户画像（SQLite `user_profiles` 表，`is_current=1` 的行） |
+| `load_search_config` | tools_basic | 无 | — | 查看系统配置（SQLite `search_config` 表） |
 | `search_jobs` | job_search | 无 | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
 | `match_jobs` | job_match | 无 | — | 五维动态权重匹配评分 + 及格线复评 |
 | `generate_resume` | resume_gen | 无（3 种模式，`by_direction` / `job_index` / `jd_text`。均需显式指定，无参数时返回错误提示） | 见 §3.9 | 多模式三语简历 + Cover Letter 生成 |
@@ -547,7 +541,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 | `provider` | 是 | `"deepseek"` / `"qwen"` / `"glm"` |
 | `model` | 否 | 不传则使用该 provider 的默认模型 |
 
-切换立即生效（原地修改全局 client 属性），同时回写 `search_config.yaml`。
+切换立即生效（原地修改全局 client 属性），同时回写 SQLite `search_config` 表。
 
 ##### `GET /api/campaigns`
 列出所有可用的 campaign（摘要信息）。
@@ -568,15 +562,15 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 **Response**: `{"status": "ok", "campaign": "web3_hunt"}`
 
 ##### `GET /api/users`
-列出 `instances/users/` 下所有可用的用户画像。
+列出 SQLite `user_profiles` 表中所有可用的用户画像。
 
 **Response**:
 ```json
-[{"name": "li_ming", "user_name": "请替换为真实姓名"}]
+[{"name": "li_ming", "user_name": "li_ming", "is_current": true}]
 ```
 
 ##### `POST /api/config/user`
-运行时切换用户画像（更新 `search_config.yaml` 的 `user` 字段，即时生效）。
+运行时切换用户画像（更新 SQLite `user_profiles.is_current` 标记，即时生效）。
 
 **Request**:
 ```json
@@ -585,7 +579,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `user` | 是 | 用户画像文件名（不含 `.yaml` 后缀），需在 `instances/users/` 下存在 |
+| `user` | 是 | 用户画像名，需在 `user_profiles` 表中存在 |
 
 **Response**: `{"status": "ok", "user": "li_ming"}`
 
@@ -706,22 +700,22 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 ```
 
 ##### `GET /api/config/yaml/<name>`
-读取 YAML 配置文件并返回 JSON。
+读取配置并返回 JSON。
 
 **URL 参数**: `name` — `"me"` 或 `"search_config"`
 
-> **⚠️ 路径说明**：`name="me"` 实际读写 `instances/users/{user}.yaml`（通过 `search_config.yaml` 的 `user` 字段定位），而非 `profiles/me.yaml`。`name="search_config"` 读写 `profiles/search_config.yaml`。
+> **存储说明**：`name="me"` 读写 SQLite `user_profiles` 表（`is_current=1` 的行）。`name="search_config"` 读写 SQLite `search_config` 表。
 
 **Response**: `{"name": "me", "content": {...}}`
 
 ##### `PUT /api/config/yaml/<name>`
-回写 YAML 配置文件。前端提交 JSON，后端转为 YAML 存储。
+回写配置。前端提交 JSON，后端写入 SQLite。
 
 **Request**: `{"content": {...}}` — 完整的配置对象
 
 **Response**: `{"status": "ok", "name": "me"}`
 
-> **⚠️**：`name="me"` 写入路径为 `instances/users/{user}.yaml`，`name="search_config"` 写入路径为 `profiles/search_config.yaml`。
+> ⚠️ 端点名称含 `yaml` 是历史遗留，实际读写 SQLite。
 
 ---
 
@@ -735,7 +729,7 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 - **多 Provider 切换**：用户可在 DeepSeek / Qwen / GLM 之间实时切换 LLM，切换立即生效
 - **排序切换**：用户可切换搜索排序方式（按发布时间最新在前 / 按相关度），影响 `search_jobs` 和 `analyze_market` 的行为
 - **Campaign 切换**：用户可通过侧边栏下拉框选择求职方向（campaign），切换后后续请求自动使用对应的搜索词和权重策略。未选择时自动使用第一个可用 campaign
-- **画像切换**：用户可通过侧边栏切换用户画像（`instances/users/` 下的不同画像文件），切换后立即生效，影响匹配评分和简历生成
+- **画像切换**：用户可通过侧边栏切换用户画像（SQLite `user_profiles` 表中的不同用户），切换后立即生效，影响匹配评分和简历生成
 - **简历审查面板**：生成简历后自动展示 bullet 核查结果（checker 系统产出），支持逐条查看 7 种 flag（空源/悬空引用/占位符/数字缺失/数字冲突/约数超范围/强度升级），确认放行，逐条修正（`/api/resume/fix`，含 LLM 修补 → 验证 → 重检 → 重试流程）
 - **简历生成**：支持「匹配岗位」和「JD 文本」两种直接触发方式；方向聚合由「一键找工作」全流程自动完成
 - **市场调研**：用户可输入岗位类别参数直接触发市场调研
@@ -766,8 +760,8 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 | `read_file(filename)` | 全文返回 | 限定在 `output/` 目录内 |
 | `list_files()` | 分层列出当前 run + market 目录文件（含递归子目录） | 无 run 时自动找最近一次 run |
 | `web_search(query)` | 标题 + 摘要 + 链接 | DuckDuckGo，默认 5 条，region=`wt-wt` |
-| `load_user_profile()` | 用户画像（`instances/users/{user}.yaml`）转 JSON | 对 LLM 更友好的结构化格式 |
-| `load_search_config()` | `search_config.yaml` 转 JSON | 同上（仅系统基础设施配置段） |
+| `load_user_profile()` | 用户画像（SQLite `user_profiles` 表）转 JSON | 对 LLM 更友好的结构化格式 |
+| `load_search_config()` | 系统配置（SQLite `search_config` 表）转 JSON | 同上（仅系统基础设施配置段） |
 | `fetch_job_detail(url)` | 标题/公司/地点/薪资/完整 JD | 调用 `scraper.fetch_job_detail()` |
 
 ---
@@ -855,7 +849,7 @@ _FIELD_SPECS = {
            │
            ▼
 第二层（清洗）：basic_filter()
-  排除空标题 + 排除公司（search_config.yaml 的 exclude_companies）
+  排除空标题 + 排除公司（SQLite search_config 表的 exclude_companies）
   成本：0（纯代码规则，毫秒完成）
   诊断：超 80% 标题为空 → 返回爬虫选择器需要修复的提示
            │
@@ -884,7 +878,7 @@ _FIELD_SPECS = {
 
 ### 3.9 job_match.py — LLM 五维匹配评分
 
-**职责**：读取 `raw_jobs.json` + 用户画像（从 `instances/users/{user}.yaml` 加载），用 LLM 从 5 个维度评分。
+**职责**：读取 `raw_jobs.json` + 用户画像（从 SQLite `user_profiles` 加载），用 LLM 从 5 个维度评分。
 
 #### 五维评分体系 + 动态权重
 
@@ -912,7 +906,7 @@ _FIELD_SPECS = {
 
 **Instructor 模式说明**：匹配评分主路径 `_score_batch()` 和评估脚本 `score_single_jd()` 均使用 Instructor + Pydantic（`response_model=list[MatchResult]` / `response_model=MatchResult`），LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式。方向聚合分析和简历审查同样走此模式。
 
-**权重方案可用性**：Campaign 模式下，`weight_profiles` 仅包含当前 strategy 的权重方案 + default 默认权重。其他方向类别（如使用 `web3` strategy 时的 `payment`/`solutions`/`technical`）的岗位将使用 default 权重计算总分。所有 5 种策略文件位于 `instances/strategies/`，不同 campaign 可通过切换 strategy 来使用不同的权重方案。
+**权重方案可用性**：Campaign 模式下，`weight_profiles` 包含全部用户策略的权重方案（从 SQLite `strategies` 表加载）+ default 默认权重。其他方向类别的岗位将使用 default 权重计算总分。不同 campaign 可通过切换 strategy 来使用不同的权重方案。
 
 #### 完整评分流程
 
@@ -982,7 +976,7 @@ skill × w1 + experience × w2 + level × w3 + industry × w4 + bonus × w5
 ```python
 def generate_resume(job_index=None, jd_text=None, by_direction=False, output_langs=None, profile=None)
 ```
-其中 `output_langs` 控制输出语言子集（如 `["en","hk"]`，默认 `["en","hk","cn"]`），Web API 通过 `languages` 字段透传。`profile` 供 Campaign 模式注入，留空则从 `instances/users/{user}.yaml` 自动加载。
+其中 `output_langs` 控制输出语言子集（如 `["en","hk"]`，默认 `["en","hk","cn"]`），Web API 通过 `languages` 字段透传。`profile` 供 Campaign 模式注入，留空则从 SQLite `user_profiles` 自动加载。
 
 #### 3 种生成模式
 
@@ -1167,7 +1161,7 @@ Phase A: 数据采集
 Phase B: LLM 市场分析（分批评分 + 多批自动聚合）
   每批 batch_size 条 JD（YAML 默认 5，代码级 fallback 10）发给 LLM
   单条 JD 截断至 jd_max_chars 字符（YAML 默认 6000，代码级 fallback 2000）
-  > 以上参数均从 `search_config.yaml` 的 `market_analysis` 段读取。代码级 fallback 仅在 YAML 配置缺失时生效。
+  > 以上参数均从 SQLite `search_config` 表的 `market_analysis` 段读取。
   LLM 提取以下 11 个维度：
    1. technical_skills      — 技术技能（排名、分类、工具、说明）
    2. soft_skills           — 软技能/业务能力
@@ -1283,76 +1277,44 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 ## 四、配置文件说明
 
-### 4.1 instances/users/{user}.yaml — 用户画像
+### 4.1 用户画像（SQLite `user_profiles` 表）
 
-> **⚠️ 路径变更**：用户画像已从 `profiles/me.yaml` 迁移至 `instances/users/{user}.yaml`。通过 `search_config.yaml` 的 `user` 字段指定当前使用的画像文件名（不含 `.yaml` 后缀）。例如 `user: "li_ming"` → 加载 `instances/users/li_ming.yaml`。
+用户画像存储在 **SQLite `user_profiles` 表**的 `data` 字段（JSON 格式）。当前活跃画像由 `is_current = 1` 标记决定，通过 Web UI 侧边栏画像下拉框切换。
 
-```yaml
-基本信息:
-  姓名、电话、邮箱、LinkedIn、GitHub、所在地
+**修改方式**：Web UI → 设置 → 个人画像 Tab。前端由 SQLite `field_schemas` 表中的 `user_field` Schema 驱动渲染，共 9 个分组：
 
-战略定位:
-  核心画像、方向优先级、关键约束（英语/算法/经验年限）
+| 分组 | 顶层 key | 控件类型 | 主要字段 |
+|------|---------|----------|---------|
+| 基本信息 | `basic_info` | 双列网格卡片 | name, name_en, location, phone, email, linkedin, github, hk_permanent_resident（下拉：居留身份） |
+| 自我评价与定位 | `profile_summary` | 单列卡片 | strategic_positioning（15行文本）、summary（18行文本） |
+| 求职意向 | `job_intent` | 双列网格卡片 | target_titles, target_industries, job_type（下拉）, salary_expectation（子对象：min/max/currency/note）, notice_period（下拉）, location_preference |
+| 语言能力 | `languages` | 表格 | language, proficiency（下拉：母语/流利/良好/基础）, certificate |
+| 专业技能 | `skills` | 分类标签组（map） | 按类别分组（如 programming_languages、blockchain 等），每组内表格含 name, level（下拉：精通/熟练/掌握/了解）, detail |
+| 工作经历 | `work_experience` | 卡片表格 | company, title, period, company_description, company_size（下拉）, overview, tech_stack（标签）, highlights（列表）, key_achievements（子表：id/category/title/resume_bullet/interview_keywords/story） |
+| 项目经历 | `projects` | 表格 | name, role, tech_stack（标签）, description, resume_bullets（子表：id/text） |
+| 教育背景 | `education` | 表格 | degree, major, school, period, school_en |
+| 证书 | `certifications` | 标签集合 | 字符串数组 |
 
-求职意向:
-  target_titles（按优先级排序，当前：Web3 支付基础设施工程师 > 方案工程师 > Web3 后端 > 技术支持）
-  target_industries、薪资期望（25-35K HKD）、到岗时间
+> **评分时使用的字段**：`_build_profile_summary()` 只提取 `job_intent`、`skills`、`work_experience`、`education`、`certifications`、`summary` 六个顶层 key。`basic_info`、`strategic_positioning`、`projects`、`languages` 不传入评分 prompt。
 
-专业技能:
-  数据库（MySQL/Redis/MongoDB）、API 集成（RESTful/Webhook/SDK）
-  编程语言（Java/Python/Go/JS）、框架（Spring Boot/FastAPI/MyBatis）
-  区块链（Ethereum/BSC/TRON + USDT/USDC/TRC20 代币接入）
-  DevOps（Docker/GitHub Actions/AWS EC2/S3）
-  AI 工具（Cursor/Claude Code/GitHub Copilot）
-  业务能力（WaaS 钱包即服务 / 支付清结算 / 商户对接）
-  语言能力（普通话/粤语/英语）
+### 4.2 SQLite search_config 表 — 系统基础设施配置
 
-工作经历:
-  某 Web3 科技公司 | Java 后端工程师 | 2024.08-2026.05
-  5 个核心业务模块详细描述：充值监听（5 层防假充值）、提款（5 层防重复出款）、
-  归集（3 阶段流水线）、B2B 商户对接、链上交易监控
+> **存储位置**：SQLite `search_config` 表的 `data` 字段（JSON 格式，单行）。通过 Web UI 设置面板编辑（找工作配置 Tab + 市场调研配置 Tab）。不包含 `user` 字段——当前活跃画像由 `user_profiles.is_current = 1` 标记决定。
 
-教育背景 / 项目经历 / 证书 / 自我评价
-```
+当前实际字段（从 SQLite 提取）：
 
-### 4.2 profiles/search_config.yaml — 系统基础设施配置
+| 配置段 | 配置项 | 说明 |
+|--------|--------|------|
+| `filters` | `exclude_companies` | 排除公司名列表（大小写不敏感） |
+| `llm` | `provider`, `model` | LLM 供应商和模型名 |
+| `market_analysis` | `max_pages`, `max_fetch_jd`, `batch_size`, `jd_max_chars` | 市场调研抓取和分析参数 |
+| `market_presets` | `job_categories`, `classifications` | 市场调研页面的预设值列表 |
+| `matching` | `direction_batch_size`, `score_batch_size`, `rescore_batch_size` | 匹配评分各阶段批处理大小 |
+| `resume_gen` | `jd_max_chars` | 方向聚合时单条 JD 截断长度（默认 3000） |
+| `search` | `max_pages`, `max_total_results`, `jd_max_chars` | 搜索翻页数、JD 抓取上限、JD 截断长度 |
+| `sort_mode` | — | `"date"`（最新在前）/ `"relevance"`（相关度） |
 
-> **⚠️ 职责分离**：`search_config.yaml` 现仅保留系统基础设施配置（LLM、过滤、市场参数、用户选择）。**业务配置**（搜索关键词 `search_queries`、匹配权重 `matching`、翻页数 `max_pages_per_query`、JD上限 `max_total_results`）已迁移至 `instances/campaigns/` 和 `instances/strategies/`。详见 `config_assembler.py` 的三层组装逻辑。
-
-当前文件内容（约 13 行）：
-
-```yaml
-filters:
-  exclude_companies: []
-llm:
-  model: deepseek-v4-pro
-  provider: deepseek
-market_analysis:
-  batch_size: 5
-  jd_max_chars: 6000
-  max_fetch_jd: 100
-  max_pages: 4
-sort_mode: date
-user: li_ming
-```
-
-完整配置项汇总：
-
-| 配置段 | 配置项 | 默认值 | 说明 |
-|--------|--------|--------|------|
-| `user` | — | `"li_ming"` | **当前使用的用户画像文件名**（不含 `.yaml` 后缀），对应 `instances/users/{user}.yaml`。`load_profile()` 和 `/api/config/yaml/me` 均通过此字段定位画像 |
-| `llm` | `provider` | `"deepseek"` | `deepseek` / `qwen` / `glm` |
-| `llm` | `model` | `"deepseek-v4-pro"` | 模型名称 |
-| `llm` | `base_url` | （可选） | 自定义 API 端点 |
-| `llm` | `api_key_env` | （可选） | 自定义环境变量名 |
-| — | `sort_mode` | `"date"` | 全局排序：`"date"`（最新在前）/ `"relevance"`（相关度） |
-| `filters` | `exclude_companies` | `[]` | 排除的公司名列表（大小写不敏感） |
-| `market_analysis` | `max_pages` | `4` | 市场调研列表页翻页数（代码级 fallback: 3） |
-| `market_analysis` | `max_fetch_jd` | `100` | 市场调研最多抓取 JD 数（代码级 fallback: 40） |
-| `market_analysis` | `batch_size` | `5` | 市场调研 LLM 每批分析条数（代码级 fallback: 10） |
-| `market_analysis` | `jd_max_chars` | `6000` | 市场调研单条 JD 截断长度（代码级 fallback: 2000） |
-
-> **已迁移到 `instances/` 的配置项**：`search_queries`、`max_pages_per_query`、`max_total_results` 现位于 `instances/campaigns/{name}.yaml`；`matching` 段（`weight_profiles`、`weight_rules`、`min_match_score`、`borderline_rescore`、`borderline_range`、`top_n`）现位于 `instances/strategies/{name}.yaml`。这些业务配置通过 Campaign 三层组装机制合并，不再从 `search_config.yaml` 读取。
+> **注意**：Campaign（搜索词 + 策略绑定）和 Strategy（五维权重 + 关键词规则）存储在独立的 SQLite `campaigns` 和 `strategies` 表中，通过 `config_assembler.py` 的三层组装逻辑与上述配置合并。详见 CONFIG_GUIDE.md。
 
 ### 4.3 profiles/prompts.yaml — LLM 提示词配置
 
@@ -1489,11 +1451,11 @@ pip install openai python-dotenv playwright beautifulsoup4 lxml ddgs pyyaml mark
 playwright install chromium
 
 # 3. 配置 API Key
-# 在 search_config.yaml 中选择 provider，在 .env 中设置对应 Key
+# 在 Web UI 设置面板中选择 provider，在 .env 中设置对应 Key
 echo "DEEPSEEK_API_KEY=your_key_here" > .env
 
 # 4. 编辑个人画像
-# 修改 instances/users/{user}.yaml 填入真实信息（文件名需与 search_config.yaml 中 user 字段一致）
+# 通过 Web UI 设置面板编辑个人画像（登录后点击侧边栏「设置」→「个人画像」Tab）
 ```
 
 ### 6.2 启动
