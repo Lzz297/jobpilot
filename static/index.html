@@ -3162,11 +3162,16 @@ function categoriesField(fieldDef, data) {
   let html = '<div class="space-y-6">';
 
   // 分区：技术能力（表格型） vs 业务能力（列表型）
+  // 有数据时靠第一项类型判断，空分类默认归技术能力（靠 Schema 有 columns 即为表格型）
+  const hasColumns = schema && schema.columns;
   const techCats = [];
   const bizCats = [];
   if (data && typeof data === 'object') {
     Object.entries(data).forEach(([category, items]) => {
-      if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object') {
+      const isTable = Array.isArray(items) && items.length > 0
+        ? typeof items[0] === 'object'
+        : hasColumns;  // 空分类：有 Schema columns 就是表格型
+      if (isTable) {
         techCats.push([category, items]);
       } else {
         bizCats.push([category, items]);
@@ -3178,7 +3183,10 @@ function categoriesField(fieldDef, data) {
     const label = formatLabel(category);
     let card = `<div class="border border-slate-200 rounded-lg p-3">
       <label class="text-sm font-medium text-slate-700 mb-2 block">${label}</label>`;
-    if (Array.isArray(items) && items.length > 0 && typeof items[0] === 'object') {
+    const isTable = Array.isArray(items) && items.length > 0
+      ? typeof items[0] === 'object'
+      : hasColumns;
+    if (isTable) {
       const tableDef = { key: `${prefix}.${category}`, columns: schema.columns };
       card += tableField(tableDef, items);
     } else {
