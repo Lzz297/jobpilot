@@ -70,15 +70,16 @@ def login():
     # 确保新用户有默认策略
     _ensure_user_strategies(user["id"])
 
-    # 自动激活登录用户对应的画像
+    # 自动激活该用户的第一个画像（按 created_at 升序）
     profile_row = _db_fetch_one(
-        "SELECT name FROM user_profiles WHERE name = ?", (username,)
+        "SELECT id FROM user_profiles WHERE user_id = ? ORDER BY created_at ASC LIMIT 1",
+        (user["id"],)
     )
     if profile_row:
         conn = _get_db()
         cursor = conn.cursor()
         cursor.execute("UPDATE user_profiles SET is_current = 0")
-        cursor.execute("UPDATE user_profiles SET is_current = 1 WHERE name = ?", (username,))
+        cursor.execute("UPDATE user_profiles SET is_current = 1 WHERE id = ?", (profile_row["id"],))
         conn.commit()
         conn.close()
 
