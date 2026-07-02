@@ -18,7 +18,7 @@
 | jd_007 | Corporate Banking - Custody Services: Java SA | Major Bank (via IT Soluti | payment | high |  |
 | jd_008 | Architect / Senior Specialist (Solution Devel | Hong Kong Interbank Clear | payment | high |  |
 | jd_009 | Application Developer(s) – (Frontend / Backen | 未提供公司名 (Internet Finance  | payment | borderline | 闸门锚点偏弱：JD仅提'financial trading systems'未列清算/对账/路由关键词，依赖公司Fintech/Payment标签推断 |
-| jd_010 | AVP/VP, Application Developer, Financial Tech | Traditional Financial Ins | payment | high |  |
+| jd_010 | AVP/VP, Application Developer, Financial Tech | Traditional Financial Ins | web3 | high |  |
 | jd_011 | Platform Engineer – Support & Project Deliver | Recur | solutions | high |  |
 | jd_012 | Digital Solution Specialists | Microsoft (推测) | solutions | high |  |
 | jd_013 | AI Analytics Specialist | Wisers | technical | borderline | 原标注 solutions，修正：工作对象是内部AI Agent产品（MCA）而非直接客户，咨询团队为中间层，solutions优先规则不触发 |
@@ -57,7 +57,7 @@
 | jd_007 | Corporate Banking - Custody Services: Java SA / AP | payment | （待填） | |
 | jd_008 | Architect / Senior Specialist (Solution Developmen | payment | （待填） | |
 | jd_009 | Application Developer(s) – (Frontend / Backend / F | payment | （待填） | |
-| jd_010 | AVP/VP, Application Developer, Financial Technolog | payment | （待填） | |
+| jd_010 | AVP/VP, Application Developer, Financial Technolog | web3 | （待填） | |
 | jd_011 | Platform Engineer – Support & Project Delivery | solutions | （待填） | |
 | jd_012 | Digital Solution Specialists | solutions | （待填） | |
 | jd_013 | AI Analytics Specialist | technical | （待填） | |
@@ -87,5 +87,5 @@
 | jd_025 | Associate Director, AI Lead | default | solutions | KPMG咨询岗，为外部企业客户交付AI方案 |
 | jd_007 | Corporate Banking Custody Services | payment | technical | 2026-06-09 人工仲裁修正 |
 | jd_009 | Fintech/Payment Analyst Programmer | payment | technical | 2026-06-09 人工仲裁修正 |
-| jd_010 | AVP/VP Financial Technology | payment | technical | 2026-06-09 人工仲裁修正 |
+| jd_010 | AVP/VP Financial Technology | payment | technical → web3 | 2026-06-09 人工仲裁修正；2026-07-02 修正为 web3 |
 | jd_014 | Cyberport Blockchain Manager | solutions | default | 2026-06-09 人工仲裁修正 |
