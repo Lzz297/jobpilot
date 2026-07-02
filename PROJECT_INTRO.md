@@ -23,7 +23,7 @@
 | 编程语言 | Python 3.13 | 主开发语言 |
 | LLM | DeepSeek / Qwen / GLM（可配置切换） | 通过 OpenAI SDK 兼容接口调用，`config.py` 中的 `llm_call()` 为统一入口 |
 | LLM 调用层 | `llm_call()` 统一入口（P0 重构） | 所有 24 处 LLM 调用点收敛到一个函数，内建指数退避重试（429/5xx/超时/连接）、错误分类、不可重试错误（401/403）直接抛出。支持 `thinking` 模式（DeepSeek V4）和 `response_model` 模式（Instructor + Pydantic 结构化输出） |
-| 结构化输出 | Instructor（Pydantic schema 校验） | 所有需要结构化输出的 LLM 调用点（8 个主路径）均已走 Instructor + Pydantic 模式：匹配评分（`_score_batch` + `score_single_jd`）、市场分析 Phase B/C、方向聚合分析、简历审查。LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式 |
+| 结构化输出 | Instructor（Pydantic schema 校验） | 所有需要结构化输出的 LLM 调用点（8 个主路径）均已走 Instructor + Pydantic 模式：匹配评分（`_score_batch`）、市场分析 Phase B/C、方向聚合分析、简历审查。LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式 |
 | 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
 | HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
 | PDF 渲染 | Playwright/Chromium | Markdown → HTML → PDF，两个独立浏览器实例（爬虫 + 渲染器各一个） |
@@ -52,7 +52,7 @@ D:\job-agent/
 ├── checker.py                # [核查] 简历 bullet 事实核查 — 检测数字矛盾、强度升级、占位符
 ├── pdf_renderer.py           # [渲染] Markdown → HTML → PDF（独立 Playwright 实例）
 ├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
-├── config_assembler.py       # [组装] Campaign 配置三层组装（user × strategy × campaign）
+├── config_assembler.py       # [组装] Campaign 配置合并（user × strategy × campaign × search_config）
 │
 ├── engine/                   # [契约] Pydantic 数据模型
 │   └── contracts/            #     6 个 Pydantic 模型文件
@@ -74,15 +74,9 @@ D:\job-agent/
 │   └── resume_guide.yaml     #     简历撰写指南
 │
 ├── static/
-│   ├── index.html            #     Web UI 前端（单页应用）
-│   └── index_old.html        #     旧版 UI 备份（Phase 1 改造前）
-│
-├── new-ui/                   # [Demo] PM 交付的 UI 原型（独立交互演示）
-│   └── index.html            #     Demo 原型
+│   └── index.html            #     Web UI 前端（单页应用）
 │
 ├── tests/                    # [测试] Playwright 自动化测试套件
-│   ├── conftest.py           #     Fixture 层（配置管理、DeepSeek 切换）
-│   ├── full_regression_v2.py #     全量回归测试（40 用例）
 │   └── screenshots/diffs/    #     灰度 diff 图输出目录
 │
 ├── output/                   # [输出目录]
@@ -98,7 +92,8 @@ D:\job-agent/
 │   │   ├── direction_results.json
 │   │   ├── fallback_report.json
 │   │   └── resumes/
-│   └── market/               #     市场调研输出
+│   ├── market/               #     市场调研输出
+│   └── eval/                 #     评估结果输出
 │
 ├── data/
 │   └── job_agent.db          #     SQLite 数据库（8 张表，存储全部业务配置）
@@ -345,7 +340,7 @@ CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模
 | `load_search_config` | tools_basic | 无 | — | 查看系统配置（SQLite `search_config` 表） |
 | `search_jobs` | job_search | 无 | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
 | `match_jobs` | job_match | 无 | — | 五维动态权重匹配评分 + 及格线复评 |
-| `generate_resume` | resume_gen | 无（3 种模式，`by_direction` / `job_index` / `jd_text`。均需显式指定，无参数时返回错误提示） | 见 §3.9 | 多模式三语简历 + Cover Letter 生成 |
+| `generate_resume` | resume_gen | 无（3 种模式，`by_direction` / `job_index` / `jd_text`。均需显式指定，无参数时返回错误提示） | 见 §3.10 | 多模式三语简历 + Cover Letter 生成 |
 | `list_matched_jobs` | job_match | 无 | — | 查看最近一次匹配排名结果（含五维分数 + 复评信息） |
 | `fetch_job_detail` | tools_basic | `url` | — | 抓取单个岗位 URL 的完整 JD |
 | `analyze_market` | market_analysis | `job_category` | `location`（默认 `"Hong Kong"`）、`include_gap_analysis`（默认 `true`）、`classification`、`sort_by` | 单类市场调研（四阶段） |
@@ -540,6 +535,9 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 ##### `GET /api/market/files`
 列出 `output/market/` 下所有文件（不递归）。
 
+##### `GET /api/eval/files`
+列出 `output/eval/` 下所有评估结果文件（不递归）。
+
 ##### `GET /api/config/model`
 获取当前 LLM 配置。
 
@@ -552,7 +550,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 }
 ```
 
-##### `POST /api/config/model`
+##### `POST /api/config/model` 🔒
 运行时切换 LLM provider/model。
 
 **Request**:
@@ -633,7 +631,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 [{"name": "li_ming", "user_name": "li_ming", "is_current": true}]
 ```
 
-##### `POST /api/config/user`
+##### `POST /api/config/user` 🔒
 运行时切换用户画像（更新 SQLite `user_profiles.is_current` 标记，即时生效）。
 
 **Request**:
@@ -828,6 +826,8 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 }
 ```
 
+**Response** (立即): `{"status": "started"}`
+
 ##### `GET /api/config/yaml/<name>`
 读取配置并返回 JSON。
 
@@ -837,7 +837,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response**: `{"name": "me", "content": {...}}`
 
-##### `PUT /api/config/yaml/<name>`
+##### `PUT /api/config/yaml/<name>` 🔒
 回写配置。前端提交 JSON，后端写入 SQLite。
 
 **Request**: `{"content": {...}}` — 完整的配置对象
@@ -912,7 +912,7 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 
 #### 3.7.2 列表页扫描（4 层解析策略）
 
-```
+```text
 策略 1: __NEXT_DATA__ JSON jobs 数组（最优先）
   ├── 深度优先递归搜索（max_depth=10），定位 jobs 数组
   ├── 支持 GraphQL edges 模式 ({node: {...}})
@@ -951,7 +951,7 @@ _FIELD_SPECS = {
 
 #### 3.7.4 详情页解析（3 层策略）
 
-```
+```text
 策略 1: __NEXT_DATA__ 中的 pageProps → jobDetail
 策略 2: JSON-LD 结构化数据 (<script type="application/ld+json">)
 策略 3: HTML DOM 直接解析 (h1 + 多选择器找职位描述)
@@ -1039,7 +1039,7 @@ _FIELD_SPECS = {
 - **方向分类**（`_load_common_direction_examples()` + `_load_direction_examples()`）：从 `prompts/examples/job_match/direction/` 加载。始终加载 `common.yaml`（跨方向通用示例），并根据当前策略加载对应文件（`payment.yaml` / `solutions.yaml` / `web3.yaml` / `technical.yaml` / `default.yaml`）。
 - **评分**（`_load_scoring_examples()`）：从 `prompts/examples/job_match/scoring/` 加载 `common.yaml` + `{strategy}.yaml`。当前该目录为空，评分暂无 few-shot 示例注入。
 
-**Instructor 模式说明**：匹配评分主路径 `_score_batch()` 和评估脚本 `score_single_jd()` 均使用 Instructor + Pydantic（`response_model=list[MatchResult]` / `response_model=MatchResult`），LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式。方向聚合分析和简历审查同样走此模式。
+**Instructor 模式说明**：匹配评分主路径 `_score_batch()` 使用 Instructor + Pydantic（`response_model=list[MatchResult]`），LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式。方向聚合分析和简历审查同样走此模式。
 
 **权重方案可用性**：Campaign 模式下，`weight_profiles` 包含全部用户策略的权重方案（从 SQLite `strategies` 表加载）+ default 默认权重。其他方向类别的岗位将使用 default 权重计算总分。不同 campaign 可通过切换 strategy 来使用不同的权重方案。
 
@@ -1425,6 +1425,8 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 | `all_cases.json` | 25 条 | 全集（dev + holdout 并集） |
 | `ANNOTATION_GUIDE.md` | — | 方向标注规范 |
 | `ANNOTATION_TODO.md` | — | 标注复核清单与变更记录 |
+| `checker_test_cases.json` | — | Checker 单元评估用例 |
+| `mock_me.yaml` | — | 模拟用户画像（供 Checker 评估使用） |
 
 每条数据含 `id`、`title`、`company`、`description`（完整 JD）、`expected_direction`（人工标注的标准答案）、`expected_score_range`（分数档位，目前为 PENDING）。
 
@@ -1445,7 +1447,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 ### 3.14 SQLite 数据库结构
 
-`data/job_agent.db`（8 张表）：
+`data/job_agent.db`（7 张业务表）：
 
 | 表名 | 用途 | 关键字段 |
 |------|------|----------|
@@ -1500,7 +1502,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 | `search` | `max_pages`, `max_total_results`, `jd_max_chars` | 搜索翻页数、JD 抓取上限、JD 截断长度 |
 | `sort_mode` | — | `"date"`（最新在前）/ `"relevance"`（相关度） |
 
-> **注意**：Campaign（搜索词 + 策略绑定）和 Strategy（五维权重 + 关键词规则）存储在独立的 SQLite `campaigns` 和 `strategies` 表中，通过 `config_assembler.py` 的三层组装逻辑与上述配置合并。详见 CONFIG_GUIDE.md。
+> **注意**：Campaign（搜索词 + 策略绑定）和 Strategy（五维权重 + 关键词规则）存储在独立的 SQLite `campaigns` 和 `strategies` 表中，通过 `config_assembler.py` 的配置合并逻辑（SQLite 四表 + YAML 三文件）与上述配置合并。详见 CONFIG_GUIDE.md。
 
 ### 4.3 profiles/prompts.yaml — LLM 提示词配置
 
@@ -1598,6 +1600,10 @@ output/run_{YYYYmmdd_HHMMSS}/
 │                             结构：{"payment": {...}, "web3": {...}, ...}
 │                             每个方向含：direct_match, quick_learnable, hard_gap,
 │                                        typical_responsibilities, common_bonus, resume_strategy
+│
+├── direction_results.json     # 全量方向分类结果（LLM 判定 + 关键词兜底）
+│
+├── fallback_report.json       # 兜底统计（方向/权重/评分异常的计数）
 │
 └── resumes/                  # 简历 + Cover Letter + 审查报告
     ├── resume_{label}_{date}_en.pdf           # 英文简历
