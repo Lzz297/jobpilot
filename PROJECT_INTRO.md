@@ -403,13 +403,38 @@ data: {json_payload}
 | `progress` | 执行结果文本 | `{"type": "progress", "text": "搜索完成 → raw_jobs.json"}` | ⚪ 灰色文字 |
 | `tool_call` | 正在调用的工具 | `{"type": "tool_call", "tool": "search_jobs", "args": "{...}"}` | 🔵 青色工具名 + 参数 |
 | `review` | 简历核查报告 | `{"type": "review", "bullets": [...], "flagged_count": N}` | 🟠 核查标记列表（checker 系统产出） |
-| `done` | 任务完成 | `{"type": "done", "reply": "...", "files": [...]}` | 🟢 完成面板含文件列表 |
+| `done` | 任务完成 | `{"type": "done", "reply": "...", "files": [[path, desc], ...], "stats": {...}}` | 🟢 完成面板含文件列表。`stats` 仅在 Pipeline 模式出现，含 `direction_llm`/`direction_keyword`/`direction_fb` 等字段 |
 | `error` | 执行出错 | `{"type": "error", "text": "..."}` | 🔴 红色错误信息 |
 | `ping` | 30 秒心跳保活 | `{}` | 忽略 |
 
 > 所有事件类型已在前后端对齐。前端统一通过 `startSSE()` 建立连接，内建指数退避重试（最多 3 次）。后端空闲连接有约 8 秒缓冲期，防止 pipeline 启动前的时序竞态关停连接。
 
 #### 3.4.3 完整 API 参考
+
+> 🔒 = 需登录（`@login_required`）。未登录返回 HTTP 401 `{"error": "请先登录"}`。
+
+##### `POST /api/auth/login`
+用户登录。验证用户名密码，成功后设置 session 并自动激活对应画像。
+
+**Request**:
+```json
+{"username": "admin", "password": "your-password"}
+```
+
+**Response**: `{"status": "ok", "username": "admin", "role": "admin"}`  
+**Error**: `{"error": "用户名或密码错误"}` (401)
+
+##### `POST /api/auth/logout`
+登出。清除 session。
+
+**Response**: `{"status": "ok"}`
+
+##### `GET /api/auth/status`
+检查登录状态。
+
+**Response**: `{"username": "admin", "role": "admin"}` 或 `{"username": null, "role": null}`
+
+---
 
 ##### `GET /`
 返回 `static/index.html` 前端页面。
@@ -423,7 +448,7 @@ data: {json_payload}
 
 ---
 
-##### `POST /api/chat`
+##### `POST /api/chat` 🔒
 LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 
 **Request**:
@@ -436,10 +461,10 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 
 **Response** (立即): `{"status": "started"}`
 
-**SSE 事件流** (`GET /stream/{sid}`): 实时推送 `progress` / `tool_call` / `review` / `done` / `error` 事件。`review` 事件（简历核查报告）在 `done` 之前推送。
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 `progress` / `tool_call` / `done` / `error` 事件。
 ---
 
-##### `POST /api/pipeline`
+##### `POST /api/pipeline` 🔒
 直接执行 search→match→resume 三步流水线（不经过 LLM 决策，更快）。
 
 **Request**:
@@ -448,7 +473,8 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
   "sid": "a1b2c3d4",
   "action": "search_match",
   "sort_by": "date",
-  "languages": ["en", "hk"]
+  "languages": ["en", "hk"],
+  "skip_resume": false
 }
 ```
 
@@ -458,6 +484,7 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 | `action` | 是 | 固定 `"search_match"` |
 | `sort_by` | 否 | `"date"`（按发布时间）或 `"relevance"`（按相关度）。不传从配置读取 |
 | `languages` | 否 | 简历输出语言子集，如 `["en","hk"]`，默认 `["en","hk","cn"]` |
+| `skip_resume` | 否 | 跳过简历生成，仅执行搜索+评分（默认 `false`） |
 
 **Response** (立即): `{"status": "started"}`
 
@@ -543,15 +570,51 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 切换立即生效（原地修改全局 client 属性），同时回写 SQLite `search_config` 表。
 
-##### `GET /api/campaigns`
-列出所有可用的 campaign（摘要信息）。
+##### `GET /api/campaigns` 🔒
+列出当前用户的 Campaign（摘要信息）。
 
 **Response**:
 ```json
-[{"name": "web3_hunt", "user": "li_ming", "strategy": "web3", "queries": 3, "keywords": ["Web3", "Blockchain Developer", "Smart Contract"], "sort_mode": "date"}]
+[{"id": 1, "name": "web3_hunt", "strategy": "web3", "queries": 3, "keywords": ["Web3", "Blockchain Developer"], "created_at": "2026-06-01 12:00:00"}]
 ```
 
-##### `POST /api/session/campaign`
+##### `POST /api/campaigns` 🔒
+创建新 Campaign。
+
+**Request**:
+```json
+{"name": "my_campaign", "data": {"strategy": "web3", "search_queries": [{"keywords": "Web3", "location": "Hong Kong", "classification": ""}]}}
+```
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `name` | 是 | Campaign 名称（唯一） |
+| `data.strategy` | 是 | 绑定的策略名称 |
+| `data.search_queries` | 否 | 搜索关键词组数组，每组含 `keywords`/`location`/`classification` |
+
+**Response**: `{"status": "ok", "id": 2, "name": "my_campaign"}` (201)  
+**Error**: `{"error": "Campaign 'xxx' 已存在"}` (400)
+
+##### `GET /api/campaigns/<id>` 🔒
+获取单个 Campaign 完整数据。
+
+**Response**: `{"id": 1, "name": "web3_hunt", "data": {"strategy": "web3", "search_queries": [...]}, "created_at": "...", "updated_at": "..."}`
+
+##### `PUT /api/campaigns/<id>` 🔒
+更新 Campaign。
+
+**Request**: 同 POST，含 `name` 和 `data`
+
+**Response**: `{"status": "ok"}`  
+**Error**: `{"error": "名称 'xxx' 已被其他 Campaign 使用"}` (400)
+
+##### `DELETE /api/campaigns/<id>` 🔒
+删除 Campaign。
+
+**Response**: `{"status": "ok"}`  
+**Error**: `{"error": "Campaign 不存在"}` (404)
+
+##### `POST /api/session/campaign` 🔒
 设置当前 session 的 campaign。传 `null` 清除选择。
 
 **Request**:
@@ -559,7 +622,8 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 {"sid": "a1b2c3d4", "campaign": "web3_hunt"}
 ```
 
-**Response**: `{"status": "ok", "campaign": "web3_hunt"}`
+**Response**: `{"status": "ok", "campaign": "web3_hunt"}`  
+**Error**: `{"error": "Campaign 'xxx' 不存在"}` (400)
 
 ##### `GET /api/users`
 列出 SQLite `user_profiles` 表中所有可用的用户画像。
@@ -582,6 +646,71 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 | `user` | 是 | 用户画像名，需在 `user_profiles` 表中存在 |
 
 **Response**: `{"status": "ok", "user": "li_ming"}`
+
+##### `GET /api/user/current`
+返回当前用户信息。优先从 session 获取，否则回退到数据库标记。
+
+**Response**: `{"username": "li_ming", "role": "admin"}` 或 `{"username": null, "role": null}`
+
+##### `GET /api/strategies` 🔒
+列出当前用户的策略列表。
+
+**Response**:
+```json
+[{"id": 1, "name": "web3", "description": "Web3/区块链方向", "data": {"weight_profile": {...}, ...}, "created_at": "..."}]
+```
+
+##### `POST /api/strategies` 🔒
+创建新策略。验证五维权重之和必须等于 100。
+
+**Request**:
+```json
+{"name": "my_strategy", "description": "描述", "data": {"weight_profile": {"skill": 30, "experience": 25, "level": 15, "industry": 15, "bonus": 15}, "weight_rules_keywords": ["keyword1"], "min_match_score": 45, "top_n": 999, "borderline_rescore": true, "borderline_range": 8}}
+```
+
+**Response**: `{"status": "ok", "id": 7, "name": "my_strategy"}` (201)  
+**Error**: `{"error": "五维权重之和必须等于 100，当前为 95"}` (400)
+
+##### `GET /api/strategies/<id>` 🔒
+获取单个策略完整数据。
+
+##### `PUT /api/strategies/<id>` 🔒
+更新策略。仅限自己的策略。同 POST 校验权重之和。
+
+##### `DELETE /api/strategies/<id>` 🔒
+删除策略。仅限自己的，且不能被 Campaign 引用。
+
+**Error**: `{"error": "该策略正被 N 个求职方向使用"}` (400)
+
+##### `POST /api/eval` 🔒
+运行评估：对标注数据集跑方向预判 + 评分全链路。仅管理员。
+
+**Request**: `{"sid": "a1b2c3d4", "set_name": "dev_set"}`
+  
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `sid` | 是 | 会话 ID |
+| `set_name` | 是 | `"dev_set"`（开发集 19 条）或 `"holdout"`（留出集 6 条） |
+
+**Response** (立即): `{"status": "started"}`  
+**SSE 事件流**: 实时推送进度，`done` 事件含评估结果 JSON（方向准确率、混淆矩阵、各方向详情）
+
+##### `GET /api/eval/history` 🔒
+返回最近一次评估结果摘要。仅管理员。
+
+**Response**: `{"dev_set": {"file": "eval_dev_set_20260702_143437.json", "accuracy": 0.84, ...}, "holdout": {...}}`
+
+##### `GET /api/schema/user_field`
+返回用户画像字段定义 Schema。
+
+**Response**: `{"groups": [{"key": "basic_info", "label": "基本信息", "fields": [...]}, ...]}`
+
+##### `PUT /api/schema/user_field` 🔒
+更新用户画像字段定义 Schema。仅管理员。
+
+**Request**: `{"groups": [...]}` — 完整的 Schema 对象（必须含 `groups` 字段）
+
+**Response**: `{"status": "ok"}`
 
 ##### `GET /download/<path>`
 文件下载。路径相对于 `output/` 目录。如 `/download/run_xxx/resumes/resume_web3_20260417_en.pdf`。
@@ -610,7 +739,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 ]
 ```
 
-##### `POST /api/resume`
+##### `POST /api/resume` 🔒
 直接调用简历生成。参数由前端表单提供，SSE 流返回进度。
 
 **Request**:
@@ -636,7 +765,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / status / review / done / error。`review` 事件（Checker 核查报告）在 `done` 之前自动推送。
 
-##### `POST /api/resume/fix`
+##### `POST /api/resume/fix` 🔒
 定点修正单条 resume bullet（配合 checker 系统使用），返回修正后的完整 Markdown。
 
 **Request**:
@@ -656,7 +785,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response**: `{"fixed_md": "...", "check_result": {"text": "...", "source_ids": [...], "flags": [...]}}`
 
-##### `POST /api/market`
+##### `POST /api/market` 🔒
 直接调用单个市场调研。SSE 流返回进度。
 
 **Request**:
@@ -682,7 +811,7 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response** (立即): `{"status": "started"}`
 
-##### `POST /api/market/batch`
+##### `POST /api/market/batch` 🔒
 批量市场调研，依次执行每个任务。
 
 **Request**:
@@ -890,19 +1019,25 @@ _FIELD_SPECS = {
 | web3 | 25% | 15% | 10% | 30% | 20% | Web3/区块链岗位 |
 | payment | 25% | 20% | 10% | 25% | 20% | 支付/结算岗位 |
 
-#### 方向判断流程
+#### 方向分类流程（独立于评分）
+
+方向分类通过 `classify_direction_batch()` 函数**独立于评分先行执行**，确保评分阶段直接使用方向结果选取对应权重。
 
 ```
-1. LLM 评分时返回 direction 字段（基于完整 JD 内容判断）
-2. 检查 direction 是否在 {payment, solutions, web3, technical, default} 中
-   ├── 有效 → 采用为 llm_direction
-   └── 无效或未返回 → 回退到 classify_job() 标题关键词匹配
-                       ↓
-       检查顺序：payment → solutions → web3 → technical → default
-       （更具体的类别在前，防止误匹配到通用关键词）
+1. 加载方向列表（从策略的 weight_profiles 动态派生）
+2. 注入方向分类 prompt（prompts.yaml → direction_classification_prompt）
+3. 注入 few-shot 示例（common.yaml + 各方向专属 .yaml）
+4. 分批调用 LLM（direction_batch_size 控制每批 JD 数量）
+5. LLM 返回每个 JD 的 direction 标签
+6. 校验：有效方向 → 采用为 llm_direction；无效或未返回 → 回退到 classify_job() 标题关键词匹配
 ```
 
-**Few-shot 示例注入**：评分 prompt 中会注入方向相关的 few-shot 示例，帮助 LLM 更准确地判断岗位方向。示例来源为 `prompts/examples/job_match/` 目录，始终加载 `common.yaml` 的通用示例，并根据当前 campaign 的 strategy 加载对应的 `{strategy}.yaml` 示例（如 `web3.yaml`）。实现函数为 `_load_examples(strategy)`。
+方向分类结果写入 `direction_results.json`，作为全流程方向的权威数据源。评分阶段读取此结果选取对应权重方案。
+
+**Few-shot 示例注入**：方向分类和评分均支持 few-shot 示例注入，帮助 LLM 更准确地判断和打分。
+
+- **方向分类**（`_load_common_direction_examples()` + `_load_direction_examples()`）：从 `prompts/examples/job_match/direction/` 加载。始终加载 `common.yaml`（跨方向通用示例），并根据当前策略加载对应文件（`payment.yaml` / `solutions.yaml` / `web3.yaml` / `technical.yaml` / `default.yaml`）。
+- **评分**（`_load_scoring_examples()`）：从 `prompts/examples/job_match/scoring/` 加载 `common.yaml` + `{strategy}.yaml`。当前该目录为空，评分暂无 few-shot 示例注入。
 
 **Instructor 模式说明**：匹配评分主路径 `_score_batch()` 和评估脚本 `score_single_jd()` 均使用 Instructor + Pydantic（`response_model=list[MatchResult]` / `response_model=MatchResult`），LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式。方向聚合分析和简历审查同样走此模式。
 
@@ -1272,6 +1407,57 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 > `{category}` = 岗位类别名（空格替换为 `_`，`/` 替换为 `_`，截断至 30 字符）
 > `{date}` = `YYYYMMDD_HHMMSS`
+
+---
+
+### 3.13 evaluation/ — 评估系统
+
+**职责**：对标注数据集运行方向预判 + 评分全链路，评估 prompt 和流程优化的实际效果。
+
+#### 3.13.1 数据集
+
+`instances/eval/` 目录下的标注数据：
+
+| 文件 | 数量 | 用途 |
+|------|------|------|
+| `dev_set.json` | 19 条 | 开发集 — 日常优化 prompt 后运行 |
+| `holdout.json` | 6 条 | 留出集 — 最终验收用，平时不动 |
+| `all_cases.json` | 25 条 | 全集（dev + holdout 并集） |
+| `ANNOTATION_GUIDE.md` | — | 方向标注规范 |
+| `ANNOTATION_TODO.md` | — | 标注复核清单与变更记录 |
+
+每条数据含 `id`、`title`、`company`、`description`（完整 JD）、`expected_direction`（人工标注的标准答案）、`expected_score_range`（分数档位，目前为 PENDING）。
+
+#### 3.13.2 评估流程（`run_evaluation()`）
+
+```
+1. 加载数据集 → 构建 jobs_list
+2. 调用 execute_matching_pipeline()（与生产环境完全一致的代码路径）
+3. 计算指标：方向准确率、各方向分别统计、混淆矩阵
+4. 与历史同数据集结果对比（准确率变化 ↑/↓）
+5. 保存结果到 output/eval/eval_{set_name}_{timestamp}.json
+6. 自动清理旧结果（每组保留最近 20 个）
+```
+
+评估结果含：方向准确率、混淆矩阵（行=实际，列=预测）、LLM 直接判定 vs 关键词兜底统计、Token 用量、估算成本。
+
+---
+
+### 3.14 SQLite 数据库结构
+
+`data/job_agent.db`（8 张表）：
+
+| 表名 | 用途 | 关键字段 |
+|------|------|----------|
+| `users` | 用户账户 | `id`, `username`, `password_hash`, `role`（admin/user） |
+| `user_profiles` | 用户画像数据 | `user_id`, `name`, `data`（JSON），`is_current`（当前活跃标记） |
+| `search_config` | 系统基础设施配置 | `data`（JSON，单行） |
+| `strategies` | 五维权重 + 关键词规则 | `name`, `description`, `data`（JSON），`owner_id` |
+| `campaigns` | 求职方向（搜索词 + 策略绑定） | `name`, `data`（JSON），`owner_id` |
+| `field_schemas` | 画像字段 Schema | `name`（如 `user_field`），`data`（JSON） |
+| `operation_logs` | 操作审计日志 | `user_id`, `action`, `target_type`, `detail` |
+
+通过 `data/migrate.py` 初始化建表 + 种子数据。
 
 ---
 
