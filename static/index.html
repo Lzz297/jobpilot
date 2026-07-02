@@ -3621,6 +3621,7 @@ function markDirtyFields() {
   // 清除旧标记
   container.querySelectorAll('.dirty-field').forEach(function(el) { el.classList.remove('dirty-field'); });
   container.querySelectorAll('.undo-btn').forEach(function(el) { el.remove(); });
+  container.querySelectorAll('thead th').forEach(function(th) { th.style.color = ''; });
 
   if (window._dirtyPaths.size === 0) return;
 
