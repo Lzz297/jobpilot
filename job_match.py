@@ -691,19 +691,41 @@ def _load_scoring_examples(strategy: str) -> str:
 
 
 def _build_profile_summary(user_profile: dict) -> str:
-    """从用户画像构造 profile_summary（与 match_jobs 中的逻辑一致）。"""
+    """从用户画像构造评分用 profile_summary。剔除薪资隐私，注入核心成就数据。"""
+    # 剔除薪资隐私
+    job_intent = dict(user_profile.get("job_intent", {}))
+    job_intent.pop("salary_expectation", None)
+
+    # 工作经历：保留现有字段 + 注入 key_achievements 的 resume_bullet
+    work_exps = []
+    for exp in user_profile.get("work_experience", []):
+        ka_list = exp.get("key_achievements", [])
+        work_exps.append({
+            "title":        exp.get("title"),
+            "company":      exp.get("company_en", exp.get("company", "")),
+            "period":       exp.get("period", ""),
+            "tech_stack":   exp.get("tech_stack", []),
+            "highlights":   exp.get("highlights", []),
+            "achievements": [
+                ka.get("resume_bullet", [])
+                for ka in ka_list
+            ],
+        })
+
     return json.dumps({
-        "job_intent": user_profile.get("job_intent", {}),
-        "skills": user_profile.get("skills", {}),
-        "work_experience": [
-            {"title": exp.get("title"), "company": exp.get("company_en", exp.get("company", "")),
-             "period": exp.get("period", ""), "tech_stack": exp.get("tech_stack", []),
-             "highlights": exp.get("highlights", [])}
-            for exp in user_profile.get("work_experience", [])
+        "job_intent":      job_intent,
+        "skills":          user_profile.get("skills", {}),
+        "work_experience": work_exps,
+        "projects": [
+            {"name":           p.get("name"),
+             "role":           p.get("role"),
+             "tech_stack":     p.get("tech_stack", []),
+             "resume_bullets": [rb.get("text", "") for rb in p.get("resume_bullets", [])]}
+            for p in user_profile.get("projects", [])
         ],
-        "education": user_profile.get("education", []),
-        "certifications": user_profile.get("certifications", []),
-        "summary": user_profile.get("summary", "")
+        "education":       user_profile.get("education", []),
+        "certifications":  user_profile.get("certifications", []),
+        "summary":         user_profile.get("summary", "")
     }, ensure_ascii=False, indent=2)
 
 
