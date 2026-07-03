@@ -2201,7 +2201,7 @@ function startEval(set_name) {
         '</div>' +
 
         // 核心指标行
-        '<div class="grid grid-cols-3 gap-4 px-5 py-4">' +
+        '<div class="grid grid-cols-5 gap-4 px-5 py-4">' +
           '<div class="text-center">' +
             '<div class="text-2xl font-bold text-slate-800">' + data.num_cases + '</div>' +
             '<div class="text-[11px] text-slate-400 mt-0.5">评估数量</div>' +
@@ -2209,6 +2209,14 @@ function startEval(set_name) {
           '<div class="text-center">' +
             '<div class="text-2xl font-bold text-indigo-600">' + data.direction_accuracy + '</div>' +
             '<div class="text-[11px] text-slate-400 mt-0.5">方向准确率</div>' +
+          '</div>' +
+          '<div class="text-center">' +
+            '<div class="text-2xl font-bold text-amber-600">' + (data.tier_accuracy||'N/A') + '</div>' +
+            '<div class="text-[11px] text-slate-400 mt-0.5">分档准确率</div>' +
+          '</div>' +
+          '<div class="text-center">' +
+            '<div class="text-2xl font-bold text-emerald-600">' + (data.ranking_consistency||'N/A') + '</div>' +
+            '<div class="text-[11px] text-slate-400 mt-0.5">排序一致性</div>' +
           '</div>' +
           '<div class="text-center">' +
             '<div class="text-2xl font-bold ' + (deltaUp ? 'text-emerald-600' : 'text-red-500') + '">' + (data.delta_accuracy||'首次') + '</div>' +
