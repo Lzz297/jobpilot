@@ -164,6 +164,39 @@ def build_confusion_matrix(results: list) -> dict:
 #  4. 计算评估指标
 # ============================================================
 
+def _calc_ranking_consistency(results: list) -> float | None:
+    """计算 LLM 打分排序与 expected_tier 期望排序的一致性。
+
+    对有效条目（tier_correct is not None）的所有 pair，比较
+    LLM total_score 排序方向与 expected_tier 数值排序方向是否一致。
+    有效条目 < 2 时返回 None。
+    """
+    TIER_MAP = {"High": 3, "Medium": 2, "Low": 1}
+    valid = [r for r in results if r.get("tier_correct") is not None]
+    if len(valid) < 2:
+        return None
+
+    concordant = 0
+    total_pairs = 0
+
+    for i in range(len(valid)):
+        for j in range(i + 1, len(valid)):
+            total_pairs += 1
+            si, sj = valid[i]["total_score"], valid[j]["total_score"]
+            ti = TIER_MAP.get(valid[i].get("expected_tier", ""), 0)
+            tj = TIER_MAP.get(valid[j].get("expected_tier", ""), 0)
+
+            llm_dir = 1 if si > sj else (-1 if si < sj else 0)
+            tier_dir = 1 if ti > tj else (-1 if ti < tj else 0)
+
+            if llm_dir == 0 or tier_dir == 0:
+                concordant += 0.5
+            elif llm_dir == tier_dir:
+                concordant += 1
+
+    return concordant / total_pairs if total_pairs > 0 else None
+
+
 def compute_metrics(cases: list, all_scored: list, profile_summary: str,
                     direction_results: list | None = None) -> dict:
     """将 direction_results 作为主表，all_scored 通过 eval_id LEFT JOIN。
@@ -202,15 +235,15 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str,
         emit(f"[{case['id']}] {case['title'][:60]} → {predicted_dir} {match}")
 
         # ── 分数档位准确率 ──
-        expected_range = case.get("expected_score_range", "PENDING")
-        if expected_range == "high":
-            range_correct = total_score >= 70
-        elif expected_range == "medium":
-            range_correct = 45 <= total_score <= 69
-        elif expected_range == "low":
-            range_correct = total_score < 45
+        expected_tier = case.get("expected_tier", "")
+        if expected_tier in ("High", "Medium", "Low"):
+            tier_correct = (
+                (expected_tier == "High"   and total_score >= 70) or
+                (expected_tier == "Medium" and 45 <= total_score <= 69) or
+                (expected_tier == "Low"    and total_score < 45)
+            )
         else:
-            range_correct = None  # PENDING 或未知，不判断
+            tier_correct = None
 
         results.append({
             "id": case["id"],
@@ -226,8 +259,8 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str,
             "description": case["description"],
             "profile_summary": profile_summary,
             # ── 分数档位 ──
-            "expected_score_range": expected_range,
-            "score_range_correct": range_correct,
+            "expected_tier": expected_tier,
+            "tier_correct": tier_correct,
         })
 
     # 方向准确率
@@ -247,11 +280,21 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str,
     # 混淆矩阵
     confusion_matrix = build_confusion_matrix(results)
 
+    # 分档准确率（仅统计有效标注）
+    tier_valid = [r for r in results if r.get("tier_correct") is not None]
+    tier_correct_n = sum(1 for r in tier_valid if r["tier_correct"])
+    tier_accuracy = tier_correct_n / len(tier_valid) if tier_valid else None
+
+    # 排序一致性
+    ranking_consistency = _calc_ranking_consistency(results)
+
     return {
         "results": results,
         "dir_correct": dir_correct,
         "dir_total": dir_total,
         "dir_accuracy": dir_accuracy,
+        "tier_accuracy": tier_accuracy,
+        "ranking_consistency": ranking_consistency,
         "dir_counts": dict(dir_counts),
         "dir_hits": dict(dir_hits),
         "confusion_matrix": confusion_matrix,
@@ -392,6 +435,8 @@ def run_evaluation(set_name: str, profile: dict, config: dict) -> tuple:
             "model": model_name,
             "num_cases": len(cases),
             "errors": metrics["errors"],
+            "tier_accuracy": metrics["tier_accuracy"],
+            "ranking_consistency": metrics["ranking_consistency"],
             "direction_accuracy": metrics["dir_accuracy"],
             "dir_correct": metrics["dir_correct"],
             "dir_total": metrics["dir_total"],

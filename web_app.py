@@ -381,6 +381,8 @@ def _run_eval_sse(set_name):
         "direction_llm": llm_direction_count,
         "direction_keyword": keyword_fallback_count,
         "estimated_cost_usd": meta.get("estimated_cost_usd"),
+        "tier_accuracy": f"{meta['tier_accuracy']:.1%}" if meta.get("tier_accuracy") is not None else "N/A",
+        "ranking_consistency": f"{meta['ranking_consistency']:.1%}" if meta.get("ranking_consistency") is not None else "N/A",
     }
     if q:
         q.put({"type": "done", "reply": json.dumps(summary, ensure_ascii=False), "files": files_data})
