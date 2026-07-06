@@ -2335,11 +2335,26 @@ function renderEvalDetailCards(entries, setName) {
             '<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded ' + dirCls + '">' +
               (dirMatch ? '方向一致' : '方向不一致') +
             '</span>' +
+            // 分档一致/不一致徽章（仅在有 expected_tier 标注时显示）
+            (function(){
+              var tc = e.tier_correct;
+              if (tc === true) {
+                return '<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 ml-1">分档一致</span>';
+              } else if (tc === false) {
+                return '<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-600 ml-1">分档不一致 ×</span>';
+              }
+              return '';
+            })() +
           '</div>' +
           '<div class="flex items-center gap-2 text-xs mt-2">' +
-            '<span class="text-slate-500">期望: <span class="font-medium text-slate-700">' + escapeHtml(e.expected_direction) + '</span></span>' +
+            '<span class="text-slate-500">期望方向: <span class="font-medium text-slate-700">' + escapeHtml(e.expected_direction) + '</span></span>' +
             '<span class="text-slate-300">←</span>' +
-            '<span class="text-slate-500">LLM: <span class="font-medium ' + (dirMatch ? 'text-emerald-600' : 'text-red-600') + '">' + escapeHtml(e.predicted_direction) + '</span></span>' +
+            '<span class="text-slate-500">LLM方向: <span class="font-medium ' + (dirMatch ? 'text-emerald-600' : 'text-red-600') + '">' + escapeHtml(e.predicted_direction) + '</span></span>' +
+          '</div>' +
+          '<div class="flex items-center gap-2 text-xs mt-1">' +
+            '<span class="text-slate-500">期望分档: <span class="font-medium text-slate-700">' + (e.expected_tier || '—') + '</span></span>' +
+            '<span class="text-slate-300">←</span>' +
+            '<span class="text-slate-500">LLM分档: <span class="font-medium">' + total + ' → ' + (total >= 70 ? 'High' : total >= 45 ? 'Medium' : 'Low') + '</span></span>' +
           '</div>' +
           '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-3">' + bars + '</div>' +
           (e.reason ? '<p class="text-xs text-slate-500 mt-2 leading-relaxed">' + escapeHtml(e.reason) + '</p>' : '') +
