@@ -2227,8 +2227,8 @@ function startEval(set_name) {
         // 方向来源 + 评分状态
         '<div class="border-t border-slate-100 px-5 py-3">' +
           '<div class="flex items-center gap-4 text-xs flex-wrap">' +
-            '<div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-indigo-500"></span> LLM 直接判定 <span class="font-semibold text-slate-700">' + (data.direction_llm||0) + '</span> 个</div>' +
-            '<div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> 关键词兜底 <span class="font-semibold ' + (hasKeyword ? 'text-amber-700' : 'text-slate-700') + '">' + (data.direction_keyword||0) + '</span> 个</div>' +
+            '<div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-indigo-500"></span> LLM 方向判定 <span class="font-semibold text-slate-700">' + (data.direction_llm||0) + '</span> 个</div>' +
+            '<div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400"></span> 关键词方向兜底 <span class="font-semibold ' + (hasKeyword ? 'text-amber-700' : 'text-slate-700') + '">' + (data.direction_keyword||0) + '</span> 个</div>' +
             '<div class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full ' + (hasErrors ? 'bg-red-500' : 'bg-emerald-500') + '"></span> LLM 评分漏返 <span class="font-semibold ' + (hasErrors ? 'text-red-600' : 'text-slate-700') + '">' + (data.errors||0) + '</span> 个</div>' +
           '</div>' +
         '</div>' +
