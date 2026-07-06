@@ -2316,11 +2316,12 @@ function renderEvalDetailCards(entries, setName) {
       jdHtml = '<div class="text-xs text-slate-500 leading-relaxed mt-1">' + escapeHtml(desc) + '</div>';
     }
 
-    html += '<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in eval-card" data-eid="' + e.id + '">' +
+    html += '<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in eval-card" data-eid="' + e.id + '" data-original-tier="' + (e.expected_tier || '') + '">' +
       '<div class="flex items-start gap-3">' +
         '<div class="shrink-0 text-center">' +
           '<div class="text-2xl font-bold text-slate-800">' + total + '</div>' +
           '<div class="text-[10px] text-slate-400">#' + (idx + 1) + '</div>' +
+          '<div class="text-[10px] text-slate-400 mt-0.5">' + escapeHtml(e.id) + '</div>' +
         '</div>' +
         '<div class="flex-1 min-w-0">' +
           '<div class="flex items-start justify-between gap-2">' +
@@ -2386,8 +2387,9 @@ function toggleJD(btn) {
 }
 
 function onTierChange(entryId, newTier, card) {
+  var originalTier = card.getAttribute('data-original-tier') || '';
   var badge = card.querySelector('.tier-badge');
-  if (newTier === '') {
+  if (newTier === originalTier) {
     delete _pendingAnnotations[entryId];
     badge.classList.add('hidden');
   } else {
@@ -2410,7 +2412,17 @@ function updateAnnotationBar() {
   bar.classList.remove('hidden');
   pills.innerHTML = '<span class="text-amber-700 font-medium">未保存 ' + entries.length + ' 条: </span>' +
     entries.map(function(e) {
-      return '<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">' + escapeHtml(e[0]) + ': ' + escapeHtml(e[1]) + '</span>';
+      var entryId = e[0], newVal = e[1];
+      var card = document.querySelector('.eval-card[data-eid="' + entryId + '"]');
+      var origVal = card ? (card.getAttribute('data-original-tier') || '') : '';
+      var label = newVal === '' ? '—' : newVal;
+      var origLabel = origVal === '' ? '—' : origVal;
+      var text = origVal === ''
+        ? escapeHtml(entryId) + ': ' + label
+        : (newVal === ''
+          ? escapeHtml(entryId) + ': ' + origLabel + ' → —'
+          : escapeHtml(entryId) + ': ' + origLabel + ' → ' + label);
+      return '<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">' + text + '</span>';
     }).join('');
 }
 
