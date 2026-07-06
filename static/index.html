@@ -2098,7 +2098,11 @@ async function renderEvalView() {
         '<div>' +
           '<div class="font-semibold text-slate-700 text-sm">' + s.label + ' (' + s.name + ') · ' + s.count + ' 条</div>' +
           '<p class="text-xs text-slate-400 mt-1">' + s.desc + '</p>' +
-          (prev ? '<p class="text-xs text-slate-500 mt-1">上次: ' + prev.run_time.slice(0,10) + ' 准确率 ' + (prev.accuracy*100).toFixed(1) + '%</p>' : '') +
+          (prev ? '<p class="text-xs text-slate-500 mt-1">上次: ' + prev.run_time.slice(0,10) +
+    ' 方向准确率 ' + (prev.accuracy*100).toFixed(1) + '%' +
+    (prev.tier_accuracy != null ? ' · 分档准确率 ' + (prev.tier_accuracy*100).toFixed(1) + '%' : '') +
+    (prev.ranking_consistency != null ? ' · 排序一致性 ' + (prev.ranking_consistency*100).toFixed(1) + '%' : '') +
+    '</p>' : '') +
         '</div>' +
         '<button onclick="startEval(\'' + s.name + '\')" class="agent-trigger px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium">运行评估</button>' +
       '</div>' +

@@ -959,6 +959,8 @@ def eval_history():
             result[set_name] = {
                 "file": files[0],
                 "accuracy": meta.get("direction_accuracy", 0),
+                "tier_accuracy": meta.get("tier_accuracy"),
+                "ranking_consistency": meta.get("ranking_consistency"),
                 "run_time": meta.get("run_time", ""),
                 "num_cases": meta.get("num_cases", 0),
             }
