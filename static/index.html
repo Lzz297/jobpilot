@@ -2455,6 +2455,11 @@ async function saveAnnotations(setName) {
     if (resp && !resp.error) {
       toast('已保存 ' + resp.updated + ' 条标注', 'ok');
       _pendingAnnotations = {};
+      // 同步已保存卡片的原始值，避免后续修改与旧值比对时误判
+      payload.forEach(function(a) {
+        var card = document.querySelector('.eval-card[data-eid="' + a.id + '"]');
+        if (card) card.setAttribute('data-original-tier', a.expected_tier);
+      });
       document.querySelectorAll('#eval-details .tier-badge').forEach(function(b) { b.classList.add('hidden'); });
       updateAnnotationBar();
     } else {
