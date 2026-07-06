@@ -965,6 +965,92 @@ def eval_history():
     return jsonify(result)
 
 
+@app.route("/api/eval/result/<set_name>", methods=["GET"])
+@login_required
+def get_eval_result(set_name):
+    """返回最新一次评估结果的单条岗位详情（含 JD 原文）。"""
+    if set_name not in ("dev_set", "holdout"):
+        return jsonify({"error": "无效数据集名称"}), 400
+
+    eval_dir = os.path.join(OUTPUT_DIR, "eval")
+    if not os.path.exists(eval_dir):
+        return jsonify({"error": "尚无评估结果"}), 404
+
+    files = sorted(
+        [f for f in os.listdir(eval_dir) if f.startswith(f"eval_{set_name}_")],
+        reverse=True,
+    )
+    if not files:
+        return jsonify({"error": "尚无评估结果"}), 404
+
+    with open(os.path.join(eval_dir, files[0]), "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    entries = []
+    for r in data.get("results", []):
+        entries.append({
+            "id": r["id"],
+            "title": r.get("title", ""),
+            "company": r.get("company", ""),
+            "url": r.get("url", ""),
+            "description": r.get("description", ""),
+            "expected_direction": r.get("expected_direction", ""),
+            "predicted_direction": r.get("predicted_direction", ""),
+            "direction_correct": r.get("direction_correct", False),
+            "scores": r.get("scores", {}),
+            "total_score": r.get("total_score", 0),
+            "reason": r.get("reason", ""),
+            "expected_tier": r.get("expected_tier", ""),
+            "tier_correct": r.get("tier_correct"),
+        })
+
+    return jsonify({
+        "set_name": set_name,
+        "result_file": files[0],
+        "entries": entries,
+    })
+
+
+@app.route("/api/eval/dataset/<set_name>", methods=["PUT"])
+@login_required
+def put_eval_annotations(set_name):
+    """保存人工标注的 expected_tier（仅管理员可操作）。"""
+    if session.get("role") != "admin":
+        return jsonify({"error": "仅管理员可标注"}), 403
+    if set_name not in ("dev_set", "holdout", "all_cases"):
+        return jsonify({"error": "无效数据集名称"}), 400
+
+    payload = request.json or {}
+    annotations = payload.get("annotations", [])
+    VALID_TIERS = {"", "High", "Medium", "Low"}
+
+    updates = {}
+    for a in annotations:
+        tid = a.get("id")
+        tier = a.get("expected_tier", "")
+        if tier not in VALID_TIERS:
+            return jsonify({"error": f"非法 tier 值: '{tier}' (条目 {tid})"}), 400
+        updates[tid] = tier
+
+    path = os.path.join("instances", "eval", f"{set_name}.json")
+    if not os.path.exists(path):
+        return jsonify({"error": "数据集文件不存在"}), 404
+
+    with open(path, "r", encoding="utf-8") as f:
+        dataset = json.load(f)
+
+    updated = 0
+    for entry in dataset:
+        if entry["id"] in updates:
+            entry["expected_tier"] = updates[entry["id"]]
+            updated += 1
+
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(dataset, f, ensure_ascii=False, indent=2)
+
+    return jsonify({"status": "ok", "updated": updated})
+
+
 # ── YAML 配置读写 API ──
 
 @app.route("/api/config/yaml/<name>", methods=["GET"])

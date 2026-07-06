@@ -248,6 +248,8 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str,
         results.append({
             "id": case["id"],
             "title": case["title"],
+            "company": case.get("company", ""),
+            "url": case.get("url", ""),
             "expected_direction": expected_dir,
             "predicted_direction": predicted_dir,
             "direction_source": dr.get("direction_source", "unknown"),

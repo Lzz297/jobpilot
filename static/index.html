@@ -2108,6 +2108,7 @@ async function renderEvalView() {
   html += '<div id="eval-log-wrap" class="bg-white border border-slate-200 rounded-xl p-4 hidden">' +
     '<div class="logbox rounded-lg p-3 max-h-72 overflow-y-auto" id="eval-log"></div>' +
     '<div id="eval-result" class="mt-3"></div>' +
+      '<div id="eval-details" class="mt-4"></div>' +
   '</div>';
 
   html += '</div>';
@@ -2249,10 +2250,193 @@ function startEval(set_name) {
         '</div>' +
       '</div>';
     document.getElementById('eval-result').innerHTML = html;
+      fetchEvalDetails(data.set_name);
     refreshIcons();
   }, null, 0, function() {
     apiPost('/api/eval', {sid: STATE.sid, set_name: set_name});
   });
+}
+
+
+/* ===================== EVAL DETAIL CARDS ===================== */
+var _pendingAnnotations = {};
+
+async function fetchEvalDetails(setName) {
+  var container = document.getElementById('eval-details');
+  if (!container) return;
+  try {
+    var resp = await apiGet('/api/eval/result/' + setName);
+    if (!resp || resp.error) {
+      container.innerHTML = '<div class="text-sm text-slate-400 py-6 text-center">暂无评估详情数据，请先运行评估</div>';
+      return;
+    }
+    if (resp.entries && resp.entries.length) {
+      renderEvalDetailCards(resp.entries, setName);
+    }
+  } catch(e) {
+    container.innerHTML = '<div class="text-sm text-slate-400 py-6 text-center">暂无评估详情数据，请先运行评估</div>';
+  }
+}
+
+function renderEvalDetailCards(entries, setName) {
+  var container = document.getElementById('eval-details');
+  if (!container) return;
+
+  var html = '<div class="space-y-3">' +
+    '<div class="flex items-center justify-between">' +
+      '<span class="text-sm font-semibold text-slate-700">单条岗位评估详情 (' + entries.length + ' 条)</span>' +
+    '</div>';
+
+  entries.forEach(function(e, idx) {
+    var total = e.total_score || 0;
+    var dirMatch = e.direction_correct;
+    var dirCls = dirMatch ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50';
+    var tierVal = e.expected_tier || '';
+
+    var dims = [
+      {key:'skill',cn:'技能'},{key:'experience',cn:'经验'},
+      {key:'level',cn:'职级'},{key:'industry',cn:'行业'},{key:'bonus',cn:'加分'}
+    ];
+    var bars = dims.map(function(d) {
+      var v = (e.scores && e.scores[d.key]) || 0;
+      var color = v >= 80 ? 'bg-emerald-500' : v >= 60 ? 'bg-amber-500' : 'bg-red-400';
+      return '<div class="flex items-center gap-2"><span class="text-[11px] text-slate-400 w-8">' + d.cn + '</span>' +
+        '<div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">' +
+          '<div class="h-full ' + color + ' rounded-full" style="width:' + v + '%"></div></div>' +
+        '<span class="text-[11px] text-slate-500 w-6 text-right">' + v + '</span></div>';
+    }).join('');
+
+    var desc = e.description || '';
+    var jdHtml = '';
+    if (desc.length > 200) {
+      jdHtml = '<div class="jd-preview text-xs text-slate-500 leading-relaxed mt-1">' + escapeHtml(desc.substring(0, 200)) + '...</div>' +
+        '<div class="jd-full text-xs text-slate-500 leading-relaxed mt-1 hidden">' + escapeHtml(desc) + '</div>' +
+        '<button onclick="toggleJD(this)" class="text-xs text-indigo-500 mt-1">展开 JD ▾</button>';
+    } else if (desc.length > 0) {
+      jdHtml = '<div class="text-xs text-slate-500 leading-relaxed mt-1">' + escapeHtml(desc) + '</div>';
+    }
+
+    html += '<div class="bg-white border border-slate-200 rounded-xl p-4 fade-in eval-card" data-eid="' + e.id + '">' +
+      '<div class="flex items-start gap-3">' +
+        '<div class="shrink-0 text-center">' +
+          '<div class="text-2xl font-bold text-slate-800">' + total + '</div>' +
+          '<div class="text-[10px] text-slate-400">#' + (idx + 1) + '</div>' +
+        '</div>' +
+        '<div class="flex-1 min-w-0">' +
+          '<div class="flex items-start justify-between gap-2">' +
+            '<div class="min-w-0">' +
+              '<div class="font-semibold text-slate-800 text-sm truncate">' + escapeHtml(e.title || '未知') + '</div>' +
+              '<div class="text-xs text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">' +
+                (e.company ? '<span class="flex items-center gap-1"><i data-lucide="building-2" class="w-3 h-3"></i>' + escapeHtml(e.company) + '</span>' : '') +
+                (e.url ? '<a href="' + e.url + '" target="_blank" class="text-indigo-500 flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i>原岗位</a>' : '') +
+              '</div>' +
+            '</div>' +
+            '<span class="shrink-0 text-[11px] px-1.5 py-0.5 rounded ' + dirCls + '">' +
+              (dirMatch ? '方向一致' : '方向不一致') +
+            '</span>' +
+          '</div>' +
+          '<div class="flex items-center gap-2 text-xs mt-2">' +
+            '<span class="text-slate-500">期望: <span class="font-medium text-slate-700">' + escapeHtml(e.expected_direction) + '</span></span>' +
+            '<span class="text-slate-300">←</span>' +
+            '<span class="text-slate-500">LLM: <span class="font-medium ' + (dirMatch ? 'text-emerald-600' : 'text-red-600') + '">' + escapeHtml(e.predicted_direction) + '</span></span>' +
+          '</div>' +
+          '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-3">' + bars + '</div>' +
+          (e.reason ? '<p class="text-xs text-slate-500 mt-2 leading-relaxed">' + escapeHtml(e.reason) + '</p>' : '') +
+          jdHtml +
+          '<div class="flex items-center gap-3 mt-3 pt-3 border-t border-slate-100">' +
+            '<span class="text-xs text-slate-500">分档标注:</span>' +
+            '<select onchange="onTierChange(\'' + e.id + '\', this.value, this.closest(\'.eval-card\'))" class="tier-select text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white focus:ring-2 focus:ring-indigo-200">' +
+              '<option value=""' + (tierVal === '' ? ' selected' : '') + '>未标注</option>' +
+              '<option value="High"' + (tierVal === 'High' ? ' selected' : '') + '>High (≥70)</option>' +
+              '<option value="Medium"' + (tierVal === 'Medium' ? ' selected' : '') + '>Medium (45-69)</option>' +
+              '<option value="Low"' + (tierVal === 'Low' ? ' selected' : '') + '>Low (<45)</option>' +
+            '</select>' +
+            '<span class="tier-badge hidden text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">未保存</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  });
+
+  html += '<div id="annotation-bar" class="hidden bg-white border border-amber-300 rounded-xl p-4 shadow-lg sticky bottom-4 mt-4">' +
+    '<div class="flex items-center justify-between">' +
+      '<div id="annotation-pills" class="flex items-center gap-2 flex-wrap text-xs"></div>' +
+      '<button onclick="saveAnnotations(\'' + setName + '\')" class="shrink-0 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-4 py-2">保存所有标注</button>' +
+    '</div>' +
+  '</div>';
+
+  html += '</div>';
+  container.innerHTML = html;
+  refreshIcons();
+}
+
+function toggleJD(btn) {
+  var card = btn.closest('.eval-card');
+  var preview = card.querySelector('.jd-preview');
+  var full = card.querySelector('.jd-full');
+  if (full.classList.contains('hidden')) {
+    preview.classList.add('hidden');
+    full.classList.remove('hidden');
+    btn.textContent = '收起 JD ▴';
+  } else {
+    preview.classList.remove('hidden');
+    full.classList.add('hidden');
+    btn.textContent = '展开 JD ▾';
+  }
+}
+
+function onTierChange(entryId, newTier, card) {
+  var badge = card.querySelector('.tier-badge');
+  if (newTier === '') {
+    delete _pendingAnnotations[entryId];
+    badge.classList.add('hidden');
+  } else {
+    _pendingAnnotations[entryId] = newTier;
+    badge.classList.remove('hidden');
+  }
+  updateAnnotationBar();
+}
+
+function updateAnnotationBar() {
+  var bar = document.getElementById('annotation-bar');
+  var pills = document.getElementById('annotation-pills');
+  if (!bar || !pills) return;
+
+  var entries = Object.entries(_pendingAnnotations);
+  if (entries.length === 0) {
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  pills.innerHTML = '<span class="text-amber-700 font-medium">未保存 ' + entries.length + ' 条: </span>' +
+    entries.map(function(e) {
+      return '<span class="bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">' + escapeHtml(e[0]) + ': ' + escapeHtml(e[1]) + '</span>';
+    }).join('');
+}
+
+async function saveAnnotations(setName) {
+  var bar = document.getElementById('annotation-bar');
+  var btn = bar ? bar.querySelector('button') : null;
+  if (btn) { btn.disabled = true; btn.textContent = '保存中...'; }
+
+  var payload = Object.entries(_pendingAnnotations).map(function(e) {
+    return {id: e[0], expected_tier: e[1]};
+  });
+
+  try {
+    var resp = await api('PUT', '/api/eval/dataset/' + setName, {annotations: payload});
+    if (resp && !resp.error) {
+      toast('已保存 ' + resp.updated + ' 条标注', 'ok');
+      _pendingAnnotations = {};
+      document.querySelectorAll('#eval-details .tier-badge').forEach(function(b) { b.classList.add('hidden'); });
+      updateAnnotationBar();
+    } else {
+      toast(resp.error || '保存失败', 'err');
+    }
+  } catch(e) {
+    toast('保存失败: ' + (e.message || '网络错误'), 'err');
+  }
+  if (btn) { btn.disabled = false; btn.textContent = '保存所有标注'; }
 }
 
 
