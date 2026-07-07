@@ -66,11 +66,11 @@ def main():
         sys.exit(1)
 
     # ── 5. 退化断言 2：score_range 条件检查 ──
-    score_ranges = [c.get("expected_score_range", "PENDING") for c in holdout]
-    if all(sr == "PENDING" for sr in score_ranges):
-        print("score_range 未标注（全部为 PENDING），跳过分档退化检查")
+    score_ranges = [c.get("expected_tier", "") for c in holdout]
+    if all(sr == "" for sr in score_ranges):
+        print("expected_tier 未标注（全部为空），跳过分档退化检查")
     else:
-        unique_ranges = set(sr for sr in score_ranges if sr != "PENDING")
+        unique_ranges = set(sr for sr in score_ranges if sr != "")
         if len(unique_ranges) <= 1 and len(unique_ranges) > 0:
             print(f"ERROR: holdout 的 score_range 全部同一档 ({list(unique_ranges)[0]})！")
             sys.exit(1)
