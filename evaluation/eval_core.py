@@ -236,12 +236,9 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str,
 
         # ── 分数档位准确率 ──
         expected_tier = case.get("expected_tier", "")
-        if expected_tier in ("High", "Medium", "Low"):
-            tier_correct = (
-                (expected_tier == "High"   and total_score >= 70) or
-                (expected_tier == "Medium" and 45 <= total_score <= 69) or
-                (expected_tier == "Low"    and total_score < 45)
-            )
+        predicted_tier = scored.get("level_tier", "") if scored else ""
+        if expected_tier in ("High", "Medium", "Low") and predicted_tier:
+            tier_correct = expected_tier == predicted_tier
         else:
             tier_correct = None
 
@@ -262,6 +259,7 @@ def compute_metrics(cases: list, all_scored: list, profile_summary: str,
             "profile_summary": profile_summary,
             # ── 分数档位 ──
             "expected_tier": expected_tier,
+            "predicted_tier": predicted_tier,
             "tier_correct": tier_correct,
         })
 

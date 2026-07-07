@@ -94,7 +94,7 @@ def _build_score_formula(weights):
 
 
 def _calc_total_score(scores, weights):
-    """根据权重手动计算加权总分（四舍五入取整）。"""
+    """根据权重手动计算加权总分（四舍五入取整）。用于同档位内的排序。"""
     return round(
         scores.get("skill", 0) * weights["skill"] / 100 +
         scores.get("experience", 0) * weights["experience"] / 100 +
@@ -102,6 +102,33 @@ def _calc_total_score(scores, weights):
         scores.get("industry", 0) * weights["industry"] / 100 +
         scores.get("bonus", 0) * weights["bonus"] / 100
     )
+
+
+def _determine_level_by_discrete_scores(scores_dict):
+    """
+    基于 LLM 输出的强制阶梯离散分，进行最终档位判定。
+    scores_dict: {"skill": 80, "experience": 20, "level": 20, "industry": 95, "bonus": 80}
+    """
+    skill = scores_dict.get("skill", 60)
+    exp = scores_dict.get("experience", 60)
+    level = scores_dict.get("level", 60)
+    bonus = scores_dict.get("bonus", 60)
+    # 红线 1: 触发叹息之墙绝对硬伤
+    if exp == 20 or level == 20 or skill == 20:
+        return "Low"
+    # 红线 2: Mandatory 核心技术栈缺失 或 转型红线约束彻底失败
+    if skill == 40 or exp == 40:
+        return "Low"
+    # 红线 3: 存在严重面试/英语高风险
+    if bonus == 20:
+        return "Low"
+    # 常规档位映射
+    values = list(scores_dict.values())
+    if 40 in values or 60 in values:
+        return "Medium"
+    if all(v >= 80 for v in values):
+        return "High"
+    return "Medium"
 
 
 # ============================================================
@@ -871,6 +898,7 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
 
                 if s.get("scores"):
                     s["total_score"] = _calc_total_score(s["scores"], dir_weights)
+                    s["level_tier"] = _determine_level_by_discrete_scores(s["scores"])
                 s["score_rounds"] = [s.get("total_score", 0)]
                 s["score_variance"] = 0
                 s["confidence"] = "high"
@@ -906,6 +934,7 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
                             s["eval_id"] = job["eval_id"]
                         if s.get("scores"):
                             s["total_score"] = _calc_total_score(s["scores"], dir_weights)
+                            s["level_tier"] = _determine_level_by_discrete_scores(s["scores"])
                         s["score_rounds"] = [s.get("total_score", 0)]
                         s["score_variance"] = 0
                         s["confidence"] = "high"
@@ -996,6 +1025,7 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
 
                                 s["scores"] = avg_scores
                                 s["total_score"] = avg_total
+                                s["level_tier"] = _determine_level_by_discrete_scores(avg_scores)
                                 s["score_rounds"] = [round1_total, round2_total]
                                 s["score_variance"] = variance
                                 s["confidence"] = "verified" if variance <= 10 else "uncertain"

@@ -1003,6 +1003,7 @@ def get_eval_result(set_name):
             "total_score": r.get("total_score", 0),
             "reason": r.get("reason", ""),
             "expected_tier": r.get("expected_tier", ""),
+            "predicted_tier": r.get("predicted_tier", ""),
             "tier_correct": r.get("tier_correct"),
         })
 

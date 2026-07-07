@@ -2358,7 +2358,7 @@ function renderEvalDetailCards(entries, setName) {
           '<div class="flex items-center gap-2 text-xs mt-1">' +
             '<span class="text-slate-500">期望分档: <span class="font-medium text-slate-700">' + (e.expected_tier || '—') + '</span></span>' +
             '<span class="text-slate-300">←</span>' +
-            '<span class="text-slate-500">LLM分档: <span class="font-medium">' + total + ' → ' + (total >= 70 ? 'High' : total >= 45 ? 'Medium' : 'Low') + '</span></span>' +
+            '<span class="text-slate-500">LLM分档: <span class="font-medium">' + total + ' → ' + (e.predicted_tier || (total >= 70 ? 'High' : total >= 45 ? 'Medium' : 'Low')) + '</span></span>' +
           '</div>' +
           '<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 mt-3">' + bars + '</div>' +
           (e.reason ? '<p class="text-xs text-slate-500 mt-2 leading-relaxed">' + escapeHtml(e.reason) + '</p>' : '') +
