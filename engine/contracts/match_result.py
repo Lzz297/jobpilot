@@ -1,14 +1,14 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+from typing import Optional, Literal
 
 
 class Scores(BaseModel):
     model_config = ConfigDict(extra='allow')
-    skill: int = Field(ge=0, le=100, description="技能匹配度 0-100")
-    experience: int = Field(ge=0, le=100, description="经验年限匹配度 0-100")
-    level: int = Field(ge=0, le=100, description="职级匹配度 0-100")
-    industry: int = Field(ge=0, le=100, description="行业对口度 0-100")
-    bonus: int = Field(ge=0, le=100, description="加分项匹配度 0-100")
+    skill: Literal[95, 80, 60, 40, 20]
+    experience: Literal[95, 80, 60, 40, 20]
+    level: Literal[95, 80, 60, 40, 20]
+    industry: Literal[95, 80, 60, 40, 20]
+    bonus: Literal[95, 80, 60, 40, 20]
 
 
 class MatchResult(BaseModel):
