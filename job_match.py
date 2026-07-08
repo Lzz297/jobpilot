@@ -107,28 +107,40 @@ def _calc_total_score(scores, weights):
 def _determine_level_by_discrete_scores(scores_dict):
     """
     基于 LLM 输出的强制阶梯离散分，进行最终档位判定。
-    scores_dict: {"skill": 80, "experience": 20, "level": 20, "industry": 95, "bonus": 80}
+
+    设计原则：档位回答"候选人能否胜任"。能力维度（skill/exp/level/industry）
+    决定档位上下限，bonus 维度仅在触发致命风险（20）或高风险（40）时进行降级。
     """
     skill = scores_dict.get("skill", 60)
-    exp = scores_dict.get("experience", 60)
+    exp   = scores_dict.get("experience", 60)
     level = scores_dict.get("level", 60)
+    industry = scores_dict.get("industry", 60)
     bonus = scores_dict.get("bonus", 60)
-    # 红线 1: 触发叹息之墙绝对硬伤
+
+    # 红线 1: 叹息之墙绝对硬伤
     if exp == 20 or level == 20 or skill == 20:
         return "Low"
-    # 红线 2: Mandatory 核心技术栈缺失 或 转型红线约束彻底失败
+
+    # 红线 2: 核心技术栈缺失 或 转型红线彻底失败
     if skill == 40 or exp == 40:
         return "Low"
-    # 红线 3: 存在严重面试/英语高风险
+
+    # 红线 3: 面试/英语致命风险
     if bonus == 20:
         return "Low"
-    # 常规档位映射
-    values = list(scores_dict.values())
-    if 40 in values or 60 in values:
+
+    # 能力维度检查：skill/exp/level/industry 是否有短板（40 或 60）
+    capability_dims = [skill, exp, level, industry]
+    has_capability_gap = any(v in (40, 60) for v in capability_dims)
+
+    # bonus 高风险检查（40 分视为有不容忽视的风险，限制为 Medium）
+    has_bonus_risk = (bonus == 40)
+
+    if has_capability_gap or has_bonus_risk:
         return "Medium"
-    if all(v >= 80 for v in values):
-        return "High"
-    return "Medium"
+
+    # 能力维度全 >= 80 且 bonus 无致命/高风险 → 胜任
+    return "High"
 
 
 # ============================================================

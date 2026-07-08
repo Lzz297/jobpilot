@@ -57,6 +57,6 @@
     "expected_direction": "web3",
     "source_file": "output/run_20260418_015732/matched_jobs.json",
     "source_index": 4,
-    "expected_tier": "Low"
+    "expected_tier": "Medium"
   }
 ]
