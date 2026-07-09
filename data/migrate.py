@@ -76,6 +76,13 @@ CREATE TABLE IF NOT EXISTS operation_logs (
     detail TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS fetched_jobs (
+    job_id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    keyword TEXT NOT NULL,
+    fetched_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """)
 print('Step 1: Tables created')
 print(f'Tables: {[r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type=\'table\'").fetchall()]}')

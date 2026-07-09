@@ -443,7 +443,37 @@ def match_jobs(config: dict = None, profile: dict = None):
     qualified = [s for s in all_scored
                  if s.get("total_score", 0) >= min_score][:top_n]
 
-    # ── 生成报告 ──
+    # 保存未达标岗位（低于 min_score 的）—— 先落盘，避免报告生成崩溃丢数据
+    unmatched = [s for s in all_scored if s.get("total_score", 0) < min_score]
+    if unmatched:
+        unmatched_path = os.path.join(run_dir, "unmatched_jobs.json")
+        with open(unmatched_path, "w", encoding="utf-8") as f:
+            json.dump(unmatched, f, ensure_ascii=False, indent=2)
+        track_file(unmatched_path, f"未达标岗位数据 JSON（{len(unmatched)} 个，低于 {min_score} 分）")
+
+    # 保存匹配结果 JSON 到 run 目录
+    matched_path = os.path.join(run_dir, "matched_jobs.json")
+    with open(matched_path, "w", encoding="utf-8") as f:
+        json.dump(qualified, f, ensure_ascii=False, indent=2)
+    track_file(matched_path, f"匹配结果数据 JSON（{len(qualified)} 个岗位评分，供生成简历用）")
+
+    # 保存兜底触发报告
+    fallback_path = os.path.join(run_dir, "fallback_report.json")
+    with open(fallback_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "direction_fallbacks": {"count": len(_dir_fallbacks), "details": _dir_fallbacks},
+            "weight_fallbacks": {"count": len(_weight_fallbacks), "details": _weight_fallbacks},
+            "score_errors": {"count": len(_score_errors), "details": _score_errors},
+        }, f, ensure_ascii=False, indent=2)
+    track_file(fallback_path, f"兜底触发报告（方向{len(_dir_fallbacks)} 权重{len(_weight_fallbacks)} 评分{len(_score_errors)}）")
+
+    if scoring_failed:
+        failed_path = os.path.join(run_dir, "scoring_failed_jobs.json")
+        with open(failed_path, "w", encoding="utf-8") as f:
+            json.dump(scoring_failed, f, ensure_ascii=False, indent=2)
+        track_file(failed_path, f"评分失败岗位 JSON（{len(scoring_failed)} 个，LLM 漏返）")
+
+    # ── 生成报告（放在文件保存之后，这样即使报告生成崩溃也不丢核心数据）──
     report = f"# 岗位匹配报告\n\n"
     report += f"- 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     report += f"- 分析岗位数: {len(jobs)}\n"
@@ -489,9 +519,9 @@ def match_jobs(config: dict = None, profile: dict = None):
             report += f"- 复评: 第1轮 {rounds[0]} / 第2轮 {rounds[1]}（波动 {s.get('score_variance', 0)}）\n"
 
         if s.get("skill_match"):
-            report += f"- 技能: {', '.join(s['skill_match'])}\n"
+            report += f"- 技能: {', '.join(str(x) if isinstance(x, dict) else x for x in s['skill_match'])}\n"
         if s.get("missing_skills"):
-            report += f"- 缺失: {', '.join(s['missing_skills'])}\n"
+            report += f"- 缺失: {', '.join(str(x) if isinstance(x, dict) else x for x in s['missing_skills'])}\n"
 
         report += f"- 分析: {s.get('reason', '')}\n"
         report += f"- 建议: {s.get('recommendation', '')}\n\n"
@@ -511,36 +541,6 @@ def match_jobs(config: dict = None, profile: dict = None):
     with open(report_path, "w", encoding="utf-8") as f:
         f.write(report)
     track_file(report_path, f"匹配分析报告 Markdown（{len(qualified)} 个达标岗位排名）")
-
-    # 保存匹配结果 JSON 到 run 目录
-    matched_path = os.path.join(run_dir, "matched_jobs.json")
-    with open(matched_path, "w", encoding="utf-8") as f:
-        json.dump(qualified, f, ensure_ascii=False, indent=2)
-    track_file(matched_path, f"匹配结果数据 JSON（{len(qualified)} 个岗位评分，供生成简历用）")
-
-    # 保存兜底触发报告
-    fallback_path = os.path.join(run_dir, "fallback_report.json")
-    with open(fallback_path, "w", encoding="utf-8") as f:
-        json.dump({
-            "direction_fallbacks": {"count": len(_dir_fallbacks), "details": _dir_fallbacks},
-            "weight_fallbacks": {"count": len(_weight_fallbacks), "details": _weight_fallbacks},
-            "score_errors": {"count": len(_score_errors), "details": _score_errors},
-        }, f, ensure_ascii=False, indent=2)
-    track_file(fallback_path, f"兜底触发报告（方向{len(_dir_fallbacks)} 权重{len(_weight_fallbacks)} 评分{len(_score_errors)}）")
-
-    # 保存未达标岗位（低于 min_score 的）
-    unmatched = [s for s in all_scored if s.get("total_score", 0) < min_score]
-    if unmatched:
-        unmatched_path = os.path.join(run_dir, "unmatched_jobs.json")
-        with open(unmatched_path, "w", encoding="utf-8") as f:
-            json.dump(unmatched, f, ensure_ascii=False, indent=2)
-        track_file(unmatched_path, f"未达标岗位数据 JSON（{len(unmatched)} 个，低于 {min_score} 分）")
-
-    if scoring_failed:
-        failed_path = os.path.join(run_dir, "scoring_failed_jobs.json")
-        with open(failed_path, "w", encoding="utf-8") as f:
-            json.dump(scoring_failed, f, ensure_ascii=False, indent=2)
-        track_file(failed_path, f"评分失败岗位 JSON（{len(scoring_failed)} 个，LLM 漏返）")
 
     # 返回摘要
     rescore_count = sum(1 for s in qualified if len(s.get("score_rounds", [])) > 1)
@@ -564,7 +564,8 @@ def match_jobs(config: dict = None, profile: dict = None):
         conf_tag = " ✅复评" if conf == "verified" else " ⚠️波动" if conf == "uncertain" else ""
         summary += f"{rank}. {emoji} {score}分 [{wp}]{conf_tag} | {s.get('title', '未知')}{company_str}\n"
         if s.get("skill_match"):
-            summary += f"   技能: {', '.join(s['skill_match'][:6])}\n"
+            sm = s.get('skill_match', [])
+            summary += f"   技能: {', '.join(str(x) if isinstance(x, dict) else x for x in sm[:6])}\n"
         summary += f"   {s.get('reason', '')}\n"
         summary += f"   {s.get('url', '')}\n\n"
     if len(qualified) > 8:
@@ -615,7 +616,8 @@ def list_matched_jobs():
             output += f"   🔄 复评: {rounds[0]}→{rounds[1]}（波动 {s.get('score_variance', 0)}）\n"
 
         if s.get("missing_skills"):
-            output += f"   ⚠️ 缺失: {', '.join(s['missing_skills'])}\n"
+            ms = s.get('missing_skills', [])
+            output += f"   ⚠️ 缺失: {', '.join(str(x) if isinstance(x, dict) else x for x in ms)}\n"
 
         output += f"   {s.get('reason', '')}\n"
         output += f"   {s.get('url', '')}\n\n"

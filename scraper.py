@@ -622,7 +622,7 @@ def _build_html_title_map(soup):
 
 def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
                          max_pages: int = 6, classification: str = "",
-                         sort_by: str = "date") -> list:
+                         sort_by: str = "date", start_page: int = 1) -> list:
     """
     【第一层：列表页扫描】
     解析 JobsDB 搜索结果页，提取岗位基础信息。
@@ -631,11 +631,12 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
     Args:
         keyword: 搜索关键词
         location: 搜索地点
-        max_pages: 最大翻页数
+        max_pages: 翻页数
         classification: JobsDB 行业分类（可选），如 "science-technology"、"banking"
                         填写后 URL 变为 /{slug}-jobs-in-{classification}
         sort_by: 排序方式，"date" = 按发布时间 (sortmode=ListedDate)，
                  "relevance" = 按相关度 (JobsDB 默认，不传 sortmode)
+        start_page: 起始页码（默认 1，用于跨 run 去重后补充翻页）
 
     Returns:
         list of dicts
@@ -652,7 +653,7 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
     else:
         base_path = f"https://hk.jobsdb.com/{slug}-jobs"
 
-    for page in range(1, max_pages + 1):
+    for page in range(start_page, start_page + max_pages):
         params_parts = []
         if page > 1:
             params_parts.append(f"page={page}")

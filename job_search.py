@@ -3,6 +3,7 @@ job_search.py - 三层漏斗搜索（扫描 → 基础清洗 → 抓取 JD）
 """
 import os
 import json
+import sqlite3
 from datetime import datetime
 
 import config
@@ -16,6 +17,37 @@ from scraper import (
     fetch_multiple_details,
     normalize_jobsdb_url,
 )
+
+
+# ── 跨 run 去重辅助 ──
+
+def _load_fetched_ids() -> set:
+    """从 fetched_jobs 表加载所有已抓取的 job_id。"""
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "job_agent.db")
+    try:
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute("SELECT job_id FROM fetched_jobs").fetchall()
+        conn.close()
+        return {r[0] for r in rows}
+    except Exception:
+        return set()
+
+
+def _save_fetched_jobs(jobs: list, keyword: str):
+    """将已抓取的岗位写入 fetched_jobs 表去重。"""
+    if not jobs:
+        return
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "job_agent.db")
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.executemany(
+            "INSERT OR IGNORE INTO fetched_jobs (job_id, url, keyword) VALUES (?, ?, ?)",
+            [(j.get("job_id", ""), j.get("url", ""), keyword) for j in jobs if j.get("job_id")],
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
 
 # ============================================================
@@ -140,10 +172,50 @@ def search_jobs(sort_by: str = None, config: dict = None):
     all_rejected = list(basic_rejected)
     emit(f"   ✅ 清洗后: {len(cleaned)} 条")
 
+    # ── 跨 run 去重：过滤已抓过的 job_id ──
+    fetched_ids = _load_fetched_ids()
+    new_cleaned = [j for j in cleaned if j.get("job_id", "") not in fetched_ids]
+    cross_skipped = len(cleaned) - len(new_cleaned)
+    if cross_skipped:
+        emit(f"   🔄 跨 run 去重: 跳过 {cross_skipped} 个已抓岗位")
+
+    # ── 如果新岗位不够，扩展翻页 ──
+    if len(new_cleaned) < max_total and max_pages_per_query > 0:
+        HARD_LIMIT = 20
+        extra_start = max_pages_per_query + 1
+        extra_pages = HARD_LIMIT - max_pages_per_query
+        if extra_pages > 0:
+            emit(f"   🔍 新岗位不足 ({len(new_cleaned)}/{max_total})，扩展翻页（上限 {HARD_LIMIT} 页）...")
+            for sq in search_queries:
+                if len(new_cleaned) >= max_total:
+                    break
+                items = scan_jobsdb_listings(
+                    sq.get("keywords", ""),
+                    sq.get("location", "Hong Kong"),
+                    max_pages=extra_pages,
+                    classification=sq.get("classification", ""),
+                    sort_by=sort_by,
+                    start_page=extra_start,
+                )
+                extra_new = 0
+                for item in items:
+                    jid = item.get("job_id", "")
+                    if jid and jid not in seen_ids and jid not in fetched_ids:
+                        seen_ids.add(jid)
+                        new_cleaned.append(item)
+                        extra_new += 1
+                if extra_new:
+                    emit(f"   [{sq.get('keywords', '')}] 扩展翻页新增 {extra_new} 条")
+                else:
+                    # 连续两页以上无新岗，该关键词的扩展可以提前停止
+                    pass
+                if len(new_cleaned) >= max_total:
+                    break
+
     # =============================================================
     #  第三层：全量抓取完整 JD（准确性优先，不做 LLM 预过滤）
     # =============================================================
-    to_fetch = cleaned[:max_total]
+    to_fetch = new_cleaned[:max_total]
 
     emit(f"\n{'='*50}")
     emit(f"📄 第三层：抓取完整 JD（{len(to_fetch)} 个岗位）")
@@ -202,6 +274,9 @@ def search_jobs(sort_by: str = None, config: dict = None):
                 "classification": listing_info.get("classification", ""),
                 "source": "full_jd",
             })
+
+    # ── 跨 run 去重：落盘已抓取记录 ──
+    _save_fetched_jobs(all_jobs, search_queries[0].get("keywords", "") if search_queries else "")
 
     # ── 编号 ──
     for i, job in enumerate(all_jobs):
@@ -263,6 +338,8 @@ def search_jobs(sort_by: str = None, config: dict = None):
     summary = f"✅ 搜索完成！\n\n"
     summary += f"   📡 第一层 扫描: {len(all_listings)} 条（{len(search_queries)} 组搜索词）\n"
     summary += f"   🧹 第二层 清洗: {len(cleaned)} 条通过 / {len(basic_rejected)} 条排除（空标题/排除公司）\n"
+    if cross_skipped > 0:
+        summary += f"   🔄 跨 run 去重: {cross_skipped} 条已抓过，跳过\n"
     summary += f"   📄 第三层 抓取: {len(all_jobs)} 条（完整JD {full_jd_count} | snippet {snippet_count}）\n"
     if dedup_count > 0:
         summary += f"   🔄 URL 去重: {dedup_count} 条（重复URL已排除）\n"
