@@ -246,7 +246,7 @@ def _run_pipeline(sid, action, sort_by=None, languages=None, skip_resume=False):
                 run_dir = get_current_run_dir()
                 if run_dir and session.get("campaign"):
                     with open(os.path.join(run_dir, "campaign.json"), "w", encoding="utf-8") as _f:
-                        json.dump({"campaign": session["campaign"]}, _f, ensure_ascii=False)
+                        json.dump({"campaign": session["campaign"], "sort_by": sort_by or "date"}, _f, ensure_ascii=False)
 
                 q.put({"type": "status", "text": "Starting match analysis..."})
                 match_result = match_jobs(config=cfg, profile=cfg.get("user_profile") if cfg else None)
@@ -579,11 +579,15 @@ def list_runs():
                 if os.path.exists(campaign_path):
                     try:
                         with open(campaign_path, "r", encoding="utf-8") as _f:
-                            meta["campaign"] = json.load(_f).get("campaign", "")
+                            _cm = json.load(_f)
+                            meta["campaign"] = _cm.get("campaign", "")
+                            meta["sort_by"] = _cm.get("sort_by", "")
                     except Exception:
                         meta["campaign"] = ""
+                        meta["sort_by"] = ""
                 else:
                     meta["campaign"] = ""
+                    meta["sort_by"] = ""
 
                 # 标记当前活跃 run
                 cur = get_current_run_dir()
