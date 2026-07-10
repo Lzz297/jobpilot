@@ -241,6 +241,13 @@ def _run_pipeline(sid, action, sort_by=None, languages=None, skip_resume=False):
             q.put({"type": "progress", "text": search_result})
 
             if not search_result.startswith("❌"):
+                # 保存 Campaign 元数据，方便匹配结果页区分 Run 来源
+                from config import get_current_run_dir
+                run_dir = get_current_run_dir()
+                if run_dir and session.get("campaign"):
+                    with open(os.path.join(run_dir, "campaign.json"), "w", encoding="utf-8") as _f:
+                        json.dump({"campaign": session["campaign"]}, _f, ensure_ascii=False)
+
                 q.put({"type": "status", "text": "Starting match analysis..."})
                 match_result = match_jobs(config=cfg, profile=cfg.get("user_profile") if cfg else None)
                 q.put({"type": "progress", "text": match_result})
@@ -566,6 +573,17 @@ def list_runs():
                             meta["match_count"] = len(json.load(f))
                     except Exception:
                         meta["match_count"] = 0
+
+                # 读取 Campaign 元数据
+                campaign_path = os.path.join(run_path, "campaign.json")
+                if os.path.exists(campaign_path):
+                    try:
+                        with open(campaign_path, "r", encoding="utf-8") as _f:
+                            meta["campaign"] = json.load(_f).get("campaign", "")
+                    except Exception:
+                        meta["campaign"] = ""
+                else:
+                    meta["campaign"] = ""
 
                 # 标记当前活跃 run
                 cur = get_current_run_dir()
