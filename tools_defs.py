@@ -89,7 +89,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "load_user_profile",
-            "description": "读取用户个人档案(profiles/me.yaml)，包含技能、经历、求职意向等信息",
+            "description": "读取用户个人档案（SQLite user_profiles 表），包含技能、经历、求职意向等信息",
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
     },
@@ -97,7 +97,7 @@ tools = [
         "type": "function",
         "function": {
             "name": "load_search_config",
-            "description": "读取搜索策略配置(profiles/search_config.yaml)",
+            "description": "读取系统配置（SQLite search_config 表）",
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
     },
@@ -112,7 +112,7 @@ tools = [
                     "sort_by": {
                         "type": "string",
                         "enum": ["relevance", "date"],
-                        "description": "排序方式：\"relevance\"（按相关度排序，JobsDB默认）或 \"date\"（按发布时间排序，最新在前）。默认从 search_config.yaml 的 sort_mode 读取，未配置则按 date。"
+                        "description": "排序方式：\"relevance\"（按相关度排序，JobsDB默认）或 \"date\"（按发布时间排序，最新在前）。默认从系统配置的 sort_mode 读取。"
                     }
                 },
                 "required": []
@@ -204,7 +204,7 @@ tools = [
                     "sort_by": {
                         "type": "string",
                         "enum": ["relevance", "date"],
-                        "description": "排序方式：\"relevance\"（按相关度排序）或 \"date\"（按发布时间排序，最新在前）。默认从 search_config.yaml 的 sort_mode 读取。"
+                        "description": "排序方式：\"relevance\"（按相关度排序）或 \"date\"（按发布时间排序，最新在前）。默认从系统配置的 sort_mode 读取。"
                     }
                 },
                 "required": ["job_category"]
@@ -248,7 +248,7 @@ tools = [
                     "sort_by": {
                         "type": "string",
                         "enum": ["relevance", "date"],
-                        "description": "排序方式：\"relevance\"（按相关度排序）或 \"date\"（按发布时间排序，最新在前）。默认从 search_config.yaml 的 sort_mode 读取。"
+                        "description": "排序方式：\"relevance\"（按相关度排序）或 \"date\"（按发布时间排序，最新在前）。默认从系统配置的 sort_mode 读取。"
                     }
                 },
                 "required": ["tasks"]

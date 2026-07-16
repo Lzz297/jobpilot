@@ -86,18 +86,19 @@ def run_agent_loop():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="JobsDB 智能求职 Agent")
     parser.add_argument("--campaign", type=str, default=None,
-                        help="Campaign 名称（如 web3_hunt），使用 instances/campaigns/ 下的配置")
+                        help="Campaign 名称（如 web3_hunt），存储在 SQLite campaigns 表")
     args = parser.parse_args()
 
     if not args.campaign:
         print("[ERROR] 必须指定 --campaign 参数。")
-        print("可用 campaign 请查看 instances/campaigns/ 目录。")
-        import os as _os
-        d = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "instances", "campaigns")
-        if _os.path.isdir(d):
-            for f in sorted(_os.listdir(d)):
-                if f.endswith(".yaml"):
-                    print(f"  - {f.replace('.yaml', '')}")
+        from config import _db_fetch_all
+        rows = _db_fetch_all("SELECT name FROM campaigns ORDER BY name")
+        if rows:
+            print("可用的 campaign:")
+            for r in rows:
+                print(f"  - {r['name']}")
+        else:
+            print("数据库中没有 campaign，请先通过 Web UI 创建。")
         print("示例: python agent.py --campaign web3_hunt")
         sys.exit(1)
 

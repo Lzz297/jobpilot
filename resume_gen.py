@@ -205,7 +205,7 @@ def generate_resume(job_index=None, jd_text=None, by_direction=False, output_lan
       - jd_text: 基于用户粘贴的 JD 文本
 
     output_langs: 可选，指定输出语言子集，如 ["en", "hk"]。不传则输出全部三种。
-    profile: 用户画像字典（不传则从 instances/users/ 自动加载）
+    profile: 用户画像字典（不传则从 SQLite user_profiles 表自动加载）
     """
     # ── 加载公共资源 ──
     if profile is None:

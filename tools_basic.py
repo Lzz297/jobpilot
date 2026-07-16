@@ -88,13 +88,13 @@ def web_search(query, max_results=5):
 
 
 def load_user_profile():
-    """读取用户个人档案 profiles/me.yaml（面向 LLM 的格式化输出）"""
+    """读取用户个人档案（SQLite user_profiles 表，面向 LLM 的格式化输出）"""
     profile = load_profile()
     return "✅ 用户档案已加载：\n" + json.dumps(profile, ensure_ascii=False, indent=2)
 
 
 def load_search_config():
-    """读取搜索策略配置 profiles/search_config.yaml（面向 LLM 的格式化输出）"""
+    """读取系统配置（SQLite search_config 表，面向 LLM 的格式化输出）"""
     config, err = load_search_config_dict()
     if err:
         return err

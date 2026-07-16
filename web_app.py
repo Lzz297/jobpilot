@@ -1080,7 +1080,7 @@ def put_eval_annotations(set_name):
 
 @app.route("/api/config/yaml/<name>", methods=["GET"])
 def get_yaml_config(name):
-    """读取配置文件，返回 JSON 格式内容。me 从 instances/users/ 读取。"""
+    """读取配置文件，返回 JSON 格式内容。me 从 SQLite user_profiles 表读取。"""
     if name == "me":
         user_name = _get_current_user()
         if not user_name:
@@ -1113,7 +1113,7 @@ def get_yaml_config(name):
 @app.route("/api/config/yaml/<name>", methods=["PUT"])
 @login_required
 def put_yaml_config(name):
-    """回写配置文件。me 写入 instances/users/ 下。"""
+    """回写配置文件。me 写入 SQLite user_profiles 表。"""
     data = request.json
     if not data or "content" not in data:
         return jsonify({"error": "Missing content"}), 400
