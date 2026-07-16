@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "job-agent"
+version = "0.1.0"
+description = "LLM-driven automated job search agent for Hong Kong JobsDB market — search, match, score, resume generation, and market analysis"
+readme = "PROJECT_INTRO.md"
+license = {text = "MIT"}
+requires-python = ">=3.13"
+authors = [
+    {name = "Ryanlam", email = "ryan@xtec.space"},
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP :: Indexing/Search",
+]
+
+# SQLite → Python stdlib (sqlite3), no pip install needed
+dependencies = [
+    "flask>=3.1.3",
+    "openai>=2.30.0",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.3",
+    "werkzeug>=3.1.8",
+    "beautifulsoup4>=4.14.3",
+    "lxml>=6.0.2",
+    "requests>=2.33.1",
+    "playwright>=1.58.0",
+    "ddgs>=9.12.0",
+    "pydantic>=2.12.5",
+    "instructor>=1.15.1",
+    "markdown>=3.10.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    # 测试源文件已丢失（仅存 .pyc），pytest 系列为预装，待重建测试
+    "pytest>=9.0.3",
+    "pytest-playwright>=0.8.0",
+    "pytest-base-url>=2.1.0",
+    # TODO: 待引入
+    # "ruff>=0.11.0",
+    # "pre-commit>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Ryanlam/job-agent"
+Issues = "https://github.com/Ryanlam/job-agent/issues"
+
+[tool.setuptools]
+# Flat layout: 根目录 .py 模块需显式声明；engine/ 作为包自动发现
+py-modules = [
+    "agent",
+    "checker",
+    "config",
+    "config_assembler",
+    "job_match",
+    "job_search",
+    "market_analysis",
+    "pdf_renderer",
+    "resume_gen",
+    "scraper",
+    "tools_basic",
+    "tools_defs",
+    "web_app",
+]
