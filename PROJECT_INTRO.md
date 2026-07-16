@@ -528,7 +528,9 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
     "has_resumes": true,
     "job_count": 200,
     "match_count": 15,
-    "is_current": false
+    "is_current": false,
+    "campaign": "web3_hunt",
+    "sort_by": "date"
   }
 ]
 ```
@@ -1167,7 +1169,7 @@ def generate_resume(job_index=None, jd_text=None, by_direction=False, output_lan
 1. 读取 `matched_jobs.json`，按 `llm_direction` 分组
    - **跳过 `default` 方向的岗位**（无法归类，不参与聚合）
    - **每个方向至少需要 2 个达标岗位**，不足则跳过
-2. 每个方向调用 LLM 聚合分析（取前 15 个岗位，每条 JD 截断至 2000 字符），输出三级技能分类：
+2. 每个方向调用 LLM 聚合分析（取前 15 个岗位，每条 JD 截断至 3000 字符），输出三级技能分类：
 
 | 分类 | 含义 | 简历中的处理 |
 |------|------|-------------|
@@ -1327,14 +1329,14 @@ render_report(markdown_text, md_filepath)  # → PDF 文件路径或 None（使�
 
 ```
 Phase A: 数据采集
-  scan_jobsdb_listings(job_category, ...) → 翻 max_pages 页（YAML 默认 4，代码级 fallback 3）
-  fetch_multiple_details() → 全量抓取完整 JD（上限 max_fetch_jd，YAML 默认 100，代码级 fallback 40）
+  scan_jobsdb_listings(job_category, ...) → 翻 max_pages 页（默认 4，代码级 fallback 3）
+  fetch_multiple_details() → 全量抓取完整 JD（上限 max_fetch_jd，默认 100，代码级 fallback 40）
   无效 JD 用列表页 snippet 兜底
            │
            ▼
 Phase B: LLM 市场分析（分批评分 + 多批自动聚合）
-  每批 batch_size 条 JD（YAML 默认 5，代码级 fallback 10）发给 LLM
-  单条 JD 截断至 jd_max_chars 字符（YAML 默认 6000，代码级 fallback 2000）
+  每批 batch_size 条 JD（默认 5，代码级 fallback 10）发给 LLM
+  单条 JD 截断至 jd_max_chars 字符（默认 6000，代码级 fallback 2000）
   > 以上参数均从 SQLite `search_config` 表的 `market_analysis` 段读取。
   LLM 提取以下 11 个维度：
    1. technical_skills      — 技术技能（排名、分类、工具、说明）
