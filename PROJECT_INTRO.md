@@ -45,7 +45,7 @@ D:\job-agent/
 ├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 ├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
 │
-├── scraper.py                # [爬虫] JobsDB 页面抓取（~988 行），4 层列表解析 + 3 层详情解析
+├── scraper.py                # [爬虫] JobsDB 页面抓取（~989 行），4 层列表解析 + 3 层详情解析
 ├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
 ├── job_match.py              # [匹配] LLM 五维评分 + 动态权重 + 及格线复评 + 方向分类
 ├── resume_gen.py             # [简历] 3 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
@@ -54,22 +54,27 @@ D:\job-agent/
 ├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
 ├── config_assembler.py       # [组装] Campaign 配置合并（user × strategy × campaign × search_config）
 │
-├── engine/                   # [契约] Pydantic 数据模型
-│   └── contracts/            #     6 个 Pydantic 模型文件
+├── engine/                   # [契约] Pydantic 数据模型（11 个模型类）
+│   └── contracts/            #     MatchResult, Scores, MarketAnalysisResult,
+│                             #     TechnicalSkill, GapAnalysisResult,
+│                             #     DirectionAggregationResult, CommonRequirements,
+│                             #     DirectionLabel, Resume, ResumeBullet, ResumeReviewResult
 │
-├── evaluation/               # [评估] 评估核心 + 数据集拆分
-│   ├── eval_core.py          #     评估流水线（Web 调用入口）
-│   ├── run_checker_eval.py   #     Checker 用例评估
+├── evaluation/               # [评估] 评估流水线 + Checker 评估 + 数据集拆分
+│   ├── eval_core.py          #     评估流水线（Web 调用入口，7 个函数）
+│   ├── run_checker_eval.py   #     Checker 单元评估
 │   └── split_eval.py         #     训练集/验证集拆分
 │
 ├── instances/                # [实例] 仅含评估数据
 │   └── eval/                 #     评估数据集 + 标注规范
 │
 ├── prompts/                  # [示例] Few-shot 示例
-│   └── examples/job_match/   #     方向分类示例 + 评分示例
+│   └── examples/job_match/   #     
+│       ├── direction/        #     方向分类示例（common + 5 个方向 yaml）
+│       └── scoring/          #     评分示例（空目录）
 │
 ├── profiles/                 # [配置文件] YAML 文件（仍从文件读取）
-│   ├── prompts.yaml          #     15 个 LLM prompt 模板
+│   ├── prompts.yaml          #     16 个 LLM prompt 模板
 │   ├── resume_template.yaml  #     简历模板
 │   └── resume_guide.yaml     #     简历撰写指南
 │
@@ -295,14 +300,27 @@ get_session_files()                # 获取并清空本轮文件列表
 
 #### 3.1.8 Campaign 配置管理
 
-通过线程本地存储（`threading.local()`）管理 campaign 配置，与 `emit()` 使用相同的架构模式：
+**线程本地存储**：通过 `threading.local()` 管理 campaign 配置，与 `emit()` 使用相同的架构模式：
 
 ```python
 set_campaign_config(cfg)   # 设置当前线程的 campaign 配置
 get_campaign_config()      # 获取当前线程的 campaign 配置（无则返回 None）
 ```
 
-CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模式通过 `/api/session/campaign` 端点按 session 注入。在 `execute_tool()` 中，系统层自动将 campaign 配置注入到 `search_jobs`、`match_jobs` 两个工具函数——LLM 无需感知 config 的存在。
+**配置组装（`config_assembler.py`）**：`load_campaign(campaign_name, user_id)` 执行三层组装：
+
+```
+SQLite campaigns 表（搜索词 + 策略绑定）
+  × SQLite user_profiles 表（当前活跃画像）
+  × SQLite strategies 表（选中策略 + 全部用户策略的 weight_profiles/weight_rules）
+  × SQLite search_config 表（系统基础设施配置）
+  × YAML 文件（prompts.yaml + resume_template.yaml + resume_guide.yaml）
+  → 合并为完整配置字典
+```
+
+组装后的配置包含：`user_profile`、`strategy`、`strategy_name`、`search_queries`、`matching`（含全部 weight_profiles/weight_rules + 选中策略的 min_match_score/top_n/borderline 参数）、`search`、`resume_gen`、`market_analysis`、`filters`、`llm`、`prompts`、`resume_template`、`resume_guide`。
+
+**注入时机**：CLI 模式通过 `agent.py --campaign <name>` 在启动时注入，Web 模式通过 `/api/session/campaign` 端点按 session 注入。在 `execute_tool()` 中，系统层自动将 campaign 配置注入到 `search_jobs`、`match_jobs` 两个工具函数（`_CONFIG_AWARE_TOOLS` 集合判断），`match_jobs` 额外注入 `user_profile`——LLM 无需感知 config 的存在。
 
 ---
 
@@ -338,8 +356,8 @@ CLI 模式通过 `agent.py --campaign <name>` 参数在启动时注入，Web 模
 | `web_search` | tools_basic | `query` | `max_results`（默认 5） | DuckDuckGo 联网搜索 |
 | `load_user_profile` | tools_basic | 无 | — | 查看用户画像（SQLite `user_profiles` 表，`is_current=1` 的行） |
 | `load_search_config` | tools_basic | 无 | — | 查看系统配置（SQLite `search_config` 表） |
-| `search_jobs` | job_search | 无 | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
-| `match_jobs` | job_match | 无 | — | 五维动态权重匹配评分 + 及格线复评 |
+| `search_jobs` | job_search | 无（`config` 由系统层自动注入） | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
+| `match_jobs` | job_match | 无（`config` 和 `profile` 由系统层自动注入） | — | 五维动态权重匹配评分 + 及格线复评 |
 | `generate_resume` | resume_gen | 无（3 种模式，`by_direction` / `job_index` / `jd_text`。均需显式指定，无参数时返回错误提示） | 见 §3.10 | 多模式三语简历 + Cover Letter 生成 |
 | `list_matched_jobs` | job_match | 无 | — | 查看最近一次匹配排名结果（含五维分数 + 复评信息） |
 | `fetch_job_detail` | tools_basic | `url` | — | 抓取单个岗位 URL 的完整 JD |
@@ -698,6 +716,26 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 
 **Response**: `{"dev_set": {"file": "eval_dev_set_20260702_143437.json", "accuracy": 0.84, ...}, "holdout": {...}}`
 
+##### `GET /api/eval/result/<set_name>` 🔒
+返回最新一次评估结果的单条岗位详情（含 JD 原文、方向预测、评分、tier）。
+
+**URL 参数**: `set_name` — `"dev_set"` 或 `"holdout"`
+
+**Response**: `{"set_name": "dev_set", "result_file": "eval_dev_set_xxx.json", "entries": [{"id": "...", "title": "...", "expected_direction": "...", "predicted_direction": "...", "direction_correct": true, "scores": {...}, "total_score": 84, "expected_tier": "High", "predicted_tier": "High", "tier_correct": true}, ...]}`
+
+##### `PUT /api/eval/dataset/<set_name>` 🔒
+保存人工标注的 `expected_tier`。仅管理员。
+
+**URL 参数**: `set_name` — `"dev_set"`, `"holdout"`, 或 `"all_cases"`
+
+**Request**:
+```json
+{"annotations": [{"id": "job_001", "expected_tier": "High"}, {"id": "job_002", "expected_tier": "Medium"}]}
+```
+
+**Response**: `{"status": "ok", "updated": 2}`  
+**Error**: `{"error": "非法 tier 值: 'X' (条目 job_001)"}` (400)
+
 ##### `GET /api/schema/user_field`
 返回用户画像字段定义 Schema。
 
@@ -895,7 +933,7 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 
 ---
 
-### 3.7 scraper.py — JobsDB 网页爬虫（核心模块，~1032 行）
+### 3.7 scraper.py — JobsDB 网页爬虫（核心模块，~989 行）
 
 **职责**：抓取 JobsDB 职位列表页和详情页。
 
@@ -965,7 +1003,7 @@ _FIELD_SPECS = {
 
 ### 3.8 job_search.py — 搜索管道
 
-**职责**：编排完整搜索流程。`search_jobs(sort_by=None)`。
+**职责**：编排完整搜索流程。`search_jobs(sort_by=None, config=None)` — 其中 `config` 由系统层通过 Campaign 注入，LLM 无需感知。
 
 #### 三层漏斗
 
@@ -1448,7 +1486,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 
 ### 3.14 SQLite 数据库结构
 
-`data/job_agent.db`（7 张业务表）：
+`data/job_agent.db`（8 张业务表）：
 
 | 表名 | 用途 | 关键字段 |
 |------|------|----------|
@@ -1459,6 +1497,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 | `campaigns` | 求职方向（搜索词 + 策略绑定） | `name`, `data`（JSON），`owner_id` |
 | `field_schemas` | 画像字段 Schema | `name`（如 `user_field`），`data`（JSON） |
 | `operation_logs` | 操作审计日志 | `user_id`, `action`, `target_type`, `detail` |
+| `fetched_jobs` | 跨 run 抓取去重 | `job_id`（主键）, `url`, `keyword`, `fetched_at` |
 
 通过 `data/migrate.py` 初始化建表 + 种子数据。
 
@@ -1576,6 +1615,7 @@ output/run_{YYYYmmdd_HHMMSS}/
 ├── scan_listings.json        # 第一层扫描全量列表（过滤前）
 │                             字段：title, company, salary, snippet, url, job_id
 │
+├── campaign.json             # Campaign 元数据（campaign 名称 + sort_by）
 ├── rejected_jobs.json        # 被基础清洗排除的岗位
 │                             字段：title, company, url, snippet, reject_reasons, reject_stage
 │
@@ -1658,8 +1698,7 @@ echo "DEEPSEEK_API_KEY=your_key_here" > .env
 # 终端模式（必须指定 campaign）
 python agent.py --campaign web3_hunt
 
-# 查看可用的 campaign
-# python agent.py（不带参数时会列出所有可用 campaign）
+# 不带 --campaign 参数会列出可用的 campaign 并退出
 
 # Web UI 模式（无需 campaign 参数，在侧边栏下拉框选择）
 python web_app.py
