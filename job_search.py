@@ -194,6 +194,7 @@ def search_jobs(sort_by: str = None, config: dict = None):
                 if len(new_cleaned) >= max_total:
                     break
                 chunk = min(CHUNK, extra_pages - offset)
+                chunk_has_new = False
                 for sq in search_queries:
                     if len(new_cleaned) >= max_total:
                         break
@@ -213,7 +214,10 @@ def search_jobs(sort_by: str = None, config: dict = None):
                             new_cleaned.append(item)
                             extra_new += 1
                     if extra_new:
+                        chunk_has_new = True
                         emit(f"   [{sq.get('keywords', '')}] 第{extra_start + offset}页起 新增 {extra_new} 条（累计 {len(new_cleaned)}）")
+                if not chunk_has_new:
+                    break
 
     # =============================================================
     #  第三层：全量抓取完整 JD（准确性优先，不做 LLM 预过滤）
