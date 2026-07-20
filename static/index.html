@@ -3748,7 +3748,8 @@ async function renderSettings(){
         </div>` : ''}
       `)}
       ${card('执行参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','','1')}
+        ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','每组搜索词扫描 JobsDB 列表的页数。跨 run 去重后新岗位不足时自动扩展','1')}
+        ${field('总页数上限','job-pages-limit',searchCfg.max_pages_limit||50,'number','扩展翻页的最高页码。超过此页码不再继续翻页','1')}
         ${field('JD 抓取上限','job-max-results',searchCfg.max_total_results||200,'number','','1')}
         ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','方向分类与评分阶段均使用此截断值','1')}
         ${field('方向预判批次大小','job-dir-batch',cfg.matching?.direction_batch_size||20,'number','每批发送给 LLM 判断方向的 JD 数量，任务轻可调大','1','50')}
@@ -3761,6 +3762,7 @@ async function renderSettings(){
         'c-sort': ($('#c-sort')?.value || '').trim(),
         'c-exclude': ($('#c-exclude')?.value || ''),
         'job-max-pages': ($('#job-max-pages')?.value || ''),
+        'job-pages-limit': ($('#job-pages-limit')?.value || ''),
         'job-max-results': ($('#job-max-results')?.value || ''),
         'job-jd-chars': ($('#job-jd-chars')?.value || ''),
         'job-dir-batch': ($('#job-dir-batch')?.value || ''),
@@ -4414,6 +4416,7 @@ async function saveJobConfig(){
       search: {
         ...(cfg.search || {}),
         max_pages: parseInt($('#job-max-pages')?.value) || cfg.search?.max_pages || 3,
+        max_pages_limit: parseInt($('#job-pages-limit')?.value) || cfg.search?.max_pages_limit || 50,
         max_total_results: parseInt($('#job-max-results')?.value) || cfg.search?.max_total_results || 200,
         jd_max_chars: parseInt($('#job-jd-chars')?.value) || cfg.search?.jd_max_chars || 4000,
       },

@@ -790,6 +790,7 @@ def _build_profile_summary(user_profile: dict) -> str:
     return json.dumps({
         "job_intent":      job_intent,
         "skills":          user_profile.get("skills", {}),
+        "languages":       user_profile.get("languages", []),
         "work_experience": work_exps,
         "projects": [
             {"name":           p.get("name"),

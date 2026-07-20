@@ -156,6 +156,7 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
         "llm": base_config["llm"],
         "filters": base_config["filters"],
         "max_pages_per_query": search_cfg.get("search", {}).get("max_pages", 3),
+        "max_pages_limit": search_cfg.get("search", {}).get("max_pages_limit", 50),
         "max_total_results": search_cfg.get("search", {}).get("max_total_results", 200),
         "search": search_cfg.get("search", {}),
         "resume_gen": search_cfg.get("resume_gen", {}),

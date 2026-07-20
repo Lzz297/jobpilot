@@ -181,11 +181,14 @@ def search_jobs(sort_by: str = None, config: dict = None):
 
     # ── 如果新岗位不够，扩展翻页 ──
     if len(new_cleaned) < max_total and max_pages_per_query > 0:
-        HARD_LIMIT = 20
-        extra_start = max_pages_per_query + 1
-        extra_pages = HARD_LIMIT - max_pages_per_query
+        max_pages_limit = config.get("max_pages_limit", 50)
+        if max_pages_limit > max_pages_per_query:
+            extra_start = max_pages_per_query + 1
+            extra_pages = max_pages_limit - max_pages_per_query
+        else:
+            extra_pages = 0
         if extra_pages > 0:
-            emit(f"   🔍 新岗位不足 ({len(new_cleaned)}/{max_total})，扩展翻页（上限 {HARD_LIMIT} 页）...")
+            emit(f"   🔍 新岗位不足 ({len(new_cleaned)}/{max_total})，扩展翻页（上限 {max_pages_limit} 页）...")
             for sq in search_queries:
                 if len(new_cleaned) >= max_total:
                     break
