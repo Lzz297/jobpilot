@@ -47,7 +47,7 @@ D:\job-agent/
 ├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 ├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
 │
-├── scraper.py                # [爬虫] JobsDB 页面抓取（~989 行），4 层列表解析 + 3 层详情解析
+├── scraper.py                # [爬虫] JobsDB 页面抓取（~1000 行），browser context 复用 + 4 层列表解析 + 3 层详情解析
 ├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
 ├── job_match.py              # [匹配] LLM 五维评分（并发模式）+ 动态权重 + 及格线复评 + 方向分类
 ├── resume_gen.py             # [简历] 3 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
@@ -996,7 +996,8 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
   - `navigator.webdriver` 属性覆盖 + `window.chrome` 注入
   - Cloudflare 挑战页检测与额外等待（5s）
   - 翻页间隔随机延迟 `random.uniform(1.5, 3.0)` 秒
-  - 失败时重建浏览器重试（1 次）
+  - Browser context 复用（翻页和 JD 抓取共享 context，减少 Cloudflare 挑战触发），每 25 页自动轮换
+  - 失败时重建 context 或浏览器重试
   - 浏览器健康检查：`browser.contexts` 轻量探活，失效自动重启
 
 #### 3.7.2 列表页扫描（4 层解析策略）

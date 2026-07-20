@@ -319,6 +319,7 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         profile_summary=profile_summary,
         weights_text=_build_weights_text(weights),
         score_formula=_build_score_formula(weights),
+        batch_count=str(len(batch)),
     )
 
     # 注入 few-shot 示例
@@ -345,7 +346,7 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         jobs_text += f"链接: {job.get('url', '')}\n"
 
     if is_diagnose_mode():
-        emit(f"   📤 [诊断] {batch_label}: 发送 {len(batch)} 个 JD，prompt {len(jobs_text)} 字符:\n{jobs_text}")
+        emit(f"   → {batch_label}: 发送 {len(batch)} 个 JD，prompt {len(jobs_text)} 字符:\n{jobs_text}")
 
     try:
         # 主路径：Instructor + Pydantic 结构化输出
@@ -362,9 +363,9 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
 
         scored = [m.model_dump() for m in results]
         if scored:
-            emit(f"   📝 [诊断] {batch_label}: 解析 {len(scored)}/{len(batch)}, "
-                 f"token in={batch_input_tok} out={batch_output_tok}, "
-                 f"LLM原始返回 {len(raw_text)} 字符"
+            emit(f"   ← {batch_label}: {len(scored)}/{len(batch)} | "
+                 f"token {batch_input_tok}→{batch_output_tok} | "
+                 f"{len(raw_text)} 字符"
                  + (f":\n{raw_text}" if is_diagnose_mode() else ""))
             # 数量不匹配时额外警告
             if len(scored) < len(batch):

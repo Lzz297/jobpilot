@@ -210,7 +210,7 @@ GLM_API_KEY=sk-your-key-here
   "market_presets": { "job_categories": [], "classifications": [] },
   "matching": { "direction_batch_size": 1, "score_batch_size": 5, "rescore_batch_size": 1 },
   "resume_gen": { "jd_max_chars": 3000 },
-  "search": { "max_pages": 1, "max_total_results": 15, "jd_max_chars": 6000 },
+  "search": { "max_pages": 1, "max_pages_limit": 50, "max_total_results": 15, "jd_max_chars": 6000 },
   "sort_mode": "date",
   "diagnose_mode": false
 }
@@ -225,7 +225,8 @@ GLM_API_KEY=sk-your-key-here
 | `llm.max_concurrency` | — | 20（deepseek）/ 10（qwen/glm） | 同时发送给 LLM 的最大请求数。设 1 退化为完全串行。切换 Provider 时若未显式设置则自动跟随新默认值 |
 | `sort_mode` | — | `"date"` | `"date"`（最新在前）/ `"relevance"`（相关度） |
 | `filters.exclude_companies` | `[]` | 排除的公司名（大小写不敏感） |
-| `search.max_pages` | 1 | 每组搜索词翻页数 |
+| `search.max_pages` | 1 | 每组搜索词首次翻页数 |
+| `search.max_pages_limit` | 50 | 跨 run 去重后新岗位不足时，自动扩展翻页的最高页码 |
 | `search.max_total_results` | 15 | JD 抓取上限 |
 | `search.jd_max_chars` | 6000 | LLM 评分时单条 JD 截断长度 |
 | `matching.direction_batch_size` | 1 | 方向分类每批发给 LLM 的 JD 数量 |

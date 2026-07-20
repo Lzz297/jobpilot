@@ -189,31 +189,31 @@ def search_jobs(sort_by: str = None, config: dict = None):
             extra_pages = 0
         if extra_pages > 0:
             emit(f"   🔍 新岗位不足 ({len(new_cleaned)}/{max_total})，扩展翻页（上限 {max_pages_limit} 页）...")
-            for sq in search_queries:
+            CHUNK = 5
+            for offset in range(0, extra_pages, CHUNK):
                 if len(new_cleaned) >= max_total:
                     break
-                items = scan_jobsdb_listings(
-                    sq.get("keywords", ""),
-                    sq.get("location", "Hong Kong"),
-                    max_pages=extra_pages,
-                    classification=sq.get("classification", ""),
-                    sort_by=sort_by,
-                    start_page=extra_start,
-                )
-                extra_new = 0
-                for item in items:
-                    jid = item.get("job_id", "")
-                    if jid and jid not in seen_ids and jid not in fetched_ids:
-                        seen_ids.add(jid)
-                        new_cleaned.append(item)
-                        extra_new += 1
-                if extra_new:
-                    emit(f"   [{sq.get('keywords', '')}] 扩展翻页新增 {extra_new} 条")
-                else:
-                    # 连续两页以上无新岗，该关键词的扩展可以提前停止
-                    pass
-                if len(new_cleaned) >= max_total:
-                    break
+                chunk = min(CHUNK, extra_pages - offset)
+                for sq in search_queries:
+                    if len(new_cleaned) >= max_total:
+                        break
+                    items = scan_jobsdb_listings(
+                        sq.get("keywords", ""),
+                        sq.get("location", "Hong Kong"),
+                        max_pages=chunk,
+                        classification=sq.get("classification", ""),
+                        sort_by=sort_by,
+                        start_page=extra_start + offset,
+                    )
+                    extra_new = 0
+                    for item in items:
+                        jid = item.get("job_id", "")
+                        if jid and jid not in seen_ids and jid not in fetched_ids:
+                            seen_ids.add(jid)
+                            new_cleaned.append(item)
+                            extra_new += 1
+                    if extra_new:
+                        emit(f"   [{sq.get('keywords', '')}] 第{extra_start + offset}页起 新增 {extra_new} 条（累计 {len(new_cleaned)}）")
 
     # =============================================================
     #  第三层：全量抓取完整 JD（准确性优先，不做 LLM 预过滤）

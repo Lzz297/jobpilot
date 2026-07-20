@@ -90,16 +90,25 @@ def cleanup_playwright():
         _pw_instance = None
 
 
-def _fetch_html(url: str, wait_ms: int = 3000) -> str | None:
+def _fetch_html(url: str, wait_ms: int = 3000, context=None) -> str | None:
+    """
+    获取页面 HTML。context 为 None 时每次创建新 context（旧行为）；
+    传入 context 时复用它创建 page，不关闭 context（由调用方管理生命周期）。
+    context 失效时返回 (None, None)，调用方可据此重建 context。
+    """
     # JobsDB 一律 403 requests，直接用 Playwright
     for attempt in range(2):
         try:
             browser = _get_playwright_browser()
-            ctx = browser.new_context(
-                user_agent=HEADERS["User-Agent"],
-                locale="en-HK",
-                viewport={"width": 1920, "height": 1080},
-            )
+            own_context = (context is None)
+            if own_context:
+                ctx = browser.new_context(
+                    user_agent=HEADERS["User-Agent"],
+                    locale="en-HK",
+                    viewport={"width": 1920, "height": 1080},
+                )
+            else:
+                ctx = context
             page = ctx.new_page()
             page.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
@@ -112,13 +121,25 @@ def _fetch_html(url: str, wait_ms: int = 3000) -> str | None:
                 emit(f"   ⏳ 等待 Cloudflare 挑战...")
                 page.wait_for_timeout(5000)
                 content = page.content()
-            ctx.close()
+            page.close()
+            if own_context:
+                ctx.close()
             if len(content) > 2000:
                 return content
             else:
                 emit(f"   ⚠️ Playwright 获取内容过短 ({len(content)} 字符)")
+                if not own_context:
+                    return None  # 复用的 context 可能已失效，返回 None 让调用方重建
                 return None
         except Exception as e:
+            if not own_context:
+                # 复用 context 失败：关闭旧 context，返回 None 让调用方重建
+                try:
+                    ctx.close()
+                except Exception:
+                    pass
+                emit(f"   ⚠️ 复用 context 失败: {e}，请调用方重建")
+                return None
             if attempt == 0:
                 emit(f"   🔄 Playwright 失败，重建浏览器重试: {e}")
                 global _pw_instance, _pw_browser
@@ -653,7 +674,16 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
     else:
         base_path = f"https://hk.jobsdb.com/{slug}-jobs"
 
-    for page in range(start_page, start_page + max_pages):
+    # 创建共享 context，翻页过程复用，减少 Cloudflare 挑战
+    browser = _get_playwright_browser()
+    ctx = browser.new_context(
+        user_agent=HEADERS["User-Agent"],
+        locale="en-HK",
+        viewport={"width": 1920, "height": 1080},
+    )
+
+    try:
+     for page in range(start_page, start_page + max_pages):
         params_parts = []
         if page > 1:
             params_parts.append(f"page={page}")
@@ -667,7 +697,7 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
         emit(f"   🌐 扫描 JobsDB [{keyword}] 第{page}/{max_pages}页...")
 
         try:
-            html = _fetch_html(search_url, wait_ms=4000)
+            html = _fetch_html(search_url, wait_ms=4000, context=ctx)
             if not html:
                 emit(f"      ⚠️ 第{page}页获取失败，停止翻页")
                 break
@@ -803,6 +833,12 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
             emit(f"      ⚠️ 第{page}页异常: {e}")
             continue
 
+    finally:
+        try:
+            ctx.close()
+        except Exception:
+            pass
+
     # ── 最终统计 ──
     total = len(results)
     with_title = sum(1 for r in results if r.get('title', '').strip())
@@ -824,7 +860,7 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
 # 抓取单个岗位详情
 # ─────────────────────────────────────
 
-def fetch_job_detail(url: str) -> dict:
+def fetch_job_detail(url: str, context=None) -> dict:
     result = {
         'url': url,
         'title': '',
@@ -837,7 +873,7 @@ def fetch_job_detail(url: str) -> dict:
     }
 
     try:
-        html = _fetch_html(url)
+        html = _fetch_html(url, context=context)
         if not html:
             result['error'] = "无法获取页面内容 (requests + Playwright 均失败)"
             return result
@@ -971,19 +1007,52 @@ def fetch_multiple_details(urls: list, delay: float = 2.0, max_jobs: int = 20) -
     results = []
     total = min(len(urls), max_jobs)
 
-    for i, url in enumerate(urls[:max_jobs]):
-        emit(f"   📄 抓取 JD {i+1}/{total}: {url[:70]}...")
-        detail = fetch_job_detail(url)
-        results.append(detail)
+    PAGE_LIMIT = 25  # 每个 context 最多复用 25 页，超限重建以防 Cloudflare 重新挑战
+    ctx = None
+    ctx_pages = 0
 
-        if detail.get('error'):
-            emit(f"      ⚠️ {detail['error']}")
-        else:
-            desc_len = len(detail.get('description', ''))
-            emit(f"      ✓ {detail.get('title', '?')[:40]} | JD长度: {desc_len}字")
+    def _ensure_context():
+        """获取或重建 browser context。首次创建，超限或失效时重建。"""
+        nonlocal ctx, ctx_pages
+        if ctx is None or ctx_pages >= PAGE_LIMIT:
+            if ctx is not None:
+                try:
+                    ctx.close()
+                except Exception:
+                    pass
+            browser = _get_playwright_browser()
+            ctx = browser.new_context(
+                user_agent=HEADERS["User-Agent"],
+                locale="en-HK",
+                viewport={"width": 1920, "height": 1080},
+            )
+            ctx_pages = 0
+            emit(f"   🌐 已创建新 browser context（每 {PAGE_LIMIT} 页轮换）")
 
-        if i < total - 1:
-            time.sleep(random.uniform(delay, delay + 2.0))
+    try:
+        for i, url in enumerate(urls[:max_jobs]):
+            _ensure_context()
+            emit(f"   📄 抓取 JD {i+1}/{total}: {url[:70]}...")
+            detail = fetch_job_detail(url, context=ctx)
+            if detail.get('error'):
+                emit(f"      ⚠️ {detail['error']}")
+                # 复用 context 时出错：context 可能已被 _fetch_html 关闭，强制下次重建
+                ctx_pages = PAGE_LIMIT
+            else:
+                desc_len = len(detail.get('description', ''))
+                emit(f"      ✓ {detail.get('title', '?')[:40]} | JD长度: {desc_len}字")
+                ctx_pages += 1
+            results.append(detail)
+
+            if i < total - 1:
+                time.sleep(random.uniform(delay, delay + 2.0))
+
+    finally:
+        if ctx is not None:
+            try:
+                ctx.close()
+            except Exception:
+                pass
 
     success = sum(1 for r in results if r.get('description') and not r.get('error'))
     emit(f"   ✅ 抓取完成: {success}/{total} 成功获取完整 JD")

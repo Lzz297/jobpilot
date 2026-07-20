@@ -3748,8 +3748,8 @@ async function renderSettings(){
         </div>` : ''}
       `)}
       ${card('执行参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','每组搜索词扫描 JobsDB 列表的页数。跨 run 去重后新岗位不足时自动扩展','1')}
-        ${field('总页数上限','job-pages-limit',searchCfg.max_pages_limit||50,'number','扩展翻页的最高页码。超过此页码不再继续翻页','1')}
+        ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','每个搜索词首次扫描 JobsDB 列表的页数。跨 run 去重后新岗位不够时自动继续翻页补充','1')}
+        ${field('继续翻页上限','job-pages-limit',searchCfg.max_pages_limit||50,'number','自动补页时的最高页码。例如设 50：首次扫 10 页不够时会继续翻第 11-50 页。建议大于「每组翻页数」','1')}
         ${field('JD 抓取上限','job-max-results',searchCfg.max_total_results||200,'number','','1')}
         ${field('JD 截断字数','job-jd-chars',searchCfg.jd_max_chars||4000,'number','方向分类与评分阶段均使用此截断值','1')}
         ${field('方向预判批次大小','job-dir-batch',cfg.matching?.direction_batch_size||20,'number','每批发送给 LLM 判断方向的 JD 数量，任务轻可调大','1','50')}
