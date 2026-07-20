@@ -117,8 +117,12 @@ def _fetch_html(url: str, wait_ms: int = 3000, context=None) -> str | None:
             page.goto(url, wait_until="domcontentloaded", timeout=20000)
             page.wait_for_timeout(wait_ms)
             content = page.content()
-            if "challenge" in content.lower() or len(content) < 2000:
+            if "challenge" in content.lower():
                 emit(f"   ⏳ 等待 Cloudflare 挑战...")
+                page.wait_for_timeout(5000)
+                content = page.content()
+            elif len(content) < 2000:
+                emit(f"   ⏳ 页面加载中（当前 {len(content)} 字符），等待...")
                 page.wait_for_timeout(5000)
                 content = page.content()
             page.close()
