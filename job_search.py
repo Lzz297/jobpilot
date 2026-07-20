@@ -243,6 +243,7 @@ def search_jobs(sort_by: str = None, config: dict = None):
                             "salary": listing_info.get("salary", ""),
                             "description": listing_info.get("snippet", ""),
                             "url": norm,
+                            "job_id": listing_info.get("job_id", ""),
                             "jd_length": len(listing_info.get("snippet", "")),
                             "source": "snippet",
                         })
@@ -269,6 +270,7 @@ def search_jobs(sort_by: str = None, config: dict = None):
                 "salary": d.get("salary") or listing_info.get("salary", ""),
                 "description": d.get("description", ""),
                 "url": norm,
+                "job_id": listing_info.get("job_id", ""),
                 "jd_length": len(d.get("description", "")),
                 "posted_date": listing_info.get("posted_date", ""),
                 "classification": listing_info.get("classification", ""),
