@@ -3,6 +3,7 @@ config.py - 共享配置、常量、OpenAI client、文件追踪、emit 基础�
 """
 from openai import OpenAI
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import json
 import yaml
@@ -61,6 +62,10 @@ def verify_user_password(username, password):
 PROFILES_DIR = "profiles"
 OUTPUT_DIR = "output"
 
+# ── 诊断模式：环境变量 JOB_AGENT_DIAGNOSE=1 开启 ──
+#    开启后恢复 LLM prompt / 原始返回的全文输出，并将每批诊断写入文件
+DIAGNOSE_MODE = os.getenv("JOB_AGENT_DIAGNOSE", "").strip() in ("1", "true", "yes", "verbose")
+
 # ── OpenAI client 占位（在 load_yaml 定义后初始化） ──
 client = None
 MODEL_NAME = "deepseek-v4-pro"
@@ -115,16 +120,22 @@ _LLM_PRESETS = {
         "base_url": "https://api.deepseek.com",
         "api_key_env": "DEEPSEEK_API_KEY",
         "default_model": "deepseek-v4-pro",
+        "max_concurrency": 20,
+        # 预留字段（暂不启用）:
+        # "max_rpm": None,           # 每分钟最大请求数
+        # "max_tpm": None,           # 每分钟最大 token 数
     },
     "qwen": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "api_key_env": "DASHSCOPE_API_KEY",
         "default_model": "qwen3.6-plus",
+        "max_concurrency": 10,
     },
     "glm": {
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "api_key_env": "GLM_API_KEY",
         "default_model": "glm-5.1",
+        "max_concurrency": 10,
     },
 }
 
@@ -150,6 +161,25 @@ def _init_llm_client():
 
 client, MODEL_NAME = _init_llm_client()
 
+# ── Instructor 实例线程本地缓存（构造后事实不可变，同一线程复用安全）──
+_instructor_local = threading.local()
+
+
+def _get_instructor_client():
+    """获取当前线程的 Instructor 客户端（惰性创建 + 线程本地缓存）。
+
+    Instructor 实例经源码审计确认为构造后事实不可变:
+      - client / create_fn / mode / provider 均为只读
+      - hooks 无注册 handler，emit() 是空操作
+      - handle_kwargs() 只读不改
+    因此同一线程复用是安全的，同时避免了每次 llm_call 重复创建的开销。
+    """
+    inst = getattr(_instructor_local, 'client', None)
+    if inst is None:
+        import instructor as _instructor
+        _instructor_local.client = _instructor.from_openai(client)
+    return _instructor_local.client
+
 
 # ============================================================
 #  统一 LLM 调用入口（所有模块通过此函数调用，不直接使用 client）
@@ -173,10 +203,9 @@ def llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=
 
     # ── Instructor 模式：response_model 不为 None 时走 Pydantic 结构化返回 ──
     if response_model is not None:
-        import instructor as _instructor
         if tools is not None:
             print(f"[llm_call] 警告: tools 和 response_model 同时传入，tools 将被忽略，使用 Instructor 模式")
-        client_instruct = _instructor.from_openai(client)
+        client_instruct = _get_instructor_client()
         kwargs_instruct = {}
         if thinking is not None:
             kwargs_instruct["extra_body"] = {"thinking": thinking}
@@ -303,6 +332,26 @@ def get_model_info():
     }
 
 
+def get_llm_concurrency() -> int:
+    """获取当前 LLM provider 的并发限制。
+
+    优先级:
+      1. search_config 中 llm.max_concurrency 显式配置
+      2. _LLM_PRESETS[provider].max_concurrency 默认值
+      3. 兜底值 5
+
+    上限 capped 在 200，防止配置错误导致客户端资源耗尽。
+    """
+    cfg, _ = load_search_config_dict()
+    user_limit = (cfg or {}).get("llm", {}).get("max_concurrency")
+    if user_limit is not None and isinstance(user_limit, int) and user_limit > 0:
+        return min(user_limit, 200)
+
+    provider = (cfg or {}).get("llm", {}).get("provider", "deepseek")
+    preset = _LLM_PRESETS.get(provider, {})
+    return preset.get("max_concurrency", 5)
+
+
 def get_current_user():
     """
     读取当前活跃的用户名。
@@ -401,8 +450,17 @@ def get_campaign_config() -> dict | None:
     return getattr(_campaign_local, 'config', None)
 
 
-# ── Token 用量追踪（线程安全）──
+# ── Token 用量追踪（线程安全，全局聚合）──
+_usage_lock = threading.Lock()
+_aggregated_input = 0
+_aggregated_output = 0
 _usage_local = threading.local()
+
+# ── Per-call token 日志（预留持久化接口）──
+#     每条 llm_call 完成后追加，主线程在 pipeline 结束后可读取。
+#     当前仅内存存储；未来可扩展为 SQLite 批量写入。
+_token_log: list[dict] = []
+_token_log_lock = threading.Lock()
 
 # ── LLM 原始返回文本（线程安全，供诊断使用）──
 _llm_raw_local = threading.local()
@@ -413,27 +471,114 @@ def get_last_raw_response_text() -> str:
     return getattr(_llm_raw_local, 'text', '')
 
 
+def get_last_usage() -> tuple[int, int]:
+    """获取当前线程最近一次 LLM 调用的 token 用量 (input, output)。
+
+    用于 per-batch 统计：_score_batch 在 llm_call 返回后调用，
+    读取的是本次调用的精确 token 消耗，不会与其他线程混淆。
+    """
+    inp = getattr(_usage_local, 'last_input', 0)
+    out = getattr(_usage_local, 'last_output', 0)
+    return inp, out
+
+
 def _store_usage(input_tokens: int, output_tokens: int) -> None:
-    """存储最近一次 LLM 调用的 token 用量，并自动累加到 batch 总和（内部使用）"""
+    """存储 LLM token 用量（任意线程调用，线程安全）。
+
+    同时写入三处:
+      1. 线程本地 last_input/last_output — get_last_usage() 读取，per-batch 诊断
+      2. 全局聚合器 — get_accumulated_usage() 读取，跨线程汇总
+      3. Per-call 日志 — get_per_call_token_log() 读取，预留持久化
+    """
+    from datetime import datetime as _dt
     _usage_local.last_input = input_tokens
     _usage_local.last_output = output_tokens
-    _usage_local.batch_input = getattr(_usage_local, 'batch_input', 0) + input_tokens
-    _usage_local.batch_output = getattr(_usage_local, 'batch_output', 0) + output_tokens
+    global _aggregated_input, _aggregated_output
+    with _usage_lock:
+        _aggregated_input += input_tokens
+        _aggregated_output += output_tokens
+    with _token_log_lock:
+        _token_log.append({
+            "ts": _dt.now().isoformat(),
+            "input": input_tokens,
+            "output": output_tokens,
+        })
 
 
 def clear_usage_accumulator() -> None:
-    """清空累加器。批量调用开始前使用。"""
-    _usage_local.batch_input = 0
-    _usage_local.batch_output = 0
+    """清空全局 token 累加器和 per-call 日志。批量调用开始前由主线程调用。"""
+    global _aggregated_input, _aggregated_output
+    with _usage_lock:
+        _aggregated_input = 0
+        _aggregated_output = 0
+    with _token_log_lock:
+        _token_log.clear()
 
 
 def get_accumulated_usage() -> dict:
-    """获取累加的总 token 用量并自动清零。"""
-    inp = getattr(_usage_local, 'batch_input', 0)
-    out = getattr(_usage_local, 'batch_output', 0)
-    _usage_local.batch_input = 0
-    _usage_local.batch_output = 0
+    """获取全局累加的 token 总量并清零。
+
+    run_batches_concurrently 返回后所有 worker 线程已 join，
+    全局聚合器包含完整的跨线程 token 总和，不会遗漏或重复计数。
+    """
+    global _aggregated_input, _aggregated_output
+    with _usage_lock:
+        inp = _aggregated_input
+        out = _aggregated_output
+        _aggregated_input = 0
+        _aggregated_output = 0
     return {"input_tokens": inp, "output_tokens": out}
+
+
+def get_per_call_token_log() -> list[dict]:
+    """获取 per-call token 日志列表的快照（不清空）。
+
+    每条记录: {"ts": ISO时间戳, "input": int, "output": int}
+    调用时机: pipeline 返回后（所有 worker 已 join），主线程读取。
+    当前仅内存存储；预留为未来 SQLite 批量持久化的数据源。
+    """
+    with _token_log_lock:
+        return list(_token_log)
+
+
+def clear_token_log() -> None:
+    """清空 per-call token 日志。通常由 clear_usage_accumulator 统一调用。"""
+    with _token_log_lock:
+        _token_log.clear()
+
+
+def flush_token_log() -> int:
+    """【预留】将 per-call token 日志写入 SQLite token_usage_log 表。
+
+    当前为桩实现，仅返回记录数。未来实现时:
+      1. 在 data/migrate.py 中创建 token_usage_log 表:
+         CREATE TABLE IF NOT EXISTS token_usage_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             ts TEXT NOT NULL,
+             input_tokens INTEGER NOT NULL,
+             output_tokens INTEGER NOT NULL,
+             stage TEXT,         -- 从调用上下文注入（当前 _store_usage 不感知）
+             batch_label TEXT,   -- 同上
+             provider TEXT,      -- 从 get_model_info() 读取
+             model TEXT
+         );
+      2. 在 _store_usage 中注入上下文（阶段/批次标识）
+      3. 在 match_jobs() 末尾调用本函数批量 INSERT
+      4. 调用方负责在 pipeline 返回后调用（此时无并发写竞争）
+
+    Returns:
+        写入的记录数（当前返回 0，表示未写入）。
+    """
+    records = get_per_call_token_log()
+    if not records:
+        return 0
+    # TODO: 批量 INSERT INTO token_usage_log
+    # conn = _get_db()
+    # conn.executemany("INSERT INTO token_usage_log (ts, input_tokens, output_tokens) VALUES (?, ?, ?)",
+    #                  [(r["ts"], r["input"], r["output"]) for r in records])
+    # conn.commit()
+    # conn.close()
+    return 0  # 当前为桩
 
 
 def set_emit_target(queue):
@@ -447,7 +592,14 @@ def emit(text):
     if q is not None:
         q.put({"type": "progress", "text": str(text)})
     else:
-        print(text)
+        try:
+            print(text)
+        except UnicodeEncodeError:
+            # Windows GBK 编码不支持部分 Unicode 字符（如 emoji）
+            # 用 sys.stdout 直接写入，绕过 print 的编码检查
+            import sys
+            sys.stdout.buffer.write((str(text) + '\n').encode('utf-8'))
+            sys.stdout.buffer.flush()
 
 
 def get_session_files():
@@ -462,6 +614,92 @@ def get_session_files():
         files.append((rel, desc))
     _session_files = []
     return files
+
+
+# ============================================================
+#  通用并发执行器
+# ============================================================
+
+def run_batches_concurrently(
+    tasks: list[callable],
+    max_workers: int = 10,
+    description: str = "LLM 批次",
+) -> list:
+    """并发执行一批无依赖的任务，返回按原始顺序排列的结果列表。
+
+    行为约定:
+      - tasks=[] → 返回 []
+      - len(tasks)==1 或 max_workers<=1 → 退化为串行（不经线程池）
+      - 单个任务抛异常 → 对应位置为 None，不影响其他任务
+      - 全部失败 → 返回 [None, ...]，emit 告警
+      - 部分失败 → 返回混合列表，emit 统计
+
+    线程安全保证:
+      - 使用 ThreadPoolExecutor + as_completed
+      - with 块退出时 executor.shutdown(wait=True) 确保所有线程 join
+      - 调用方在返回后可安全访问全局聚合器（如 token 统计）
+      - 自动将调用线程的 emit target (SSE queue) 传播到 worker 线程
+    """
+    if not tasks:
+        return []
+
+    total = len(tasks)
+
+    if total == 1 or max_workers <= 1:
+        try:
+            return [tasks[0]()]
+        except Exception as e:
+            emit(f"   ⚠️ {description} 执行失败: {e}")
+            return [None]
+
+    results = [None] * total
+    failed = 0
+    actual_workers = min(max_workers, total)
+
+    # 捕获调用线程的 emit target，传播到 worker 线程
+    # （_emit_local 是 threading.local，worker 线程默认看不到 pipeline 线程设置的 queue）
+    parent_queue = getattr(_emit_local, "queue", None)
+
+    def _wrap_task(task):
+        def _wrapped():
+            if parent_queue is not None:
+                _emit_local.queue = parent_queue
+            return task()
+        return _wrapped
+
+    emit(f"   🚀 {description}: {total} 个任务并发执行（最大 {actual_workers} 并发）")
+
+    with ThreadPoolExecutor(max_workers=actual_workers) as executor:
+        future_to_idx = {executor.submit(_wrap_task(task)): i for i, task in enumerate(tasks)}
+
+        completed = 0
+        last_reported_pct = 0
+
+        for future in as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            completed += 1
+            try:
+                results[idx] = future.result()
+            except Exception as e:
+                failed += 1
+                emit(f"   ⚠️ {description} #{idx + 1} 失败: {e}")
+                results[idx] = None
+
+            # 里程碑式进度报告（25% 步进），避免乱序消息过多
+            pct = completed * 100 // total
+            if pct >= last_reported_pct + 25 or completed == total:
+                msg = f"   📊 {description}进度: {completed}/{total} ({pct}%)"
+                if failed:
+                    msg += f"，{failed} 失败"
+                emit(msg)
+                last_reported_pct = pct - (pct % 25)
+
+    if failed == total:
+        emit(f"   ❌ 所有 {total} 个{description}任务均失败，请检查 LLM 连接")
+    elif failed > 0:
+        emit(f"   ⚠️ {description}: {failed}/{total} 个任务失败")
+
+    return results
 
 
 # ============================================================

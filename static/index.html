@@ -141,6 +141,15 @@
           <option value="qwen">Qwen · qwen3.6-plus</option>
           <option value="glm" selected>GLM · glm-5.1</option></select>
       </div>
+      <div class="mt-3 agent-trigger cursor-pointer" onclick="switchView('settings'); STATE._focusAfterRender='#job-concurrency'" title="点击进入设置页修改 LLM 并发数">
+        <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1 mb-1"><i data-lucide="zap" class="w-3 h-3"></i> LLM 并发数</label>
+        <div class="flex items-center gap-2">
+          <div class="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            <div id="concurrency-bar" class="h-full bg-indigo-500 rounded-full transition-all" style="width:10%"></div>
+          </div>
+          <span id="concurrency-label" class="text-xs text-slate-500 w-8 text-right font-mono">20</span>
+        </div>
+      </div>
       <div class="mt-3">
         <div class="flex items-center gap-1 mb-1">
           <label class="text-[11px] font-medium text-slate-400 flex items-center gap-1"><i data-lucide="user" class="w-3 h-3"></i> 当前用户画像</label>
@@ -586,6 +595,8 @@ window._jobOriginalData = null;
 window._marketOriginalData = null;
 window._schemaDirtyPaths = new Set();
 const MODELS = { deepseek:'deepseek-v4-pro', qwen:'qwen3.6-plus', glm:'glm-5.1' };
+const DEFAULT_CONCURRENCY = { deepseek:20, qwen:10, glm:10 };
+function getDefaultConcurrency(provider){ return DEFAULT_CONCURRENCY[provider] || 5; }
 const DIR_PALETTE = [
   'bg-emerald-100 text-emerald-700',
   'bg-purple-100 text-purple-700',
@@ -715,6 +726,11 @@ async function loadModelConfig(){
       `<option value="${k}" ${k===STATE.model?'selected':''}>${k} · ${v}</option>`
     ).join('');
   }
+  // 同步侧边栏并发数（用户显式配置优先，否则用 provider 默认值）
+  const cfg = await loadYaml('search_config');
+  const concurrency = (cfg && cfg.llm && cfg.llm.max_concurrency) || getDefaultConcurrency(STATE.model);
+  const bar = $('#concurrency-bar'); if(bar) bar.style.width = Math.round(concurrency/200*100)+'%';
+  const lbl = $('#concurrency-label'); if(lbl) lbl.textContent = concurrency;
 }
 
 /* ===================== TOAST ===================== */
@@ -1243,6 +1259,13 @@ $('#model-select').addEventListener('change', async e => {
   if(data && !data.error){
     STATE.model = provider;
     toast('已切换 LLM：'+provider+'（'+MODELS[provider]+'）','ok');
+    // 若用户从未显式设置过并发数，切换 Provider 时自动跟随新默认值
+    const cfg2 = await loadYaml('search_config');
+    if(!cfg2 || !cfg2.llm || cfg2.llm.max_concurrency === undefined){
+      const def = getDefaultConcurrency(provider);
+      const bar = $('#concurrency-bar'); if(bar) bar.style.width = Math.round(def/200*100)+'%';
+      const lbl = $('#concurrency-label'); if(lbl) lbl.textContent = def;
+    }
   } else {
     e.target.value = STATE.model;
   }
@@ -3718,6 +3741,7 @@ async function renderSettings(){
         ${field('方向预判批次大小','job-dir-batch',cfg.matching?.direction_batch_size||20,'number','每批发送给 LLM 判断方向的 JD 数量，任务轻可调大','1','50')}
         ${field('评分批次大小','job-score-batch',cfg.matching?.score_batch_size||5,'number','每批发送给 LLM 评分的 JD 数量，越小越精细但调用次数越多','1','20')}
         ${field('复评批次大小','job-rescore-batch',cfg.matching?.rescore_batch_size||5,'number','及格线附近岗位二次评分的批次大小','1','20')}
+        ${field('LLM 并发数','job-concurrency',cfg.llm?.max_concurrency||getDefaultConcurrency(STATE.model),'number','同时发送给 LLM 的最大请求数。设 1 退化为完全串行。切换 Provider 时若未显式设置则自动跟随新默认值','1','200')}
       </div>`)}`;
       // ── 捕获 job 表单字段初始值（用于 dirty 比对 & 撤销）──
       window._jobOriginalData = {
@@ -3729,6 +3753,7 @@ async function renderSettings(){
         'job-dir-batch': ($('#job-dir-batch')?.value || ''),
         'job-score-batch': ($('#job-score-batch')?.value || ''),
         'job-rescore-batch': ($('#job-rescore-batch')?.value || ''),
+        'job-concurrency': ($('#job-concurrency')?.value || ''),
       };
       window._jobDirtyPaths = new Set();
 
@@ -4354,6 +4379,12 @@ async function saveYaml(name){
       toast('保存失败: ' + (e.message || '未知错误'), 'err');
     }
   }
+  // 侧边栏跳转过来的自动 focus
+  if(STATE._focusAfterRender){
+    const el = document.querySelector(STATE._focusAfterRender);
+    if(el){ el.focus(); el.select(); }
+    STATE._focusAfterRender = null;
+  }
 }
 
 async function saveJobConfig(){
@@ -4378,6 +4409,10 @@ async function saveJobConfig(){
         score_batch_size: parseInt($('#job-score-batch')?.value) || cfg.matching?.score_batch_size || 5,
         rescore_batch_size: parseInt($('#job-rescore-batch')?.value) || cfg.matching?.rescore_batch_size || 5,
       },
+      llm: {
+        ...(cfg.llm || {}),
+        max_concurrency: parseInt($('#job-concurrency')?.value) || cfg.llm?.max_concurrency || getDefaultConcurrency(STATE.model),
+      },
     };
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){
@@ -4391,6 +4426,10 @@ async function saveJobConfig(){
         x.className = 'sortbtn flex-1 py-1.5 ' + (on ? 'bg-indigo-600 text-white' : 'bg-white text-slate-500');
       });
       const qaSort = document.getElementById('qa-sort'); if(qaSort) qaSort.textContent = STATE.sort==='date'?'按发布时间':'按相关度';
+      // 同步侧边栏并发数
+      const cc = newCfg.llm.max_concurrency;
+      const bar = $('#concurrency-bar'); if(bar) bar.style.width = Math.round(cc/200*100)+'%';
+      const lbl = $('#concurrency-label'); if(lbl) lbl.textContent = cc;
     } else {
       toast('保存失败: ' + (res?.error || '未知错误'), 'err');
     }

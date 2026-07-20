@@ -43,6 +43,13 @@ GLM_API_KEY=sk-your-key-here
 
 **安全提醒：** 不要把 `.env` 文件提交到 git。
 
+### 其他环境变量
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `JOB_AGENT_DIAGNOSE` | 未设置（关闭） | 设为 `1`/`true`/`yes`/`verbose` 开启诊断模式，恢复 LLM prompt 全文和原始返回的 SSE 输出 |
+| `FLASK_SECRET_KEY` | 自动生成 | Flask session 加密密钥。不设置则每次重启 session 失效 |
+
 ---
 
 ## 1. 用户画像
@@ -198,7 +205,7 @@ GLM_API_KEY=sk-your-key-here
 ```json
 {
   "filters": { "exclude_companies": [] },
-  "llm": { "provider": "deepseek", "model": "deepseek-v4-pro" },
+  "llm": { "provider": "deepseek", "model": "deepseek-v4-pro", "max_concurrency": 20 },
   "market_analysis": { "max_pages": 10, "max_fetch_jd": 200, "batch_size": 3, "jd_max_chars": 6000 },
   "market_presets": { "job_categories": [], "classifications": [] },
   "matching": { "direction_batch_size": 1, "score_batch_size": 5, "rescore_batch_size": 1 },
@@ -214,6 +221,7 @@ GLM_API_KEY=sk-your-key-here
 |--------|--------|--------|------|
 | `llm.provider` | — | `"deepseek"` | `deepseek` / `qwen` / `glm` |
 | `llm.model` | — | `"deepseek-v4-pro"` | 模型名称 |
+| `llm.max_concurrency` | — | 20（deepseek）/ 10（qwen/glm） | 同时发送给 LLM 的最大请求数。设 1 退化为完全串行。切换 Provider 时若未显式设置则自动跟随新默认值 |
 | `sort_mode` | — | `"date"` | `"date"`（最新在前）/ `"relevance"`（相关度） |
 | `filters.exclude_companies` | `[]` | 排除的公司名（大小写不敏感） |
 | `search.max_pages` | 1 | 每组搜索词翻页数 |

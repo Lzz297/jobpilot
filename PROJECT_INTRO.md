@@ -40,18 +40,20 @@ D:\job-agent/
 │
 ├── agent.py                  # [入口] Agent 主循环 — 终端对话交互 + 工具调用循环
 ├── web_app.py                # [入口] Flask Web UI — SSE 实时推送 + 直接流水线模式
-├── config.py                 # [配置中心] llm_call() 统一入口、LLM Client 管理、YAML 加载、
-│                             #            JSON 解析、文件追踪、emit 双模式输出、Prompt 模板引擎
+├── config.py                 # [配置中心] llm_call() 统一入口、LLM Client 管理、
+│                             #            并发编排器 (run_batches_concurrently)、
+│                             #            Token 追踪 (全局聚合)、诊断模式开关、
+│                             #            emit 双模式输出、Prompt 模板引擎
 ├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 ├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
 │
 ├── scraper.py                # [爬虫] JobsDB 页面抓取（~989 行），4 层列表解析 + 3 层详情解析
 ├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
-├── job_match.py              # [匹配] LLM 五维评分 + 动态权重 + 及格线复评 + 方向分类
+├── job_match.py              # [匹配] LLM 五维评分（并发模式）+ 动态权重 + 及格线复评 + 方向分类
 ├── resume_gen.py             # [简历] 3 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
 ├── checker.py                # [核查] 简历 bullet 事实核查 — 检测数字矛盾、强度升级、占位符
 ├── pdf_renderer.py           # [渲染] Markdown → HTML → PDF（独立 Playwright 实例）
-├── market_analysis.py        # [市场] 四阶段市场调研 + 多批聚合 + 差距分析 + 批量分析
+├── market_analysis.py        # [市场] 四阶段市场调研（Phase B 并发分析）+ 多批聚合 + 差距分析
 ├── config_assembler.py       # [组装] Campaign 配置合并（user × strategy × campaign × search_config）
 │
 ├── engine/                   # [契约] Pydantic 数据模型（11 个模型类）
@@ -236,14 +238,15 @@ search_jobs()  →  match_jobs()  →  generate_resume(by_direction=True)
 
 ```python
 _LLM_PRESETS = {
-    "deepseek": {"base_url": "https://api.deepseek.com", "api_key_env": "DEEPSEEK_API_KEY", "default_model": "deepseek-v4-pro"},
-    "qwen":     {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "api_key_env": "DASHSCOPE_API_KEY", "default_model": "qwen3.6-plus"},
-    "glm":      {"base_url": "https://open.bigmodel.cn/api/paas/v4", "api_key_env": "GLM_API_KEY", "default_model": "glm-5.1"},
+    "deepseek": {"base_url": "https://api.deepseek.com", "api_key_env": "DEEPSEEK_API_KEY", "default_model": "deepseek-v4-pro", "max_concurrency": 20},
+    "qwen":     {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "api_key_env": "DASHSCOPE_API_KEY", "default_model": "qwen3.6-plus", "max_concurrency": 10},
+    "glm":      {"base_url": "https://open.bigmodel.cn/api/paas/v4", "api_key_env": "GLM_API_KEY", "default_model": "glm-5.1", "max_concurrency": 10},
 }
 ```
 
 - `switch_model(provider, model)`：运行时切换 LLM，原地修改全局 `client` 的 `base_url` 和 `api_key`（所有模块持有同一引用，立即生效），同时回写 SQLite `search_config` 表
 - `get_model_info()`：返回当前 provider、model 及所有可选预设列表
+- `get_llm_concurrency()`：三级优先级读取并发限制 — `search_config.llm.max_concurrency`（用户配置）→ `_LLM_PRESETS[provider].max_concurrency`（默认值）→ 兜底 5。上限 capped 200
 - 启动时从 SQLite `search_config` 表的 `llm` 段读取配置，支持自定义 `base_url` 和 `api_key_env`
 
 #### 3.1.3 emit 双模式输出
@@ -256,7 +259,7 @@ def emit(text):
         print(text)       # 终端模式
 ```
 
-通过 `threading.local()` 实现线程隔离。Web 模式下每个请求线程独立绑定 SSE 队列。
+通过 `threading.local()` 实现线程隔离。Web 模式下每个请求线程独立绑定 SSE 队列。终端模式下自动处理 Windows GBK 编码不支持 emoji 的问题（回退 `sys.stdout.buffer` UTF-8 直写）。
 
 #### 3.1.4 JSON 解析器（多层容错）
 
@@ -321,6 +324,47 @@ SQLite campaigns 表（搜索词 + 策略绑定）
 组装后的配置包含：`user_profile`、`strategy`、`strategy_name`、`search_queries`、`matching`（含全部 weight_profiles/weight_rules + 选中策略的 min_match_score/top_n/borderline 参数）、`search`、`resume_gen`、`market_analysis`、`filters`、`llm`、`prompts`、`resume_template`、`resume_guide`。
 
 **注入时机**：CLI 模式通过 `agent.py --campaign <name>` 在启动时注入，Web 模式通过 `/api/session/campaign` 端点按 session 注入。在 `execute_tool()` 中，系统层自动将 campaign 配置注入到 `search_jobs`、`match_jobs` 两个工具函数（`_CONFIG_AWARE_TOOLS` 集合判断），`match_jobs` 额外注入 `user_profile`——LLM 无需感知 config 的存在。
+
+#### 3.1.9 通用并发编排器
+
+```python
+run_batches_concurrently(tasks, max_workers=10, description="LLM 批次") -> list
+```
+
+将无依赖的任务列表通过 `ThreadPoolExecutor` 并发执行，返回按原始顺序排列的结果列表。核心特性：
+
+- **自动退化**：`tasks` 为空或 `max_workers=1` 时不经线程池，直接串行执行
+- **错误隔离**：单个任务抛异常 → 对应位置为 `None`，不影响其他任务
+- **SSE 传播**：自动将调用线程的 `emit` target（SSE queue）注入 worker 线程，确保并发日志正确推送到 Web UI
+- **进度报告**：25% 里程碑式进度（`📊 评分进度: 3/13 (25%)`），避免乱序消息过多
+- **失败汇总**：全部失败时 emit `❌`，部分失败时 emit `⚠️ N/M 个任务失败`
+
+方向分类（`classify_direction_batch`）、五维评分（`execute_matching_pipeline` Step 2）、市场分析（`analyze_market` Phase B）均通过此函数实现并发。并发数由 `get_llm_concurrency()` 控制，用户可在 Web UI 设置页配置。
+
+#### 3.1.10 Token 三级追踪体系
+
+每次 LLM 调用后，`_store_usage()` 同时写入三处：
+
+| 存储位置 | 读取 API | 用途 |
+|----------|----------|------|
+| 线程本地 `last_input/last_output` | `get_last_usage()` | Per-batch 诊断：SSE 输出 `token in=12450 out=890` |
+| 全局聚合器 `_aggregated_input/output` | `get_accumulated_usage()` | 跨线程汇总：SSE 输出 `Token: 输入 245,000` |
+| Per-call 日志 `_token_log[]` | `get_per_call_token_log()` | 预留持久化：供未来 SQLite `token_usage_log` 表批量写入 |
+
+`clear_usage_accumulator()` 同时清空全局聚合器和 per-call 日志，在 `execute_matching_pipeline()` 入口处调用。
+
+`flush_token_log()` 为预留桩函数（当前返回 0），含完整建表 SQL 和批量 INSERT 代码骨架，供未来按阶段/批次/方向做成本分析和异常检测。
+
+#### 3.1.11 诊断模式
+
+环境变量 `JOB_AGENT_DIAGNOSE=1`（支持 `1`/`true`/`yes`/`verbose`）控制 `_score_batch` 的日志详细程度：
+
+| 模式 | SSE 输出 |
+|------|---------|
+| **默认** (`DIAGNOSE_MODE=False`) | 统计摘要：`token in/out` + 解析数量 + 字符数。失败时额外输出 prompt 前 800 字符 |
+| **诊断** (`DIAGNOSE_MODE=True`) | 以上全部 + 完整 LLM prompt 全文 + 完整 LLM 原始返回全文 |
+
+诊断模式仅影响 `_score_batch` 的输出。方向分类和市场分析的 LLM 调用在成功时不产生诊断日志（它们走 Instructor 结构化输出，返回的是 Pydantic 对象而非原始文本）。
 
 ---
 
@@ -1068,7 +1112,7 @@ _FIELD_SPECS = {
 1. 加载方向列表（从策略的 weight_profiles 动态派生）
 2. 注入方向分类 prompt（prompts.yaml → direction_classification_prompt）
 3. 注入 few-shot 示例（common.yaml + 各方向专属 .yaml）
-4. 分批调用 LLM（direction_batch_size 控制每批 JD 数量）
+4. 分批并发调用 LLM（direction_batch_size 控制每批 JD 数量，通过 `run_batches_concurrently` 并发执行）
 5. LLM 返回每个 JD 的 direction 标签
 6. 校验：有效方向 → 采用为 llm_direction；无效或未返回 → 回退到 classify_job() 标题关键词匹配
 ```
@@ -1086,10 +1130,10 @@ _FIELD_SPECS = {
 
 #### 完整评分流程
 
-1. **第一轮**：所有岗位用 default 权重统一打分（分批评分，每批 5 个），LLM 同时返回 direction
-2. **方向权重重算**：用 `llm_direction` 对应权重重新计算 `total_score`
-3. **去重 + 排序**：按 URL 标准化去重 + `total_score` 降序排列
-4. **第二轮（可选）**：`borderline_rescore: true` 时，对 `min_match_score ± borderline_range` 区间内的岗位：
+1. **Step 1 — 方向分类**：`classify_direction_batch()` 将所有 JD 分批并发调用 LLM 判断方向（通过 `run_batches_concurrently`），LLM 无法判定时回退关键词匹配
+2. **Step 2 — 按方向分批评分（并发模式）**：将「方向 × 批次」展开为独立任务，通过 `run_batches_concurrently` 全并发执行。每个批次调用 `_score_batch()` 获取五维离散分（95/80/60/40/20），由 `_determine_level_by_discrete_scores()` 判定 High/Medium/Low 档位。并发数由 `get_llm_concurrency()` 控制
+3. **后处理**：按位置匹配 LLM 返回 → 字段补全 → `_calc_total_score()` 加权计算总分 → `total_score` 降序排列。漏评岗位自动单条串行重试（仅一次）
+4. **Step 3 — 及格线复评（可选）**：`borderline_rescore: true` 时，对 `min_match_score ± borderline_range` 区间内的岗位串行复评（依赖 Step 2 结果，无法并发）
    - 逐个用其方向权重重新评分
    - 五维取两轮平均，计算波动
    - 波动 ≤10 → `confidence: "verified"`（复评一致）
@@ -1536,7 +1580,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 | 配置段 | 配置项 | 说明 |
 |--------|--------|------|
 | `filters` | `exclude_companies` | 排除公司名列表（大小写不敏感） |
-| `llm` | `provider`, `model` | LLM 供应商和模型名 |
+| `llm` | `provider`, `model`, `max_concurrency` | LLM 供应商、模型名和并发请求上限（设 1 退化为完全串行）。切换 Provider 时若未显式设置则自动跟随新默认值 |
 | `market_analysis` | `max_pages`, `max_fetch_jd`, `batch_size`, `jd_max_chars` | 市场调研抓取和分析参数 |
 | `market_presets` | `job_categories`, `classifications` | 市场调研页面的预设值列表 |
 | `matching` | `direction_batch_size`, `score_batch_size`, `rescore_batch_size` | 匹配评分各阶段批处理大小 |

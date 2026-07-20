@@ -10,6 +10,7 @@ from config import (
     emit, llm_call, OUTPUT_DIR, track_file,
     load_profile, load_yaml, load_search_config_dict, parse_json_response,
     load_prompts, render_prompt,
+    get_llm_concurrency, run_batches_concurrently,
 )
 from scraper import scan_jobsdb_listings, fetch_multiple_details
 from pdf_renderer import render_report as render_pdf
@@ -94,59 +95,76 @@ def analyze_market(job_category, location="Hong Kong", include_gap_analysis=True
 
     emit(f"   ✅ 有效 JD: {len(valid_jobs)} 条")
 
-    # ── Phase B: LLM 市场分析 ──
-    emit(f"\n   🧠 LLM 分析市场数据...")
+    # ── Phase B: LLM 市场分析（并发模式）──
+    emit(f"\n   🧠 LLM 分析市场数据（{len(valid_jobs)} 条 JD，并发模式）...")
 
-    # 压缩 JD 数据（只保留关键信息）
-    batch_results = []
+    batches = []
+    thunks = []
 
     for i in range(0, len(valid_jobs), cfg_batch_size):
         batch = valid_jobs[i:i + cfg_batch_size]
+        batches.append(batch)
         batch_num = i // cfg_batch_size + 1
-        total_batches = (len(valid_jobs) + cfg_batch_size - 1) // cfg_batch_size
-        emit(f"   📊 分析第 {batch_num}/{total_batches} 批（{len(batch)} 条 JD）...")
 
-        jobs_text = ""
-        for j, job in enumerate(batch, 1):
-            desc = job["description"]
-            if len(desc) > cfg_jd_max_chars:
-                desc = desc[:cfg_jd_max_chars] + "..."
-            jobs_text += f"\n--- JD {j} ---\n"
-            jobs_text += f"标题: {job['title']}\n"
-            if job.get("company"):
-                jobs_text += f"公司: {job['company']}\n"
-            if job.get("salary"):
-                jobs_text += f"薪资: {job['salary']}\n"
-            jobs_text += f"描述:\n{desc}\n"
+        def _make_market_thunk(_batch=batch, _bn=batch_num):
+            """闭包捕获当前批次数据"""
+            jobs_text = ""
+            for j, job in enumerate(_batch, 1):
+                desc = job["description"]
+                if len(desc) > cfg_jd_max_chars:
+                    desc = desc[:cfg_jd_max_chars] + "..."
+                jobs_text += f"\n--- JD {j} ---\n"
+                jobs_text += f"标题: {job['title']}\n"
+                if job.get("company"):
+                    jobs_text += f"公司: {job['company']}\n"
+                if job.get("salary"):
+                    jobs_text += f"薪资: {job['salary']}\n"
+                jobs_text += f"描述:\n{desc}\n"
 
-        try:
-            # 主路径：Instructor + Pydantic 结构化输出
-            result = llm_call(
-                [{"role": "system", "content": render_prompt(
-                    _load_market_prompt("analysis_system_prompt"),
-                    job_category=job_category)},
-                 {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
-                temperature=0, thinking={"type": "disabled"},
-                response_model=MarketAnalysisResult,
-            )
-            batch_results.append(result.model_dump())
-        except Exception:
-            # Instructor 失败 → 回退旧方式
-            try:
-                msg = llm_call(
-                    [{"role": "system", "content": render_prompt(
-                        _load_market_prompt("analysis_system_prompt"),
-                        job_category=job_category)},
-                     {"role": "user", "content": f"以下是 {len(batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
-                    temperature=0, thinking={"type": "disabled"},
-                )
-                parsed = parse_json_response(msg.content)
-                if parsed and isinstance(parsed, dict):
-                    batch_results.append(parsed)
-                else:
-                    emit(f"   ⚠️ 第 {batch_num} 批解析失败，跳过")
-            except Exception as e:
-                emit(f"   ❌ 第 {batch_num} 批分析失败: {e}")
+            def _run():
+                try:
+                    result = llm_call(
+                        [{"role": "system", "content": render_prompt(
+                            _load_market_prompt("analysis_system_prompt"),
+                            job_category=job_category)},
+                         {"role": "user", "content": f"以下是 {len(_batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
+                        temperature=0, thinking={"type": "disabled"},
+                        response_model=MarketAnalysisResult,
+                    )
+                    return result.model_dump()
+                except Exception:
+                    try:
+                        msg = llm_call(
+                            [{"role": "system", "content": render_prompt(
+                                _load_market_prompt("analysis_system_prompt"),
+                                job_category=job_category)},
+                             {"role": "user", "content": f"以下是 {len(_batch)} 条 {job_category} 岗位 JD：\n{jobs_text}"}],
+                            temperature=0, thinking={"type": "disabled"},
+                        )
+                        parsed = parse_json_response(msg.content)
+                        if parsed and isinstance(parsed, dict):
+                            return parsed
+                        else:
+                            raw_preview = (msg.content or "")[:500]
+                            emit(f"   ⚠️ 第 {_bn} 批解析失败，跳过。LLM 返回前 500 字符:\n{raw_preview}")
+                            return None
+                    except Exception as e:
+                        emit(f"   ❌ 第 {_bn} 批分析失败: {e}")
+                        return None
+
+            return _run
+
+        thunks.append(_make_market_thunk())
+
+    # 并发执行
+    concurrency = get_llm_concurrency()
+    batch_results_raw = run_batches_concurrently(
+        thunks,
+        max_workers=min(concurrency, len(thunks)) if thunks else 1,
+        description="市场分析",
+    )
+
+    batch_results = [r for r in batch_results_raw if r is not None]
 
     if not batch_results:
         return "❌ LLM 分析全部失败，请稍后重试"

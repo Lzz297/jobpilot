@@ -10,11 +10,15 @@ from config import (
     emit, llm_call, OUTPUT_DIR, track_file,
     load_profile, load_search_config_dict,
     get_current_run_dir, get_latest_run_dir, load_prompts, render_prompt,
+    get_llm_concurrency, run_batches_concurrently,
+    DIAGNOSE_MODE, get_last_usage, get_last_raw_response_text,
 )
 from scraper import normalize_jobsdb_url
+import threading
 
 
-# ── 模块级兜底记录列表（match_jobs() 开始时清空，被 classify_direction_batch / _score_batch 等追加）──
+# ── 模块级兜底记录列表（并发写入需加锁）──
+_fallback_lock = threading.Lock()
 _dir_fallbacks = []
 _weight_fallbacks = []
 _score_errors = []
@@ -201,51 +205,75 @@ def classify_direction_batch(jobs, config):
         if dir_text:
             system_prompt += "\n\n" + dir_text
 
-    # ── 3. 分批调用 LLM ──
-    # direction_batch_size: 将来可暴露到 Web UI
+    # ── 3. 构建所有批次的 thunk 列表 ──
     direction_batch_size = (config or {}).get("matching", {}).get("direction_batch_size", 20)
     jd_max_chars = (config or {}).get("search", {}).get("jd_max_chars", 4000)
     valid_directions = set(weight_rules.keys()) | {"default"}
 
-    all_labels = []
+    batches = []
+    thunks = []
 
     for i in range(0, len(jobs), direction_batch_size):
         batch = jobs[i:i + direction_batch_size]
+        batches.append(batch)
         batch_num = i // direction_batch_size + 1
-        total_batches = (len(jobs) + direction_batch_size - 1) // direction_batch_size
 
-        emit(f"   🏷️ 方向分类 第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
+        def _make_direction_thunk(_batch=batch, _bn=batch_num):
+            """闭包捕获当前批次数据，返回无参 callable"""
+            jobs_text = ""
+            for j, job in enumerate(_batch):
+                job_idx = job.get("index", 0)
+                jobs_text += f"\n--- 岗位 {job_idx} ---\n"
+                jobs_text += f"标题: {job.get('title', '未知')}\n"
+                if job.get("company"):
+                    jobs_text += f"公司: {job['company']}\n"
+                desc = job.get("description", "")
+                if len(desc) > jd_max_chars:
+                    desc = desc[:jd_max_chars] + "\n...(截断)"
+                jobs_text += f"职位描述:\n{desc}\n"
 
-        # 构造 user message
-        jobs_text = ""
-        for j, job in enumerate(batch):
-            job_idx = job.get("index", i + j + 1)
-            jobs_text += f"\n--- 岗位 {job_idx} ---\n"
-            jobs_text += f"标题: {job.get('title', '未知')}\n"
-            if job.get("company"):
-                jobs_text += f"公司: {job['company']}\n"
-            desc = job.get("description", "")
-            if len(desc) > jd_max_chars:
-                desc = desc[:jd_max_chars] + "\n...(截断)"
-            jobs_text += f"职位描述:\n{desc}\n"
+            def _run():
+                try:
+                    from engine.contracts import DirectionLabel
+                    results = llm_call(
+                        [{"role": "system", "content": system_prompt},
+                         {"role": "user", "content": jobs_text}],
+                        temperature=0, thinking={"type": "disabled"},
+                        response_model=list[DirectionLabel],
+                    )
+                    return [m.model_dump() for m in results]
+                except Exception as e:
+                    emit(f"   ❌ 方向分类 第{_bn}批失败: {e}")
+                    return None  # None 表示本批失败，下游走 keyword fallback
 
-        try:
-            # 主路径：Instructor + Pydantic 结构化输出
-            from engine.contracts import DirectionLabel
-            results = llm_call(
-                [{"role": "system", "content": system_prompt},
-                 {"role": "user", "content": jobs_text}],
-                temperature=0, thinking={"type": "disabled"},
-                response_model=list[DirectionLabel],
-            )
-            labels = [m.model_dump() for m in results]
-            all_labels.extend(labels)
-        except Exception as e:
-            emit(f"   ❌ 方向分类第 {batch_num} 批失败: {e}")
+            return _run
+
+        thunks.append(_make_direction_thunk())
+
+    # ── 4. 并发执行 ──
+    concurrency = get_llm_concurrency()
+    batch_results = run_batches_concurrently(
+        thunks,
+        max_workers=min(concurrency, len(thunks)),
+        description="方向分类",
+    )
+
+    # ── 5. 合并结果 ──
+    all_labels = []
+    for batch, result in zip(batches, batch_results):
+        if result is not None:
+            all_labels.extend(result)
+        else:
             for job in batch:
-                _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": None, "fallback_to": classify_job(job.get("title", ""), weight_rules), "reason": "LLM批次调用失败"})
+                with _fallback_lock:
+                    _dir_fallbacks.append({
+                        "title": job.get("title", ""),
+                        "llm_direction": None,
+                        "fallback_to": classify_job(job.get("title", ""), weight_rules),
+                        "reason": "LLM批次调用失败",
+                    })
 
-    # ── 4. 校验与兜底 ──
+    # ── 6. 校验与兜底 ──
     label_by_index = {}
     for label in all_labels:
         idx = label.get("index")
@@ -267,10 +295,12 @@ def classify_direction_batch(jobs, config):
             job["direction_source"] = "keyword_fallback"
             if llm_dir:
                 emit(f"   ⚠️ 方向兜底: {job.get('title', '?')[:40]} LLM方向={llm_dir} 无效，回退为 {fallback}")
-                _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": llm_dir, "fallback_to": fallback, "reason": "LLM方向无效"})
+                with _fallback_lock:
+                    _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": llm_dir, "fallback_to": fallback, "reason": "LLM方向无效"})
             else:
                 emit(f"   ⚠️ 方向兜底: {job.get('title', '?')[:40]} LLM未返回方向，回退为 {fallback}")
-                _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": None, "fallback_to": fallback, "reason": "LLM未返回方向"})
+                with _fallback_lock:
+                    _dir_fallbacks.append({"title": job.get("title", ""), "llm_direction": None, "fallback_to": fallback, "reason": "LLM未返回方向"})
 
     return jobs
 
@@ -314,7 +344,9 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         jobs_text += f"职位描述:\n{desc}\n"
         jobs_text += f"链接: {job.get('url', '')}\n"
 
-    emit(f"   📤 [诊断] {batch_label}: 发送 {len(batch)} 个 JD，prompt 共 {len(jobs_text)} 字符:\n{jobs_text}")
+    if DIAGNOSE_MODE:
+        emit(f"   📤 [诊断] {batch_label}: 发送 {len(batch)} 个 JD，prompt {len(jobs_text)} 字符:\n{jobs_text}")
+
     try:
         # 主路径：Instructor + Pydantic 结构化输出
         from engine.contracts import MatchResult
@@ -324,26 +356,28 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
             temperature=0, thinking={"type": "disabled"},
             response_model=list[MatchResult],
         )
-        # 从 llm_call 存储的线程本地变量中读取本次调用的 LLM 原始返回文本
-        from config import get_last_raw_response_text
+        # Per-batch token 统计（线程安全：_store_usage 写入当前线程的 _usage_local）
+        batch_input_tok, batch_output_tok = get_last_usage()
         raw_text = get_last_raw_response_text()
 
         scored = [m.model_dump() for m in results]
         if scored:
-            # 诊断：每批输出 LLM 原始返回文本（不截断）
-            if raw_text:
-                emit(f"   📝 [诊断] {batch_label}: 解析得{len(scored)}/{len(batch)}个, LLM原始返回({len(raw_text)}字符):\n{raw_text}")
-            else:
-                emit(f"   📝 [诊断] {batch_label}: 解析得{len(scored)}/{len(batch)}个, 无法获取原始文本")
+            emit(f"   📝 [诊断] {batch_label}: 解析 {len(scored)}/{len(batch)}, "
+                 f"token in={batch_input_tok} out={batch_output_tok}, "
+                 f"LLM原始返回 {len(raw_text)} 字符"
+                 + (f":\n{raw_text}" if DIAGNOSE_MODE else ""))
             # 数量不匹配时额外警告
             if len(scored) < len(batch):
                 emit(f"   ⚠️ [诊断] {batch_label}: 期望{len(batch)}个, 丢失eval_id: {[j.get('eval_id', '?') for j in batch[len(scored):]]}")
             return scored
         else:
-            emit(f"   ⚠️ {batch_label}返回格式异常，跳过")
+            emit(f"   ⚠️ {batch_label}返回格式异常，跳过 (token in={batch_input_tok} out={batch_output_tok})")
             return []
     except Exception as e:
+        # 失败时输出 prompt 上下文（截断）用于追溯问题批次
+        prompt_preview = jobs_text[:800] + ("..." if len(jobs_text) > 800 else "")
         emit(f"   ❌ {batch_label}评分失败: {e}")
+        emit(f"   📋 失败批次 prompt 前 800 字符:\n{prompt_preview}")
         # 不丢数据：为批次内每个 JD 返回一条标记了错误的记录
         error_scored = []
         for j, job in enumerate(batch, 1):
@@ -794,9 +828,10 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
           LLM 漏返回时，此列表长度可能小于 direction_results。
     """
     global _dir_fallbacks, _weight_fallbacks, _score_errors
-    _dir_fallbacks = []
-    _weight_fallbacks = []
-    _score_errors = []
+    with _fallback_lock:
+        _dir_fallbacks.clear()
+        _weight_fallbacks.clear()
+        _score_errors.clear()
 
     from config import clear_usage_accumulator
     clear_usage_accumulator()
@@ -844,9 +879,9 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
     dir_summary = ", ".join(f"{d}: {c}" for d, c in sorted(dir_counts.items()))
     emit(f"   方向分布: {dir_summary}")
 
-    # ── B.3: 按方向分批评分 ──
+    # ── B.3: 按方向分批评分（并发模式）──
     emit(f"\n{'='*50}")
-    emit(f"📊 Step 2: 按方向分批评分")
+    emit(f"📊 Step 2: 按方向分批评分（并发模式）")
     emit(f"{'='*50}")
 
     jobs_by_direction = {}
@@ -854,7 +889,8 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
         d = j.get("llm_direction", "default")
         jobs_by_direction.setdefault(d, []).append(j)
 
-    all_scored = []
+    # 1. 扁平化：将所有「方向 × 批次」展开为独立任务
+    all_scoring_tasks = []  # [(direction, batch, local_batch, weights, batch_label), ...]
 
     for direction, dir_jobs in jobs_by_direction.items():
         dir_weights, weight_source = get_weights(direction, weight_profiles)
@@ -863,103 +899,131 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
              f"职级{dir_weights['level']}% 行业{dir_weights['industry']}% 加分{dir_weights['bonus']}% "
              f"(来源: {weight_source})")
         if "代码默认值" in weight_source:
-            _weight_fallbacks.append({"direction": direction, "weight_profile": weight_source})
+            with _fallback_lock:
+                _weight_fallbacks.append({"direction": direction, "weight_profile": weight_source})
 
         for i in range(0, len(dir_jobs), batch_size):
             batch = dir_jobs[i:i + batch_size]
             batch_num = i // batch_size + 1
             total_batches = (len(dir_jobs) + batch_size - 1) // batch_size
-            emit(f"   📊 {direction} 第 {batch_num}/{total_batches} 批（{len(batch)} 个岗位）...")
 
-            # 构建带有局部 index 的副本传给 LLM，让 prompt 中岗位编号为 1-N
             local_batch = []
             for local_idx, job in enumerate(batch, 1):
                 temp_job = job.copy()
                 temp_job["index"] = local_idx
                 local_batch.append(temp_job)
 
-            scored = _score_batch(local_batch, profile_summary, dir_weights,
-                                  batch_label=f"{direction} 第 {batch_num} 批",
-                                  strategy=direction, config=config)
+            all_scoring_tasks.append({
+                "direction": direction,
+                "batch": batch,
+                "local_batch": local_batch,
+                "weights": dir_weights,
+                "batch_label": f"{direction} 第 {batch_num}/{total_batches} 批",
+            })
 
-            # 诊断：检查 LLM 返回数量是否与输入一致
-            if len(scored) < len(batch):
-                matched_ids = set()
-                for pos, s in enumerate(scored):
-                    if pos < len(batch):
-                        matched_ids.add(batch[pos].get("eval_id", "?"))
-                all_ids = [j.get("eval_id", "?") for j in batch]
-                missing = [eid for eid in all_ids if eid not in matched_ids]
-                emit(f"   ⚠️ [诊断] {direction} 第{batch_num}批: 输入{len(batch)}个 → LLM返回{len(scored)}个，丢失eval_id: {missing}")
+    # 2. 构建所有 thunk
+    def _make_scoring_thunk(task):
+        def _run():
+            scored = _score_batch(
+                task["local_batch"], profile_summary, task["weights"],
+                batch_label=task["batch_label"],
+                strategy=task["direction"], config=config,
+            )
+            return scored, task
+        return _run
 
-            # 按位置匹配：LLM 按输入顺序返回结果，不依赖其是否返回 index 字段
+    thunks = [_make_scoring_thunk(t) for t in all_scoring_tasks]
+
+    # 3. 并发执行
+    concurrency = get_llm_concurrency()
+    batch_results = run_batches_concurrently(
+        thunks,
+        max_workers=min(concurrency, len(thunks)) if thunks else 1,
+        description="评分",
+    )
+
+    # 4. 合并 + 后处理
+    all_scored = []
+
+    for batch_result in batch_results:
+        if batch_result is None:
+            continue
+        scored, task = batch_result
+
+        # 诊断
+        if len(scored) < len(task["batch"]):
+            matched_ids = set()
             for pos, s in enumerate(scored):
-                if pos < len(batch):
-                    orig_job = batch[pos]
-                    s["url"] = orig_job.get("url", "")
-                    s["description"] = orig_job.get("description", "")
-                    if not s.get("title"):
-                        s["title"] = orig_job.get("title", "")
-                    if not s.get("company"):
-                        s["company"] = orig_job.get("company", "")
-                    # 方向信息由 direction_results 独立管理，不再从评分链路传递
-                    s["weight_profile"] = orig_job.get("llm_direction", "default")
-                    # 恢复全局 index 供后续 B.5 使用
-                    s["index"] = orig_job.get("index")
-                    # 透传 eval_id
-                    if orig_job.get("eval_id"):
-                        s["eval_id"] = orig_job["eval_id"]
+                if pos < len(task["batch"]):
+                    matched_ids.add(task["batch"][pos].get("eval_id", "?"))
+            all_ids = [j.get("eval_id", "?") for j in task["batch"]]
+            missing = [eid for eid in all_ids if eid not in matched_ids]
+            emit(f"   ⚠️ [诊断] {task['batch_label']}: 输入{len(task['batch'])}个 → LLM返回{len(scored)}个，丢失eval_id: {missing}")
 
-                if s.get("scores"):
-                    s["total_score"] = _calc_total_score(s["scores"], dir_weights)
-                    s["level_tier"] = _determine_level_by_discrete_scores(s["scores"])
-                s["score_rounds"] = [s.get("total_score", 0)]
-                s["score_variance"] = 0
-                s["confidence"] = "high"
+        # 按位置匹配 + 字段补全
+        for pos, s in enumerate(scored):
+            if pos < len(task["batch"]):
+                orig_job = task["batch"][pos]
+                s["url"] = orig_job.get("url", "")
+                s["description"] = orig_job.get("description", "")
+                if not s.get("title"):
+                    s["title"] = orig_job.get("title", "")
+                if not s.get("company"):
+                    s["company"] = orig_job.get("company", "")
+                s["weight_profile"] = orig_job.get("llm_direction", "default")
+                s["index"] = orig_job.get("index")
+                if orig_job.get("eval_id"):
+                    s["eval_id"] = orig_job["eval_id"]
 
-            all_scored.extend(scored)
-            for s in scored:
-                if s.get("_score_error"):
+            if s.get("scores"):
+                s["total_score"] = _calc_total_score(s["scores"], task["weights"])
+                s["level_tier"] = _determine_level_by_discrete_scores(s["scores"])
+            s["score_rounds"] = [s.get("total_score", 0)]
+            s["score_variance"] = 0
+            s["confidence"] = "high"
+
+        all_scored.extend(scored)
+
+        for s in scored:
+            if s.get("_score_error"):
+                with _fallback_lock:
                     _score_errors.append({"title": s.get("title", "未知"), "reason": s.get("reason", "")})
 
-            # ── 定向重试漏评岗位（单条独立，仅一次，失败即放弃）──
-            if len(scored) < len(batch):
-                missed = batch[len(scored):]
-                emit(f"   🔄 定向重试 {len(missed)} 个漏评岗位（单条独立）: {[j.get('eval_id', j.get('title', '?')[:30]) for j in missed]}")
+        # ── 定向重试漏评岗位（串行，仅在漏评时触发）──
+        if len(scored) < len(task["batch"]):
+            missed = task["batch"][len(scored):]
+            emit(f"   🔄 定向重试 {len(missed)} 个漏评岗位（单条独立）: {[j.get('eval_id', j.get('title', '?')[:30]) for j in missed]}")
 
-                failed_retry = []
-                for job in missed:
-                    single = [job.copy()]
-                    single[0]["index"] = 1
-                    retry_result = _score_batch(single, profile_summary, dir_weights,
-                                                batch_label=f"{direction} 单条重试",
-                                                strategy=direction, config=config)
-                    if retry_result and len(retry_result) == 1:
-                        s = retry_result[0]
-                        s["url"] = job.get("url", "")
-                        s["description"] = job.get("description", "")
-                        if not s.get("title"):
-                            s["title"] = job.get("title", "")
-                        if not s.get("company"):
-                            s["company"] = job.get("company", "")
-                        s["weight_profile"] = job.get("llm_direction", "default")
-                        s["index"] = job.get("index")
-                        if job.get("eval_id"):
-                            s["eval_id"] = job["eval_id"]
-                        if s.get("scores"):
-                            s["total_score"] = _calc_total_score(s["scores"], dir_weights)
-                            s["level_tier"] = _determine_level_by_discrete_scores(s["scores"])
-                        s["score_rounds"] = [s.get("total_score", 0)]
-                        s["score_variance"] = 0
-                        s["confidence"] = "high"
-                        all_scored.append(s)
-                        if s.get("_score_error"):
+            for job in missed:
+                single = [job.copy()]
+                single[0]["index"] = 1
+                retry_result = _score_batch(single, profile_summary, task["weights"],
+                                            batch_label=f"{task['direction']} 单条重试",
+                                            strategy=task["direction"], config=config)
+                if retry_result and len(retry_result) == 1:
+                    s = retry_result[0]
+                    s["url"] = job.get("url", "")
+                    s["description"] = job.get("description", "")
+                    if not s.get("title"):
+                        s["title"] = job.get("title", "")
+                    if not s.get("company"):
+                        s["company"] = job.get("company", "")
+                    s["weight_profile"] = job.get("llm_direction", "default")
+                    s["index"] = job.get("index")
+                    if job.get("eval_id"):
+                        s["eval_id"] = job["eval_id"]
+                    if s.get("scores"):
+                        s["total_score"] = _calc_total_score(s["scores"], task["weights"])
+                        s["level_tier"] = _determine_level_by_discrete_scores(s["scores"])
+                    s["score_rounds"] = [s.get("total_score", 0)]
+                    s["score_variance"] = 0
+                    s["confidence"] = "high"
+                    all_scored.append(s)
+                    if s.get("_score_error"):
+                        with _fallback_lock:
                             _score_errors.append({"title": s.get("title", "未知"), "reason": s.get("reason", "")})
-                    else:
-                        failed_retry.append(job.get("eval_id", job.get("title", "?")[:30]))
-
-                if failed_retry:
-                    emit(f"   ⚠️ 重试后仍失败 {len(failed_retry)} 个: {failed_retry}，理由：单条重试后仍然失败，已交由下游 scoring_failed 兜底")
+                else:
+                    emit(f"   ⚠️ 重试后仍失败: {job.get('eval_id', job.get('title', '?')[:30])}")
 
     # ── B.4: 排序 ──
     all_scored.sort(key=lambda x: x.get("total_score", 0), reverse=True)
@@ -983,7 +1047,8 @@ def execute_matching_pipeline(jobs_list: list, profile: dict, config: dict) -> t
             for direction, dir_jobs in rescore_groups.items():
                 dir_weights, ws = get_weights(direction, weight_profiles)
                 if "代码默认值" in ws:
-                    _weight_fallbacks.append({"direction": direction, "weight_profile": ws})
+                    with _fallback_lock:
+                        _weight_fallbacks.append({"direction": direction, "weight_profile": ws})
 
                 for i in range(0, len(dir_jobs), rescore_batch_size):
                     batch = dir_jobs[i:i + rescore_batch_size]
