@@ -357,14 +357,19 @@ run_batches_concurrently(tasks, max_workers=10, description="LLM 批次") -> lis
 
 #### 3.1.11 诊断模式
 
-环境变量 `JOB_AGENT_DIAGNOSE=1`（支持 `1`/`true`/`yes`/`verbose`）控制 `_score_batch` 的日志详细程度：
+`is_diagnose_mode()` 函数（5 秒 TTL 缓存）控制 `_score_batch` 的日志详细程度，按优先级读取两个来源：
 
-| 模式 | SSE 输出 |
-|------|---------|
-| **默认** (`DIAGNOSE_MODE=False`) | 统计摘要：`token in/out` + 解析数量 + 字符数。失败时额外输出 prompt 前 800 字符 |
-| **诊断** (`DIAGNOSE_MODE=True`) | 以上全部 + 完整 LLM prompt 全文 + 完整 LLM 原始返回全文 |
+| 优先级 | 来源 | 行为 |
+|--------|------|------|
+| 1 | 环境变量 `JOB_AGENT_DIAGNOSE=1`（支持 `1`/`true`/`yes`/`verbose`） | 强制 ON，忽略 Web UI 配置 |
+| 2 | `search_config.diagnose_mode` 布尔字段 | 管理员在 Web UI 设置页运行时切换 |
 
-诊断模式仅影响 `_score_batch` 的输出。方向分类和市场分析的 LLM 调用在成功时不产生诊断日志（它们走 Instructor 结构化输出，返回的是 Pydantic 对象而非原始文本）。
+| 模式 | `is_diagnose_mode()` | SSE 输出 |
+|------|---------------------|---------|
+| **默认** | `False` | 统计摘要：`token in/out` + 解析数量 + 字符数。失败时额外输出 prompt 前 800 字符 |
+| **诊断** | `True` | 以上全部 + 完整 LLM prompt 全文 + 完整 LLM 原始返回全文 |
+
+诊断模式仅影响 `_score_batch` 的输出。方向分类和市场分析的 LLM 调用在成功时不产生诊断日志。Web UI toggle 仅管理员可见，后端对 `diagnose_mode` 字段的修改进行管理员权限检查。
 
 ---
 
@@ -1587,6 +1592,7 @@ batch_analyze_market(tasks, location="Hong Kong", include_gap_analysis=True,
 | `resume_gen` | `jd_max_chars` | 方向聚合时单条 JD 截断长度（默认 3000） |
 | `search` | `max_pages`, `max_total_results`, `jd_max_chars` | 搜索翻页数、JD 抓取上限、JD 截断长度 |
 | `sort_mode` | — | `"date"`（最新在前）/ `"relevance"`（相关度） |
+| `diagnose_mode` | `false` | 诊断模式开关。`true` 时恢复 LLM prompt/原始返回全文输出。仅管理员可在 Web UI 切换。环境变量 `JOB_AGENT_DIAGNOSE=1` 优先级更高 |
 
 > **注意**：Campaign（搜索词 + 策略绑定）和 Strategy（五维权重 + 关键词规则）存储在独立的 SQLite `campaigns` 和 `strategies` 表中，通过 `config_assembler.py` 的配置合并逻辑（SQLite 四表 + YAML 三文件）与上述配置合并。详见 CONFIG_GUIDE.md。
 

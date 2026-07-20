@@ -11,7 +11,7 @@ from config import (
     load_profile, load_search_config_dict,
     get_current_run_dir, get_latest_run_dir, load_prompts, render_prompt,
     get_llm_concurrency, run_batches_concurrently,
-    DIAGNOSE_MODE, get_last_usage, get_last_raw_response_text,
+    is_diagnose_mode, get_last_usage, get_last_raw_response_text,
 )
 from scraper import normalize_jobsdb_url
 import threading
@@ -344,7 +344,7 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
         jobs_text += f"职位描述:\n{desc}\n"
         jobs_text += f"链接: {job.get('url', '')}\n"
 
-    if DIAGNOSE_MODE:
+    if is_diagnose_mode():
         emit(f"   📤 [诊断] {batch_label}: 发送 {len(batch)} 个 JD，prompt {len(jobs_text)} 字符:\n{jobs_text}")
 
     try:
@@ -365,7 +365,7 @@ def _score_batch(batch, profile_summary, weights, batch_label="", strategy: str 
             emit(f"   📝 [诊断] {batch_label}: 解析 {len(scored)}/{len(batch)}, "
                  f"token in={batch_input_tok} out={batch_output_tok}, "
                  f"LLM原始返回 {len(raw_text)} 字符"
-                 + (f":\n{raw_text}" if DIAGNOSE_MODE else ""))
+                 + (f":\n{raw_text}" if is_diagnose_mode() else ""))
             # 数量不匹配时额外警告
             if len(scored) < len(batch):
                 emit(f"   ⚠️ [诊断] {batch_label}: 期望{len(batch)}个, 丢失eval_id: {[j.get('eval_id', '?') for j in batch[len(scored):]]}")

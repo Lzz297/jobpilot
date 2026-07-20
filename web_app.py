@@ -1156,6 +1156,19 @@ def put_yaml_config(name):
         else:
             return jsonify({"error": "写入数据库失败"}), 500
     elif name == "search_config":
+        # ── diagnose_mode 仅管理员可修改 ──
+        new_diagnose = new_content.get("diagnose_mode")
+        old_row = _db_fetch_one("SELECT data FROM search_config LIMIT 1")
+        old_diagnose = None
+        if old_row:
+            try:
+                old_diagnose = json.loads(old_row["data"]).get("diagnose_mode")
+            except json.JSONDecodeError:
+                pass
+        if new_diagnose is not None and new_diagnose != old_diagnose:
+            if session.get("role") != "admin":
+                return jsonify({"error": "仅管理员可修改诊断模式"}), 403
+
         # 更新 SQLite
         sql_ok = False
         try:

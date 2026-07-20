@@ -3733,6 +3733,7 @@ async function renderSettings(){
       ${card('基础设置',`
         ${field('全局默认排序','c-sort',cfg.sort_mode||'date','text','date / relevance')}
         ${areaField('排除公司（每行一个）','c-exclude',(cfg.filters?.exclude_companies||[]).join('\n'),4,'大小写不敏感，在基础清洗阶段直接排除')}
+        ${STATE.userRole==='admin' ? `<div><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="c-diagnose" data-key="c-diagnose" ${cfg.diagnose_mode?'checked':''} onchange="updateProfileCache('c-diagnose', this.checked?'true':'')" class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"><span class="text-xs font-medium text-slate-500">诊断模式（管理员）</span></label><p class="text-[10px] text-slate-400 mt-0.5 ml-6">开启后 LLM prompt 全文和原始返回将输出到实时日志，供调试排查使用。也可通过环境变量 JOB_AGENT_DIAGNOSE=1 强制开启</p></div>` : ''}
       `)}
       ${card('执行参数',`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         ${field('每组翻页数','job-max-pages',searchCfg.max_pages||3,'number','','1')}
@@ -3754,6 +3755,7 @@ async function renderSettings(){
         'job-score-batch': ($('#job-score-batch')?.value || ''),
         'job-rescore-batch': ($('#job-rescore-batch')?.value || ''),
         'job-concurrency': ($('#job-concurrency')?.value || ''),
+        'c-diagnose': $('#c-diagnose')?.checked ? 'true' : '',
       };
       window._jobDirtyPaths = new Set();
 
@@ -4413,6 +4415,7 @@ async function saveJobConfig(){
         ...(cfg.llm || {}),
         max_concurrency: parseInt($('#job-concurrency')?.value) || cfg.llm?.max_concurrency || getDefaultConcurrency(STATE.model),
       },
+      diagnose_mode: $('#c-diagnose')?.checked || false,
     };
     const res = await api('PUT', '/api/config/yaml/search_config', {content:newCfg});
     if(res && !res.error){

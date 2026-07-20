@@ -47,7 +47,7 @@ GLM_API_KEY=sk-your-key-here
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `JOB_AGENT_DIAGNOSE` | 未设置（关闭） | 设为 `1`/`true`/`yes`/`verbose` 开启诊断模式，恢复 LLM prompt 全文和原始返回的 SSE 输出 |
+| `JOB_AGENT_DIAGNOSE` | 未设置 | 设为 `1`/`true`/`yes`/`verbose` 强制开启诊断模式（优先级高于 Web UI 配置）。未设置时由管理员在 Web UI 设置页控制 |
 | `FLASK_SECRET_KEY` | 自动生成 | Flask session 加密密钥。不设置则每次重启 session 失效 |
 
 ---
@@ -211,7 +211,8 @@ GLM_API_KEY=sk-your-key-here
   "matching": { "direction_batch_size": 1, "score_batch_size": 5, "rescore_batch_size": 1 },
   "resume_gen": { "jd_max_chars": 3000 },
   "search": { "max_pages": 1, "max_total_results": 15, "jd_max_chars": 6000 },
-  "sort_mode": "date"
+  "sort_mode": "date",
+  "diagnose_mode": false
 }
 ```
 
@@ -237,6 +238,7 @@ GLM_API_KEY=sk-your-key-here
 | `market_presets.job_categories` | `[]` | 市场调研页面的预设岗位类别 |
 | `market_presets.classifications` | `[]` | 市场调研页面的预设行业分类 |
 | `resume_gen.jd_max_chars` | 3000 | 方向聚合时每条 JD 截断长度 |
+| `diagnose_mode` | `false` | 诊断模式开关（仅管理员可修改）。`true` 时输出 LLM prompt/原始返回全文。也可通过环境变量 `JOB_AGENT_DIAGNOSE=1` 强制开启 |
 
 > **注意：** `search_config` 表**没有 `user` 字段**。当前活跃画像由 `user_profiles.is_current = 1` 标记决定，通过 Web UI 侧边栏画像下拉框切换。
 

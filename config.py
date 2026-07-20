@@ -62,9 +62,7 @@ def verify_user_password(username, password):
 PROFILES_DIR = "profiles"
 OUTPUT_DIR = "output"
 
-# ── 诊断模式：环境变量 JOB_AGENT_DIAGNOSE=1 开启 ──
-#    开启后恢复 LLM prompt / 原始返回的全文输出，并将每批诊断写入文件
-DIAGNOSE_MODE = os.getenv("JOB_AGENT_DIAGNOSE", "").strip() in ("1", "true", "yes", "verbose")
+# ── 诊断模式（见 is_diagnose_mode() 函数，定义在 load_search_config_dict 之后）──
 
 # ── OpenAI client 占位（在 load_yaml 定义后初始化） ──
 client = None
@@ -396,6 +394,37 @@ def load_search_config_dict():
         except _json.JSONDecodeError:
             pass
     return None, "系统配置读取失败：数据库无配置数据"
+
+
+def is_diagnose_mode() -> bool:
+    """诊断模式开关。
+
+    优先级:
+      1. 环境变量 JOB_AGENT_DIAGNOSE 存在且为 1/true/yes/verbose → 强制 ON
+      2. search_config.diagnose_mode 为 True → ON（管理员在 Web UI 设置）
+      3. 以上均不满足 → OFF
+
+    内置 5 秒 TTL 缓存，避免 _score_batch 每次调用都查 SQLite。
+    """
+    import time as _time
+    global _diagnose_cache_time, _diagnose_cache_val
+    now = _time.time()
+    if now - _diagnose_cache_time < 5:
+        return _diagnose_cache_val
+
+    env_flag = os.getenv("JOB_AGENT_DIAGNOSE", "").strip() in ("1", "true", "yes", "verbose")
+    if env_flag:
+        _diagnose_cache_val = True
+    else:
+        cfg, _ = load_search_config_dict()
+        _diagnose_cache_val = (cfg or {}).get("diagnose_mode", False)
+    _diagnose_cache_time = now
+    return _diagnose_cache_val
+
+
+# 诊断模式缓存（由 is_diagnose_mode() 维护）
+_diagnose_cache_time = 0.0
+_diagnose_cache_val = False
 
 
 # ── JSON 解析工具 ──
