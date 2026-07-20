@@ -9,13 +9,15 @@ import json
 import os
 import yaml
 
+from config import emit, is_diagnose_mode
+
 PROFILES_DIR = "profiles"
 
 
 def _load_yaml(rel_path: str) -> dict:
     """加载 YAML 文件，不存在时返回空 dict。"""
     if not os.path.exists(rel_path):
-        print(f"[config_assembler] 文件不存在: {rel_path}")
+        emit(f"[config_assembler] 文件不存在: {rel_path}")
         return {}
     with open(rel_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
@@ -27,9 +29,9 @@ def _validate_weight_profile(strategy_name: str, weight_profile: dict):
         return
     total = sum(weight_profile.values())
     if total != 100:
-        print(f"[config_assembler] 警告: 策略 '{strategy_name}' 的 weight_profile 总和为 {total}，不为 100")
+        emit(f"[config_assembler] 警告: 策略 '{strategy_name}' 的 weight_profile 总和为 {total}，不为 100")
     else:
-        print(f"[config_assembler] 策略 '{strategy_name}' weight_profile 总和验证通过 (100)")
+        if is_diagnose_mode(): emit(f"[config_assembler] 策略 '{strategy_name}' weight_profile 总和验证通过 (100)")
 
 
 def load_campaign(campaign_name: str, user_id: int = None) -> dict:
@@ -69,9 +71,10 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
     if not strategy_name:
         raise ValueError(f"Campaign '{campaign_name}' 缺少 strategy 字段")
 
-    print(f"[config_assembler] 加载 campaign: {campaign_name}")
-    print(f"  user: {user_name}")
-    print(f"  strategy: {strategy_name}")
+    if is_diagnose_mode():
+        emit(f"[config_assembler] 加载 campaign: {campaign_name}")
+        emit(f"  user: {user_name}")
+        emit(f"  strategy: {strategy_name}")
 
     # ── 2. 加载用户画像 ──
     row = _db_fetch_one("SELECT data FROM user_profiles WHERE is_current = 1")
@@ -79,7 +82,7 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
         user_profile = json.loads(row["data"])
     else:
         user_profile = {}
-        print(f"[config_assembler] 警告: 用户画像为空或不存在")
+        emit(f"[config_assembler] 警告: 用户画像为空或不存在")
 
     # ── 3. 加载策略（全部用户策略 + campaign 选中的策略）──
     from config import _db_fetch_all
@@ -163,7 +166,7 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
         "resume_guide": resume_guide,
     }
 
-    print(f"  配置组装完成")
+    if is_diagnose_mode(): emit(f"  配置组装完成")
     return config
 
 
