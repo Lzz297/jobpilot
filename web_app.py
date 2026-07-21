@@ -108,8 +108,8 @@ def _get_current_user():
         )
         if row:
             return row["username"]
-    except Exception:
-        pass
+    except Exception as e:
+        emit(f"   ⚠️ 获取当前用户失败: {e}")
     return None
 
 # ── Session 管理 ──

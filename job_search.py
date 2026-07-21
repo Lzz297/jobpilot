@@ -29,7 +29,8 @@ def _load_fetched_ids() -> set:
         rows = conn.execute("SELECT job_id FROM fetched_jobs").fetchall()
         conn.close()
         return {r[0] for r in rows}
-    except Exception:
+    except Exception as e:
+        emit(f"   ⚠️ 加载已抓取 job_id 失败: {e}")
         return set()
 
 
@@ -46,8 +47,8 @@ def _save_fetched_jobs(jobs: list, keyword: str):
         )
         conn.commit()
         conn.close()
-    except Exception:
-        pass
+    except Exception as e:
+        emit(f"   ⚠️ 保存已抓取 job_id 失败: {e}")
 
 
 # ============================================================

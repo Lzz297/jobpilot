@@ -30,7 +30,8 @@ def _db_fetch_one(query, params=()):
         row = cursor.fetchone()
         conn.close()
         return dict(row) if row else None
-    except Exception:
+    except Exception as e:
+        emit(f"   ⚠️ 数据库查询异常: {e}")
         return None
 
 def _db_fetch_all(query, params=()):
@@ -42,7 +43,8 @@ def _db_fetch_all(query, params=()):
         rows = cursor.fetchall()
         conn.close()
         return [dict(r) for r in rows]
-    except Exception:
+    except Exception as e:
+        emit(f"   ⚠️ 数据库查询异常: {e}")
         return []
 
 # ── 密码哈希工具 ──

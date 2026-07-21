@@ -44,64 +44,6 @@ _session.headers.update(HEADERS)
 
 _pw_instance = None
 _pw_browser = None
-_cookie_diag_done = False  # cookie 诊断只输出一次
-
-# ── cf_clearance 持久化路径 ──
-_CF_COOKIE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "cf_clearance.json")
-
-
-def _save_cf_clearance(ctx):
-    """从 browser context 中提取 cf_clearance cookie 并保存到文件。"""
-    global _cookie_diag_done
-    try:
-        cookies = ctx.cookies()
-        # 首次诊断：打印所有 cookie 名称
-        if not _cookie_diag_done:
-            _cookie_diag_done = True
-            names = [c.get("name") for c in cookies if c.get("name")]
-            emit(f"   🍪 [诊断] context 内 cookie 共 {len(names)} 个: {names}")
-        for c in cookies:
-            if c.get("name") == "cf_clearance":
-                data = {
-                    "name": c["name"],
-                    "value": c["value"],
-                    "domain": c.get("domain", ".jobsdb.com"),
-                    "path": c.get("path", "/"),
-                }
-                os.makedirs(os.path.dirname(_CF_COOKIE_FILE), exist_ok=True)
-                with open(_CF_COOKIE_FILE, "w", encoding="utf-8") as f:
-                    json.dump(data, f)
-                emit(f"   🍪 cf_clearance 已保存（{c['value'][:20]}...）")
-                return
-    except Exception:
-        pass
-
-
-def _load_cf_clearance():
-    """从文件加载已保存的 cf_clearance cookie。文件不存在或读取失败返回 None。"""
-    try:
-        if not os.path.exists(_CF_COOKIE_FILE):
-            return None
-        with open(_CF_COOKIE_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if data and data.get("name") == "cf_clearance" and data.get("value"):
-            return data
-    except Exception:
-        pass
-    return None
-
-
-def _inject_cf_clearance(ctx):
-    """尝试向 context 注入已保存的 cf_clearance cookie。注入成功返回 True。"""
-    cookie = _load_cf_clearance()
-    if cookie is None:
-        return False
-    try:
-        ctx.add_cookies([cookie])
-        emit(f"   🍪 已注入 cf_clearance（{cookie['value'][:20]}...）")
-        return True
-    except Exception:
-        return False
 
 
 def _get_playwright_browser():
@@ -185,9 +127,6 @@ def _fetch_html(url: str, wait_ms: int = 3000, context=None) -> str | None:
                 page.wait_for_timeout(5000)
                 content = page.content()
             page.close()
-            # 共享 context 时尝试保存 cf_clearance（页面通过 Cloudflare 后会下发此 cookie）
-            if not own_context and len(content) > 2000:
-                _save_cf_clearance(ctx)
             if own_context:
                 ctx.close()
             if len(content) > 2000:
@@ -747,7 +686,6 @@ def scan_jobsdb_listings(keyword: str, location: str = "Hong Kong",
         locale="en-HK",
         viewport={"width": 1920, "height": 1080},
     )
-    _inject_cf_clearance(ctx)
 
     try:
      for page in range(start_page, start_page + max_pages):
@@ -1061,8 +999,8 @@ def _parse_next_data_detail(data: dict) -> dict:
             desc = BeautifulSoup(desc, 'lxml').get_text(separator='\n', strip=True)
         info['description'] = desc
 
-    except Exception:
-        pass
+    except Exception as e:
+        emit(f"   ⚠️ __NEXT_DATA__ 详情解析异常: {e}")
     return info
 
 
@@ -1094,7 +1032,6 @@ def fetch_multiple_details(urls: list, delay: float = 2.0, max_jobs: int = 20) -
                 viewport={"width": 1920, "height": 1080},
             )
             ctx_pages = 0
-            _inject_cf_clearance(ctx)
             emit(f"   🌐 已创建新 browser context（每 {PAGE_LIMIT} 页轮换）")
 
     try:
