@@ -89,7 +89,7 @@ def basic_filter(listings, config):
 #  岗位搜索（三层漏斗：扫描 → 基础清洗 → 抓取JD）
 # ============================================================
 
-def search_jobs(sort_by: str = None, config: dict = None):
+def search_jobs(sort_by: str = None, config: dict = None, skip_cross_run_dedup: bool = False):
     """
     三层漏斗搜索：
       第一层 - 扫描 JobsDB 搜索列表页（只拿标题/公司/摘要，不打开详情页）
@@ -100,6 +100,8 @@ def search_jobs(sort_by: str = None, config: dict = None):
         sort_by: 排序方式，"date" = 按发布时间, "relevance" = 按相关度
                  不传则从 config 或 search_config.yaml 的 sort_mode 读取
         config: 配置字典（不传则从 search_config.yaml 加载，保持旧行为兼容）
+        skip_cross_run_dedup: 设为 True 时跳过跨 run 去重，所有扫描到的岗位
+                              全部重新抓取（适用于需要当前市场完整快照的场景）
     """
     # ── 读取配置 ──
     if config is None:
@@ -174,8 +176,12 @@ def search_jobs(sort_by: str = None, config: dict = None):
     emit(f"   ✅ 清洗后: {len(cleaned)} 条")
 
     # ── 跨 run 去重：过滤已抓过的 job_id ──
-    fetched_ids = _load_fetched_ids()
-    new_cleaned = [j for j in cleaned if j.get("job_id", "") not in fetched_ids]
+    if skip_cross_run_dedup:
+        new_cleaned = list(cleaned)
+        fetched_ids = set()
+    else:
+        fetched_ids = _load_fetched_ids()
+        new_cleaned = [j for j in cleaned if j.get("job_id", "") not in fetched_ids]
     cross_skipped = len(cleaned) - len(new_cleaned)
     if cross_skipped:
         emit(f"   🔄 跨 run 去重: 跳过 {cross_skipped} 个已抓岗位")

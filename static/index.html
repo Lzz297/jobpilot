@@ -281,10 +281,16 @@
               <div class="flex items-center gap-2 text-indigo-700 font-semibold text-sm"><i data-lucide="zap" class="w-4 h-4"></i> 一键找工作</div>
               <div class="text-xs text-slate-500 mt-1" id="qa-desc">搜索 → 匹配 → 方向聚合简历</div>
               <div class="flex items-center justify-between mt-2">
-                <label class="flex items-center gap-1.5 cursor-pointer select-none" onclick="event.stopPropagation()">
-                  <input id="qa-resume-toggle" type="checkbox" checked onchange="updateQAToggle()" class="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                  <span class="text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors">生成简历</span>
-                </label>
+                <div class="flex items-center gap-3">
+                  <label class="flex items-center gap-1.5 cursor-pointer select-none" onclick="event.stopPropagation()">
+                    <input id="qa-resume-toggle" type="checkbox" checked onchange="updateQAToggle()" class="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                    <span class="text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors">生成简历</span>
+                  </label>
+                  <label class="flex items-center gap-1.5 cursor-pointer select-none" onclick="event.stopPropagation()" title="重新抓取全部在招岗位（忽略历史去重），适用于需要当前市场完整快照的场景">
+                    <input id="qa-full-scan-toggle" type="checkbox" class="h-3.5 w-3.5 rounded border-slate-300 text-amber-600 focus:ring-amber-500">
+                    <span class="text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors">全量扫描</span>
+                  </label>
+                </div>
                 <span class="text-[11px] text-indigo-500"><span id="qa-hint-prefix">选语言后开始 — </span>排序：<span id="qa-sort">按发布时间</span></span>
               </div></button>
             <button onclick="switchView('market')" class="group text-left p-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition w-full">
@@ -1152,15 +1158,18 @@ function startPipeline(){
   if(guardBusy()) return;
   if(!STATE.sid){ toast('正在连接服务器…','warn'); return; }
   var skipResume = !document.getElementById('qa-resume-toggle').checked;
+  var fullScan = document.getElementById('qa-full-scan-toggle').checked;
   if(skipResume) {
-    runPipeline(['en'], true);
+    runPipeline(['en'], true, fullScan);
   } else {
-    openLangModal(PIPE_LANGS, function(langs) { PIPE_LANGS = langs; runPipeline(langs, false); });
+    openLangModal(PIPE_LANGS, function(langs) { PIPE_LANGS = langs; runPipeline(langs, false, fullScan); });
   }
 }
-function runPipeline(langs, skipResume){
+function runPipeline(langs, skipResume, fullScan){
   if(guardBusy()) return; setBusy(true); switchView('workspace');
-  var label = skipResume ? '一键找工作（仅搜索评分）' : '一键找工作（产出语言：'+langs.map(function(l){return LANG_SHORT[l];}).join('/')+'）';
+  fullScan = fullScan || false;
+  var base = fullScan ? '一键找工作（全量扫描）' : '一键找工作';
+  var label = skipResume ? base + '（仅搜索评分）' : base + '（产出语言：'+langs.map(function(l){return LANG_SHORT[l];}).join('/')+'）';
   chatUser(label);
   const t = chatTurn(); const box = t.log;
   startSSE(box, (reply, files, stats) => {
@@ -1223,7 +1232,7 @@ function runPipeline(langs, skipResume){
       '</div>';
     refreshIcons(); scrollChat();
   }, null, 0, () => {
-    apiPost('/api/pipeline', {sid:STATE.sid, action:'search_match', sort_by:STATE.sort, languages:langs, skip_resume: skipResume});
+    apiPost('/api/pipeline', {sid:STATE.sid, action:'search_match', sort_by:STATE.sort, languages:langs, skip_resume: skipResume, skip_cross_run_dedup: fullScan});
   });
 }
 
