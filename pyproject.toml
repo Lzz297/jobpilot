@@ -33,6 +33,7 @@ dependencies = [
     "ddgs>=9.12.0",
     "pydantic>=2.12.5",
     "instructor>=1.15.1",
+    "langsmith>=0.4",
     "markdown>=3.10.2",
 ]
 

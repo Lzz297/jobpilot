@@ -159,7 +159,15 @@ def _init_llm_client():
     return OpenAI(api_key=api_key, base_url=base_url), model_name
 
 
-client, MODEL_NAME = _init_llm_client()
+_raw_client, MODEL_NAME = _init_llm_client()
+
+# ── LangSmith 追踪（未安装时自动降级为裸 client）──
+try:
+    from langsmith import wrappers as _ls_wrappers
+    client = _ls_wrappers.wrap_openai(_raw_client)
+except ImportError:
+    print("   ⚠️ langsmith 未安装，LangSmith 追踪已禁用。pip install langsmith 后重启生效。")
+    client = _raw_client
 
 # ── Instructor 实例线程本地缓存（构造后事实不可变，同一线程复用安全）──
 _instructor_local = threading.local()
@@ -295,9 +303,9 @@ def switch_model(provider, model=None):
     if not api_key:
         return {"error": f"环境变量 {api_key_env} 未设置"}
 
-    # 原地修改 client（所有模块持有同一个引用，立即生效）
-    client.base_url = base_url
-    client.api_key = api_key
+    # 原地修改 _raw_client（wrapper 代理读取，立即生效）
+    _raw_client.base_url = base_url
+    _raw_client.api_key = api_key
     MODEL_NAME = model
 
     # 更新 SQLite search_config 表

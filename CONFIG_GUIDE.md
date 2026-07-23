@@ -10,7 +10,7 @@
 
 | 存储位置 | 控制什么 | 修改方式 | 改动频率 |
 |---------|---------|---------|---------|
-| [`.env`](#0-env--环境变量) | API 密钥 | 编辑文件 | 极低 |
+| [`.env`](#0-env--环境变量) | API 密钥 + LLM 可观测性 (LangSmith) | 编辑文件 | 极低 |
 | [SQLite `user_profiles`](#1-用户画像) | 你是谁、会什么、想找什么 | **Web UI 设置面板** | 低 |
 | [SQLite `search_config`](#2-系统配置) | LLM 供应商、过滤条件、市场/搜索参数 | **Web UI 设置面板** | 低 |
 | [SQLite `strategies`](#3-策略) | 五维权重 + 关键词分类规则 | **Web UI 设置 → 策略 Tab** | 中 |
@@ -34,6 +34,11 @@ DASHSCOPE_API_KEY=sk-your-key-here
 
 # 智谱 AI（GLM）
 GLM_API_KEY=sk-your-key-here
+
+# LangSmith — LLM 调用可观测性 (https://smith.langchain.com)
+LANGSMITH_TRACING_V2=true
+LANGSMITH_API_KEY=lsv2_pt_your_key_here
+LANGSMITH_PROJECT=job-agent
 ```
 
 | 你想达到的效果 | 怎么改 |
@@ -49,6 +54,9 @@ GLM_API_KEY=sk-your-key-here
 |------|------|------|
 | `JOB_AGENT_DIAGNOSE` | 未设置 | 设为 `1`/`true`/`yes`/`verbose` 强制开启诊断模式（优先级高于 Web UI 配置）。未设置时由管理员在 Web UI 设置页控制 |
 | `FLASK_SECRET_KEY` | 自动生成 | Flask session 加密密钥。不设置则每次重启 session 失效 |
+| `LANGSMITH_TRACING_V2` | 未设置 | 设为 `true` 启用 LangSmith 追踪。每次 LLM 调用的 prompt/response/token/latency 自动记录到 LangSmith 面板 |
+| `LANGSMITH_API_KEY` | 未设置 | LangSmith API Key。从 [smith.langchain.com](https://smith.langchain.com) → Settings → API Keys 获取 |
+| `LANGSMITH_PROJECT` | 未设置 | LangSmith 项目名，同一项目的所有 trace 归组在一起。推荐设为 `job-agent` |
 
 ---
 

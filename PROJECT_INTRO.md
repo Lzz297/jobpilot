@@ -42,7 +42,7 @@ D:\job-agent/
 ├── web_app.py                # [入口] Flask Web UI — SSE 实时推送 + 直接流水线模式
 ├── config.py                 # [配置中心] llm_call() 统一入口、LLM Client 管理、
 │                             #            并发编排器 (run_batches_concurrently)、
-│                             #            Token 追踪 (全局聚合)、诊断模式开关、
+│                             #            Token 追踪 (全局聚合)、LangSmith 观测、诊断模式开关、
 │                             #            emit 双模式输出、Prompt 模板引擎
 ├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 ├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
@@ -355,6 +355,8 @@ run_batches_concurrently(tasks, max_workers=10, description="LLM 批次") -> lis
 
 `flush_token_log()` 为预留桩函数（当前返回 0），含完整建表 SQL 和批量 INSERT 代码骨架，供未来按阶段/批次/方向做成本分析和异常检测。
 
+> **LangSmith 接入后**：通过 `wrap_openai()` 在 `_init_llm_client()` 后自动拦截所有 LLM 调用，将完整 trace（prompt/response/token/latency/异常）持久化到 LangSmith 面板。上述内存级 Token 追踪仍然独立运行（供 SSE per-batch 进度推送），LangSmith 作为持久化层的补充，替代了 `flush_token_log()` 桩函数的目标场景。
+
 #### 3.1.11 诊断模式
 
 `is_diagnose_mode()` 函数（5 秒 TTL 缓存）控制 `_score_batch` 的日志详细程度，按优先级读取两个来源：
@@ -370,6 +372,8 @@ run_batches_concurrently(tasks, max_workers=10, description="LLM 批次") -> lis
 | **诊断** | `True` | 以上全部 + 完整 LLM prompt 全文 + 完整 LLM 原始返回全文 |
 
 诊断模式仅影响 `_score_batch` 的输出。方向分类和市场分析的 LLM 调用在成功时不产生诊断日志。Web UI toggle 仅管理员可见，后端对 `diagnose_mode` 字段的修改进行管理员权限检查。
+
+> **LangSmith 接入后**：诊断模式仍然独立运作（终端实时输出），LangSmith 作为补充提供了持久化的 trace 查看和搜索能力——所有 LLM 调用（包括方向分类、市场分析、简历生成等诊断模式未覆盖的场景）的 prompt/response 均可通过 LangSmith Web 面板回溯。
 
 ---
 
