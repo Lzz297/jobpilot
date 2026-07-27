@@ -19,12 +19,21 @@ except ImportError:
 # Playwright 浏览器（懒加载，复用）
 # ─────────────────────────────────────
 
+import threading
+
 _pw = None
 _browser = None
+_pw_thread_id = None
 
 
 def _ensure_browser():
-    global _pw, _browser
+    global _pw, _browser, _pw_thread_id
+
+    # 如果浏览器已存在但属于已死的线程，直接放弃旧实例
+    if _browser is not None and threading.get_ident() != _pw_thread_id:
+        _browser = None
+        _pw = None
+
     if _browser is not None:
         try:
             _browser.contexts
@@ -45,6 +54,7 @@ def _ensure_browser():
     from playwright.sync_api import sync_playwright
     _pw = sync_playwright().start()
     _browser = _pw.chromium.launch(headless=True)
+    _pw_thread_id = threading.get_ident()
     return _browser
 
 

@@ -42,21 +42,29 @@ HEADERS = {
 _session = requests.Session()
 _session.headers.update(HEADERS)
 
+import threading
+
 _pw_instance = None
 _pw_browser = None
+_pw_thread_id = None
 
 
 def _get_playwright_browser():
-    global _pw_instance, _pw_browser
+    global _pw_instance, _pw_browser, _pw_thread_id
 
-    # 如果浏览器已存在，检查是否还活着（跨线程会死）
+    # 如果浏览器已存在但属于已死的线程，直接放弃旧实例
+    # （旧线程已退出，尝试 close()/stop() 也会跨线程报错，不如不碰）
+    if _pw_browser is not None and threading.get_ident() != _pw_thread_id:
+        _pw_browser = None
+        _pw_instance = None
+
+    # 浏览器存在且属于当前线程 → 探活
     if _pw_browser is not None:
         try:
             _pw_browser.contexts  # 轻量探活
             return _pw_browser
         except Exception:
             emit("   🔄 Playwright 浏览器已失效，正在重启...")
-            # 强制清理，忽略错误
             try:
                 _pw_browser.close()
             except Exception:
@@ -77,6 +85,7 @@ def _get_playwright_browser():
             "--no-sandbox",
         ],
     )
+    _pw_thread_id = threading.get_ident()
     emit("   🌐 Playwright 浏览器已启动")
     return _pw_browser
 
