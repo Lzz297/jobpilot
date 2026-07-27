@@ -91,12 +91,23 @@ def _get_playwright_browser():
 
 
 def cleanup_playwright():
-    global _pw_instance, _pw_browser
+    global _pw_instance, _pw_browser, _pw_thread_id
+    # 不在创建线程上（如 atexit 在主线程调用）→ 不碰旧对象，直接标记释放
+    if _pw_browser is not None and threading.get_ident() != _pw_thread_id:
+        _pw_browser = None
+        _pw_instance = None
+        return
     if _pw_browser:
-        _pw_browser.close()
+        try:
+            _pw_browser.close()
+        except Exception:
+            pass
         _pw_browser = None
     if _pw_instance:
-        _pw_instance.stop()
+        try:
+            _pw_instance.stop()
+        except Exception:
+            pass
         _pw_instance = None
 
 

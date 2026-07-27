@@ -60,7 +60,12 @@ def _ensure_browser():
 
 def cleanup_renderer():
     """关闭 Playwright 浏览器，在程序退出时调用"""
-    global _pw, _browser
+    global _pw, _browser, _pw_thread_id
+    # 不在创建线程上（如 atexit 在主线程调用）→ 不碰旧对象，直接标记释放
+    if _browser is not None and threading.get_ident() != _pw_thread_id:
+        _browser = None
+        _pw = None
+        return
     if _browser:
         try:
             _browser.close()
