@@ -64,7 +64,7 @@ def load_campaign(campaign_name: str, user_id: int = None) -> dict:
     search_cfg, _ = load_search_config_dict()
     if not search_cfg:
         search_cfg = {}
-    # user 从 profiles/.current_user 读取
+    # user 从 SQLite user_profiles 表读取（is_current=1）
     from config import get_current_user
     user_name = get_current_user()
     strategy_name = campaign.get("strategy", "")

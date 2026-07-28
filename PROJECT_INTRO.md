@@ -47,7 +47,7 @@ D:\job-agent/
 ├── tools_defs.py             # [工具注册] 14 个工具的 JSON Schema 定义 + 执行分发 + 去重
 ├── tools_basic.py            # [基础工具] 时间/文件/搜索/配置查看/单岗位抓取
 │
-├── scraper.py                # [爬虫] JobsDB 页面抓取（~1000 行），browser context 复用 + 4 层列表解析 + 3 层详情解析
+├── scraper.py                # [爬虫] JobsDB 页面抓取（~1,080 行），browser context 复用 + 4 层列表解析 + 3 层详情解析
 ├── job_search.py             # [搜索] 三层漏斗搜索（扫描 → 基础清洗 → 全量抓取 JD）
 ├── job_match.py              # [匹配] LLM 五维评分（并发模式）+ 动态权重 + 及格线复评 + 方向分类
 ├── resume_gen.py             # [简历] 3 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
@@ -209,6 +209,7 @@ llm_call(messages, *, temperature=None, tools=None, max_retries=2, thinking=None
 - `temperature=0` 时显式传递（用于匹配评分、市场分析等确定性任务）
 - `tools` 参数为 `None` 时不传（纯文本分析类调用不需要工具）
 - 所有 24 处调用点已收敛，新增任何 LLM 功能（如 token 统计、缓存、fallback）只需改这一处
+- Instructor 实例通过 `_get_instructor_client()` 做线程本地缓存（`threading.local()`），避免每次 `llm_call` 重复创建开销
 
 ### 2.3 核心工作流
 
@@ -411,7 +412,7 @@ run_batches_concurrently(tasks, max_workers=10, description="LLM 批次") -> lis
 | `load_search_config` | tools_basic | 无 | — | 查看系统配置（SQLite `search_config` 表） |
 | `search_jobs` | job_search | 无（`config` 由系统层自动注入） | `sort_by`（`"date"` / `"relevance"`，默认从配置读取） | 三层漏斗搜索：扫描列表页 → 基础清洗 → 全量抓取 JD |
 | `match_jobs` | job_match | 无（`config` 和 `profile` 由系统层自动注入） | — | 五维动态权重匹配评分 + 及格线复评 |
-| `generate_resume` | resume_gen | 无（3 种模式，`by_direction` / `job_index` / `jd_text`。均需显式指定，无参数时返回错误提示） | 见 §3.10 | 多模式三语简历 + Cover Letter 生成 |
+| `generate_resume` | resume_gen | 无（3 种模式，`by_direction` / `job_index` / `jd_text`。均需显式指定，无参数时返回三种模式的引导提示） | 见 §3.10 | 多模式三语简历 + Cover Letter 生成 |
 | `list_matched_jobs` | job_match | 无 | — | 查看最近一次匹配排名结果（含五维分数 + 复评信息） |
 | `fetch_job_detail` | tools_basic | `url` | — | 抓取单个岗位 URL 的完整 JD |
 | `analyze_market` | market_analysis | `job_category` | `location`（默认 `"Hong Kong"`）、`include_gap_analysis`（默认 `true`）、`classification`、`sort_by` | 单类市场调研（四阶段） |
@@ -450,6 +451,7 @@ def execute_tool(tool_call):
 - **两种执行路径**：
   - `/api/chat` → `_run_agent_turn()`：LLM Agent 模式（同 CLI 逻辑）
   - `/api/pipeline` → `_run_pipeline()`：直接执行 `search_jobs → match_jobs → generate_resume(by_direction=True)` 三步流水线
+- **新用户策略初始化**：登录时 `_ensure_user_strategies()` 自动从已有策略复制默认副本，确保每个新用户都有可用的权重策略
 
 #### 3.4.2 SSE 事件类型
 
@@ -469,7 +471,7 @@ data: {json_payload}
 | `progress` | 执行结果文本 | `{"type": "progress", "text": "搜索完成 → raw_jobs.json"}` | ⚪ 灰色文字 |
 | `tool_call` | 正在调用的工具 | `{"type": "tool_call", "tool": "search_jobs", "args": "{...}"}` | 🔵 青色工具名 + 参数 |
 | `review` | 简历核查报告 | `{"type": "review", "bullets": [...], "flagged_count": N}` | 🟠 核查标记列表（checker 系统产出） |
-| `done` | 任务完成 | `{"type": "done", "reply": "...", "files": [[path, desc], ...], "stats": {...}}` | 🟢 完成面板含文件列表。`stats` 仅在 Pipeline 模式出现，含 `direction_llm`/`direction_keyword`/`direction_fb` 等字段 |
+| `done` | 任务完成 | `{"type": "done", "reply": "...", "files": [[path, desc], ...], "stats": {...}}` | 🟢 完成面板含文件列表。`stats` 仅在 Pipeline 模式出现，含 `direction_llm`/`direction_keyword`/`direction_fb`/`weight_fb`/`score_err` 等字段 |
 | `error` | 执行出错 | `{"type": "error", "text": "..."}` | 🔴 红色错误信息 |
 | `ping` | 30 秒心跳保活 | `{}` | 忽略 |
 
@@ -540,7 +542,8 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
   "action": "search_match",
   "sort_by": "date",
   "languages": ["en", "hk"],
-  "skip_resume": false
+  "skip_resume": false,
+  "skip_cross_run_dedup": false
 }
 ```
 
@@ -551,6 +554,7 @@ LLM Agent 对话（后台线程执行，通过 SSE 获取结果）。
 | `sort_by` | 否 | `"date"`（按发布时间）或 `"relevance"`（按相关度）。不传从配置读取 |
 | `languages` | 否 | 简历输出语言子集，如 `["en","hk"]`，默认 `["en","hk","cn"]` |
 | `skip_resume` | 否 | 跳过简历生成，仅执行搜索+评分（默认 `false`） |
+| `skip_cross_run_dedup` | 否 | 跳过跨 run 去重，全量重新抓取（默认 `false`） |
 
 **Response** (立即): `{"status": "started"}`
 
@@ -960,11 +964,12 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 - **智能路由层**：`routeMessage()` 函数拦截用户输入，匹配已知指令（"帮我找工作""分析X市场""看看匹配结果"等）直接执行本地操作，无需经过 LLM 决策，其余自由对话才发给 LLM Agent。建议 chips 也通过路由层触发
 - **全局忙锁**：`setBusy()` / `guardBusy()` 控制并发，同一时间只允许一个 Agent 任务执行。busy 状态下 `.agent-trigger` 元素半透明（opacity:0.45）且不可点击，状态指示灯变为琥珀色旋转动画。并发请求返回 HTTP 429
 - **键盘快捷键**：Escape 关团 YAML 浮层和语言弹窗；Enter 发送消息（Shift+Enter 换行）
-- **设置面板（双栏布局）**：
-  - **个人画像 Tab**：左侧卡片导航列表 + 右侧单卡片编辑区；支持 input/textarea/toggle/select/tags/list/table/card-table 等多种 widget
-  - **脏字段追踪系统**：修改过的字段左侧出现 amber 竖线 + hover 显示「↺ 撤销」按钮；底部悬浮条显示「已修改 N 个字段」计数 +「撤销全部」按钮；四个 Tab 统一的脏状态逻辑
+- **设置面板（双栏布局，6 个 Tab）**：
+  - **个人画像 Tab**：左侧卡片导航列表 + 右侧单卡片编辑区；支持 input/textarea/toggle/select/tags/list/table/card-table 等多种 widget。含脏字段追踪系统：修改过的字段左侧出现 amber 竖线 + hover 显示「↺ 撤销」按钮；底部悬浮条显示「已修改 N 个字段」计数 +「撤销全部」按钮
   - **找工作配置 Tab**：全局排序、排除公司、抓取参数设置
   - **市场调研配置 Tab**：预设分类管理、执行参数设置
+  - **求职方向 Tab**：Campaign 列表管理（CRUD），绑定策略和搜索词组
+  - **策略管理 Tab**：五维权重方案管理（CRUD），权重之和校验
   - **字段配置 Tab**（管理员可见）：Schema 编辑器，支持字段分组、widget 类型、布局配置
 
 > 以上为功能能力描述。具体的 UI 布局、视觉风格、交互方式由产品设计决定。
@@ -988,7 +993,7 @@ Web UI 提供与终端 CLI 相同的功能，通过浏览器访问。核心能�
 
 ---
 
-### 3.7 scraper.py — JobsDB 网页爬虫（核心模块，~989 行）
+### 3.7 scraper.py — JobsDB 网页爬虫（核心模块，~1,080 行）
 
 **职责**：抓取 JobsDB 职位列表页和详情页。
 
@@ -1297,7 +1302,7 @@ resume_review_{label}_{date}.json     # 审查报告
 | `approx_out_of_range` | bullet 中的约数与源数据偏差超过 5% | bullet 写"约 50%"，源数据约 80% |
 | `strength_upgrade` | bullet 动词强度超出源数据支撑 | 源数据是"参与"项目（强度1），bullet 写成"主导"项目（强度3） |
 
-核查通过 `check_bullet(source_ids, profile, bullet_text)` 函数完成，返回 flags 列表。核查结果通过 SSE `review` 事件推送至前端。
+核查通过 `check_bullet(source_ids, profile, bullet_text)` 函数完成，返回 flags 列表。核查结果通过模块级变量 `last_check_report`（`list[dict]`）和 `last_resume_md`（`str`）传递至 Web 层，由 SSE `review` 事件推送至前端。
 
 **Bullet 定点修正（`fix_single_bullet()`）**：用户通过 `/api/resume/fix` 端点修正单条 bullet 时，系统执行以下流程：
 
@@ -1736,7 +1741,7 @@ output/market/
 
 ```bash
 # 1. 安装 Python 依赖
-pip install openai python-dotenv playwright beautifulsoup4 lxml ddgs pyyaml markdown flask
+pip install openai python-dotenv playwright beautifulsoup4 lxml ddgs pyyaml markdown flask pydantic instructor langsmith
 
 # 2. 安装 Playwright Chromium 浏览器
 playwright install chromium
@@ -1879,7 +1884,7 @@ Web UI 提供图形化操作界面。使用上与终端模式功能对等：
 | LLM 401/403 | 直接抛出，不浪费重试时间 |
 | 详情页抓取失败 | 使用列表页 snippet 兜底（标记 `source: "snippet"`） |
 | 列表页解析全部失败 | 4 层回退策略（NEXT_DATA → HTML 补充 → Card 解析 → `<a>` 链接提取） |
-| Playwright 浏览器失效 | 健康检查探活 + 自动重启 |
+| Playwright 浏览器失效 | 健康检查探活 + 自动重启（爬虫和 PDF 渲染器各独立恢复） |
 | PDF 渲染失败 | 返回 None，文件追踪中无 PDF 记录，不影响其他输出 |
 
 ---

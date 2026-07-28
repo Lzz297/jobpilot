@@ -70,7 +70,7 @@ LANGSMITH_PROJECT=job-agent
 
 ### 画像字段全览（由 Schema 驱动）
 
-画像结构由 SQLite `field_schemas` 表中 `name='user_field'` 的 JSON Schema 定义。前端根据 Schema 动态渲染表单控件。
+画像结构由 SQLite `field_schemas` 表中 `name='user_field'` 的 JSON Schema 定义。前端根据 Schema 动态渲染表单控件。管理员可通过 **Web UI → 设置 → 字段配置 Tab**（默认隐藏，仅管理员可见）编辑 Schema，增删分组或调整控件类型。
 
 #### 分组 1：基本信息 (`basic_info`)
 
@@ -326,7 +326,7 @@ python web_app.py
 
 ## 5. `prompts.yaml`
 
-**作用：** 所有 LLM 提示词的唯一来源。共 15 个 prompt 模板。
+**作用：** 所有 LLM 提示词的唯一来源。共 16 个 prompt 模板。
 
 **存储位置：** `profiles/prompts.yaml`（YAML 文件，不从 SQLite 读取）。
 
@@ -441,14 +441,17 @@ customization:
 
 ```
 SQLite (job_agent.db)
+├── users             ← 用户账户（登录认证 + 角色权限）
 ├── user_profiles     ← 用户画像（is_current=1 为当前活跃）
 ├── search_config     ← 系统基础设施（LLM/过滤/市场/搜索参数）
 ├── strategies        ← 五维权重 + 关键词规则（每人一套副本）
 ├── campaigns         ← 搜索词 + 策略绑定（每人多个）
-└── field_schemas     ← 画像字段 Schema（驱动前端表单渲染）
+├── field_schemas     ← 画像字段 Schema（驱动前端表单渲染）
+├── fetched_jobs      ← 跨 run 去重记录（job_id/url/keyword）
+└── operation_logs    ← 操作审计日志
 
 YAML 文件 (profiles/)
-├── prompts.yaml          ← 15 个 LLM 提示词模板
+├── prompts.yaml          ← 16 个 LLM 提示词模板
 ├── resume_template.yaml  ← 简历结构
 └── resume_guide.yaml     ← 简历撰写规范
 

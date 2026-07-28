@@ -11,7 +11,7 @@
 - 修改了 `profiles/prompts.yaml` 中任何 prompt 模板
 - 修改了 `job_match.py` 中评分或权重相关代码
 - 修改了 `resume_gen.py` 中简历生成相关 prompt 逻辑
-- 修改了 `profiles/me.yaml`（用户画像变更会影响 LLM 判断）
+- 修改了 SQLite `user_profiles` 表的用户画像数据（画像变更会影响 LLM 判断）
 - 切换了 LLM 模型
 
 **评估命令**：
