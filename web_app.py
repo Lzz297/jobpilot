@@ -1,5 +1,5 @@
 """
-web_app.py - Flask Web UI for JobsDB Agent
+web_app.py - Flask Web UI for JobPilot
 启动方式: python web_app.py
 访问: http://127.0.0.1:5000
 """
@@ -1899,7 +1899,7 @@ def put_user_field_schema():
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("  JobsDB Agent Web UI")
+    print("  JobPilot Web UI")
     print("  http://127.0.0.1:5000")
     print("=" * 50)
 

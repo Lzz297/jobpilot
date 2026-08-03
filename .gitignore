@@ -24,6 +24,9 @@ output/
 # SQLite 运行时数据库（种子数据通过 data/migrate.py 初始化）
 data/job_agent.db
 
+# Tesseract 语言包（运行时下载）
+data/tessdata/
+
 # 用户画像相关文件（含个人信息，待抽离为通用版本后再开放）
 profiles/prompts.yaml
 profiles/resume_guide.yaml

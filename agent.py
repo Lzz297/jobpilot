@@ -1,5 +1,5 @@
 """
-agent.py - JobsDB 智能求职 Agent 主入口（终端模式）
+agent.py - JobPilot 主入口（终端模式）
 """
 import argparse
 import sys
@@ -18,7 +18,7 @@ def run_agent_loop():
     messages = [{"role": "system", "content": get_system_prompt()}]
 
     print("=" * 50)
-    print("[Agent] JobsDB 智能求职 Agent 已启动！")
+    print("[Agent] JobPilot 已启动！")
     print("=" * 50)
     print()
     print("你可以说：")
@@ -84,7 +84,7 @@ def run_agent_loop():
 # ============================================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="JobsDB 智能求职 Agent")
+    parser = argparse.ArgumentParser(description="JobPilot")
     parser.add_argument("--campaign", type=str, default=None,
                         help="Campaign 名称（如 web3_hunt），存储在 SQLite campaigns 表")
     args = parser.parse_args()

@@ -1,4 +1,4 @@
-# JobsDB Agent
+# JobPilot
 
 面向香港 JobsDB 市场的 AI 求职助手。从搜索岗位到生成定制简历一条龙，接入多个 LLM Provider，在终端和浏览器里都能用。
 
@@ -70,7 +70,7 @@ echo "DEEPSEEK_API_KEY=sk-xxx" > .env
 # 4. 启动 Web UI
 python web_app.py
 # 浏览器打开 http://127.0.0.1:5000
-# 首次登录：用户名 admin，密码留空，进入后在设置里改密码
+# 首次登录：用户名 admin，密码 admin123
 
 # 5. 或者走终端模式（先在 Web UI 里创建 Campaign）
 python agent.py --campaign web3_hunt

@@ -38,7 +38,7 @@ GLM_API_KEY=sk-your-key-here
 # LangSmith — LLM 调用可观测性 (https://smith.langchain.com)
 LANGSMITH_TRACING_V2=true
 LANGSMITH_API_KEY=lsv2_pt_your_key_here
-LANGSMITH_PROJECT=job-agent
+LANGSMITH_PROJECT=jobpilot
 ```
 
 | 你想达到的效果 | 怎么改 |
@@ -56,7 +56,7 @@ LANGSMITH_PROJECT=job-agent
 | `FLASK_SECRET_KEY` | 自动生成 | Flask session 加密密钥。不设置则每次重启 session 失效 |
 | `LANGSMITH_TRACING_V2` | 未设置 | 设为 `true` 启用 LangSmith 追踪。每次 LLM 调用的 prompt/response/token/latency 自动记录到 LangSmith 面板 |
 | `LANGSMITH_API_KEY` | 未设置 | LangSmith API Key。从 [smith.langchain.com](https://smith.langchain.com) → Settings → API Keys 获取 |
-| `LANGSMITH_PROJECT` | 未设置 | LangSmith 项目名，同一项目的所有 trace 归组在一起。推荐设为 `job-agent` |
+| `LANGSMITH_PROJECT` | 未设置 | LangSmith 项目名，同一项目的所有 trace 归组在一起。推荐设为 `jobpilot` |
 
 ---
 

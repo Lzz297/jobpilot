@@ -1,4 +1,4 @@
-# JobsDB 智能求职 Agent — 项目完整介绍
+# JobPilot — 项目完整介绍
 
 > 一个基于 LLM + 工具调用架构的全自动求职系统，覆盖「职位搜索 → 智能筛选 → 匹配评分 → 简历生成 → 市场调研」完整链路。支持终端 CLI 和 Web UI 两种交互模式。
 
@@ -37,7 +37,7 @@
 ### 1.3 项目结构
 
 ```text
-D:\job-agent/
+D:\jobpilot/
 │
 ├── agent.py                  # [入口] Agent 主循环 — 终端对话交互 + 工具调用循环
 ├── web_app.py                # [入口] Flask Web UI — SSE 实时推送 + 直接流水线模式
