@@ -39,16 +39,6 @@ dependencies = [
     "Pillow>=11.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    # 测试源文件已丢失（仅存 .pyc），pytest 系列为预装，待重建测试
-    "pytest>=9.0.3",
-    "pytest-playwright>=0.8.0",
-    "pytest-base-url>=2.1.0",
-    # TODO: 待引入
-    # "ruff>=0.11.0",
-    # "pre-commit>=4.0.0",
-]
 
 [project.urls]
 Homepage = "https://github.com/Ryanlam/jobpilot"
