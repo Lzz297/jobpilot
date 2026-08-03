@@ -96,8 +96,10 @@ print('\nStep 1.5: Assigned NULL owner_id campaigns to admin')
 
 # ===== Step 2: 确保至少一个管理员用户 =====
 if c.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-    c.execute("INSERT INTO users (username, role) VALUES ('admin', 'admin')")
-    print('\nStep 2: Created default admin user (username=admin, no password)')
+    from werkzeug.security import generate_password_hash
+    c.execute("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'admin')",
+              ('admin', generate_password_hash('admin123')))
+    print('\nStep 2: Created default admin user (username=admin, password=admin123)')
 else:
     print(f'\nStep 2: Users already exist ({c.execute("SELECT COUNT(*) FROM users").fetchone()[0]})')
 
