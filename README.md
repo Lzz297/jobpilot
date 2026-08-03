@@ -55,17 +55,21 @@
 
 ```bash
 # 1. 安装依赖
-pip install -r requirements.txt  # 或根据 pyproject.toml
+pip install -e .                    # 根据 pyproject.toml 装全部依赖
 playwright install chromium
 
-# 2. 配置 API Key — 在 .env 里填入你要用的 Provider
+# 2. 初始化数据库（建表 + 默认 admin 用户）
+python data/migrate.py
+
+# 3. 配置 API Key — 在 .env 里填入你要用的 Provider
 echo "DEEPSEEK_API_KEY=sk-xxx" > .env
 
-# 3. 启动 Web UI
+# 4. 启动 Web UI
 python web_app.py
 # 浏览器打开 http://127.0.0.1:5000
+# 首次登录：用户名 admin，密码留空，进入后在设置里改密码
 
-# 4. 或者走终端模式（需要先创建 Campaign）
+# 5. 或者走终端模式（先在 Web UI 里创建 Campaign）
 python agent.py --campaign web3_hunt
 ```
 
