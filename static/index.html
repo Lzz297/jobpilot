@@ -3006,10 +3006,10 @@ function resumeTrigger(id){
       fd.append('file', RS.jdFile);
       fd.append('sid', STATE.sid);
       fd.append('languages', JSON.stringify(langsOrdered()));
-      var panel = $('#resume-panel');
-      panel.innerHTML = '<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">OCR 识别中…</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="rs-log"></div><div id="rs-result"></div></div>';
-      var log = $('#rs-log');
-      startSSE(log, function(reply, files, stats){
+      var ocrPanel = $('#resume-panel');
+      ocrPanel.innerHTML = '<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">OCR 识别中…</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="rs-log"></div><div id="rs-result"></div></div>';
+      var ocrLog = $('#rs-log');
+      startSSE(ocrLog, function(reply, files, stats){
         // done — stats may contain ocr_text from /api/ocr/jd
         var h = '<div class="mt-3 fade-in"><div class="text-sm text-emerald-700 font-medium mb-1">✅ 生成完成 · '+files.length+' 个文件</div>';
         h += fileChips(files) + '<button onclick="switchView(\'files\');fileTab(\'jobs\')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2">在文件管理中查看</button></div>';
@@ -3024,8 +3024,8 @@ function resumeTrigger(id){
       }, null, 0, function(){
         var xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/ocr/jd', true);
-        xhr.onerror = function(){ logLine(log, {t:'err', x:'OCR 请求发送失败，请检查网络后重试'}); setBusy(false); };
-        xhr.onload = function(){ if(xhr.status >= 500) logLine(log, {t:'err', x:'服务器错误 ('+xhr.status+')，请稍后重试'}); };
+        xhr.onerror = function(){ logLine(ocrLog, {t:'err', x:'OCR 请求发送失败，请检查网络后重试'}); setBusy(false); };
+        xhr.onload = function(){ if(xhr.status >= 500) logLine(ocrLog, {t:'err', x:'服务器错误 ('+xhr.status+')，请稍后重试'}); };
         // No Content-Type header — browser sets multipart boundary automatically
         xhr.send(fd);
       });
