@@ -874,6 +874,11 @@ def api_ocr_jd():
 
             jd_text = ocr_result.text.strip()
 
+            # 防御：OCR 返回空文本但无 error（不应发生，但安全第一）
+            if not jd_text:
+                q.put({"type": "error", "text": "OCR 识别到的文本为空，请确认截图清晰完整，或手动粘贴 JD 文本。"})
+                return
+
             # ── 简历生成阶段（与 /api/resume mode=jd 完全一致）──
             result = generate_resume(jd_text=jd_text, output_langs=languages)
 
@@ -889,7 +894,7 @@ def api_ocr_jd():
                 pass
 
             files = get_session_files()
-            q.put({"type": "done", "reply": result, "files": [[fp, desc] for fp, desc in files]})
+            q.put({"type": "done", "reply": result, "stats": {"ocr_text": jd_text}, "files": [[fp, desc] for fp, desc in files]})
         except Exception as e:
             q.put({"type": "error", "text": str(e)})
         finally:

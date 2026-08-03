@@ -2948,6 +2948,7 @@ async function renderResumeModes(){
     return `<div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col"><div class="flex items-center gap-2 text-slate-800 font-semibold text-sm"><i data-lucide="${m.icon}" class="w-4 h-4 text-indigo-600"></i>${m.name}</div><div class="mt-1.5">${badge}</div><p class="text-xs text-slate-500 mt-2 flex-1">${m.desc}</p>${inputHtml}<button onclick="resumeTrigger('${m.id}')" class="agent-trigger mt-3 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-2 flex items-center justify-center gap-1"><i data-lucide="wand-2" class="w-3.5 h-3.5"></i> ${m.cta||'生成简历'}</button></div>`;
   }).join('');
   refreshIcons();
+  _bindJdDropZone();  // 绑定拖拽事件（upload zone 此刻才被创建）
 }
 function renderResume(){ loadRunsForSelect(); renderLangChips(); }
 /* ── JD 截图上传 ── */
@@ -2976,10 +2977,12 @@ function jdRemoveFile(){
   if(zone){ zone.classList.remove('border-indigo-400','bg-indigo-50'); }
   $('#rs-jd').placeholder = '粘贴完整 JD…';
 }
-// 拖拽支持
-document.addEventListener('DOMContentLoaded', function(){
+// 拖拽支持 — 在 renderResumeModes 之后调用（upload zone 是动态创建的）
+function _bindJdDropZone(){
   var zone = $('#jd-upload-zone');
   if(!zone) return;
+  if(zone.dataset.dropBound === '1') return;  // 已绑定，避免重复
+  zone.dataset.dropBound = '1';
   zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('border-indigo-400','bg-indigo-50'); });
   zone.addEventListener('dragleave', function(e){ e.preventDefault(); if(!RS.jdFile) zone.classList.remove('border-indigo-400','bg-indigo-50'); });
   zone.addEventListener('drop', function(e){
@@ -2987,12 +2990,11 @@ document.addEventListener('DOMContentLoaded', function(){
     if(!RS.jdFile) zone.classList.remove('border-indigo-400','bg-indigo-50');
     var f = e.dataTransfer.files[0];
     if(!f) return;
-    // 手动构造一个模拟 event 给 jdHandleFileSelect
     var dt = new DataTransfer(); dt.items.add(f);
     document.getElementById('jd-file-input').files = dt.files;
     jdHandleFileSelect({target:{files:dt.files}});
   });
-});
+}
 function resumeTrigger(id){
   if(guardBusy()) return; if(!RS.langs.size){ toast('请至少选择一种产出语言','warn'); return; }
   let body = {sid:STATE.sid, mode:id, languages:langsOrdered()};
@@ -3007,20 +3009,23 @@ function resumeTrigger(id){
       var panel = $('#resume-panel');
       panel.innerHTML = '<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">OCR 识别中…</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="rs-log"></div><div id="rs-result"></div></div>';
       var log = $('#rs-log');
-      startSSE(log, function(reply, files){
-        // done
+      startSSE(log, function(reply, files, stats){
+        // done — stats may contain ocr_text from /api/ocr/jd
         var h = '<div class="mt-3 fade-in"><div class="text-sm text-emerald-700 font-medium mb-1">✅ 生成完成 · '+files.length+' 个文件</div>';
         h += fileChips(files) + '<button onclick="switchView(\'files\');fileTab(\'jobs\')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2">在文件管理中查看</button></div>';
         $('#rs-result').innerHTML = h;
-        // OCR 后回填文本到 textarea，方便用户查看和复用
-        if(reply && reply.length > 10){
-          $('#rs-jd').value = reply.substring(0, 2000) + (reply.length > 2000 ? '\n…(截断，完整文本已用于生成)' : '');
+        // OCR 后回填 OCR 提取的原文到 textarea，方便用户核对和复用
+        var ocrText = (stats && stats.ocr_text) ? stats.ocr_text : '';
+        if(ocrText && ocrText.length > 0){
+          $('#rs-jd').value = ocrText.length > 2000 ? ocrText.substring(0, 2000) + '\n…(截断，完整文本已用于生成)' : ocrText;
         }
         jdRemoveFile();
         refreshIcons();
       }, null, 0, function(){
         var xhr = new XMLHttpRequest();
         xhr.open('POST', '/api/ocr/jd', true);
+        xhr.onerror = function(){ logLine(log, {t:'err', x:'OCR 请求发送失败，请检查网络后重试'}); setBusy(false); };
+        xhr.onload = function(){ if(xhr.status >= 500) logLine(log, {t:'err', x:'服务器错误 ('+xhr.status+')，请稍后重试'}); };
         // No Content-Type header — browser sets multipart boundary automatically
         xhr.send(fd);
       });
