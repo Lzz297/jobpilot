@@ -24,6 +24,10 @@ output/
 # SQLite 运行时数据库（种子数据通过 data/migrate.py 初始化）
 data/job_agent.db
 
+# 用户画像相关文件（含个人信息，待抽离为通用版本后再开放）
+profiles/prompts.yaml
+profiles/resume_guide.yaml
+
 # 用户标记文件（已迁移到 SQLite）
 profiles/.current_user
 
