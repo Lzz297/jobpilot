@@ -26,6 +26,7 @@
 | 结构化输出 | Instructor（Pydantic schema 校验） | 所有需要结构化输出的 LLM 调用点（8 个主路径）均已走 Instructor + Pydantic 模式：匹配评分（`_score_batch`）、市场分析 Phase B/C、方向聚合分析、简历审查。LLM 返回后 `.model_dump()` 转 dict 供下游使用。失败时通过 try/except 自动回退旧 `parse_json_response()` 方式 |
 | 网页抓取 | Playwright 无头浏览器 | JobsDB 对所有 requests 请求返回 403，已全面切换 Playwright |
 | HTML 解析 | BeautifulSoup (lxml) + JSON | BS4 做 DOM 辅助解析，核心数据来自页面内嵌 `__NEXT_DATA__` JSON |
+| OCR | Tesseract + pytesseract + Pillow | JD 截图/PDF 文字提取，含灰度化/二值化/CLAHE 预处理管道 |
 | PDF 渲染 | Playwright/Chromium | Markdown → HTML → PDF，两个独立浏览器实例（爬虫 + 渲染器各一个） |
 | 网络搜索 | DuckDuckGo (ddgs) | 联网搜索 |
 | Web 框架 | Flask + SSE | Web UI 服务器，SSE 实时进度推送 |
@@ -52,6 +53,7 @@ D:\job-agent/
 ├── job_match.py              # [匹配] LLM 五维评分（并发模式）+ 动态权重 + 及格线复评 + 方向分类
 ├── resume_gen.py             # [简历] 3 模式生成 + 方向聚合 + 英文先行 + 三语翻译 + 质量自检
 ├── checker.py                # [核查] 简历 bullet 事实核查 — 检测数字矛盾、强度升级、占位符
+├── ocr_utils.py              # [OCR] 图片/PDF 文字提取（Tesseract）+ 预处理管道
 ├── pdf_renderer.py           # [渲染] Markdown → HTML → PDF（独立 Playwright 实例）
 ├── market_analysis.py        # [市场] 四阶段市场调研（Phase B 并发分析）+ 多批聚合 + 差距分析
 ├── config_assembler.py       # [组装] Campaign 配置合并（user × strategy × campaign × search_config）
@@ -859,6 +861,21 @@ SSE 事件流端点，浏览器 `EventSource` 连接。30 秒无事件自动发�
 **Response** (立即): `{"status": "started"}`
 
 **SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress / review / done / error。`review` 事件（Checker 核查报告）在 `done` 之前自动推送。
+
+##### `POST /api/ocr/jd` 🔒
+从截图/PDF 中 OCR 提取 JD 文本，然后走 `generate_resume(jd_text=...)` 管线。与 `/api/resume` mode=`"jd"` 的区别仅在于文字来源——OCR vs 手动粘贴。
+
+**Request**: `multipart/form-data`
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `file` | 是 | 图片/PDF 文件（PNG/JPG/WebP/PDF），最大 20MB |
+| `sid` | 是 | 会话 ID |
+| `languages` | 否 | 语言子集 JSON 字符串，如 `'["en","hk"]'`，默认 `["en","hk","cn"]` |
+
+**Response** (立即): `{"status": "started"}`
+
+**SSE 事件流** (`GET /stream/{sid}`): 实时推送 progress（含 OCR 进度）→ review → done / error。若 Tesseract 未安装，返回 error 事件含安装指引。
 
 ##### `POST /api/resume/fix` 🔒
 定点修正单条 resume bullet（配合 checker 系统使用），返回修正后的完整 Markdown。

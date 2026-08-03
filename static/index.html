@@ -2907,7 +2907,7 @@ function resetFilters(){ MF.dir='all';MF.rec='all';MF.conf='all';MF.min=0;MF.sor
 function genForJob(idx){ if(guardBusy()) return; RS.run=MF.run; switchView('resume'); $('#rs-run').value=RS.run; renderResumeModes(); setTimeout(()=>{ const sel=$('#rs-job'); if(sel) sel.value=idx; },200); }
 
 /* ===================== RESUME VIEW ===================== */
-const RS = { run:null, langs:new Set(['en','hk','cn']) };
+const RS = { run:null, langs:new Set(['en','hk','cn']), jdFile:null };
 const RESUME_MODES = [
   {id:'job', needsRun:true, icon:'target', name:'匹配岗位 (job_index)', desc:'从该 Run 的匹配排名中选某个高分岗位单独定制。', input:'select'},
   {id:'jd', needsRun:false, icon:'clipboard-paste', name:'JD 文本 (jd_text)', desc:'其他平台看到的岗位，粘贴完整 JD。', input:'textarea'},
@@ -2935,7 +2935,14 @@ async function renderResumeModes(){
   $('#resume-modes').innerHTML = RESUME_MODES.map(m=>{
     let inputHtml = '';
     if(m.input==='select') inputHtml = `<select id="rs-job" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm bg-white">${matched.map((j,i)=>`<option value="${i+1}">#${i+1} · ${escapeHtml(j.title||'')}（${j.total_score||0}分）</option>`).join('')}</select>`;
-    if(m.input==='textarea') inputHtml = `<textarea id="rs-jd" rows="3" placeholder="粘贴完整 JD…" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm resize-none"></textarea>`;
+    if(m.input==='textarea') inputHtml = `<div class="jd-upload-zone border-2 border-dashed border-slate-200 rounded-lg p-3 text-center cursor-pointer hover:border-indigo-300 transition mt-2" id="jd-upload-zone" onclick="document.getElementById('jd-file-input').click()">
+      <input type="file" id="jd-file-input" accept="image/png,image/jpeg,image/webp,.pdf" class="hidden" onchange="jdHandleFileSelect(event)">
+      <i data-lucide="image" class="w-5 h-5 text-slate-300 mx-auto"></i>
+      <p class="text-xs text-slate-400 mt-1">点击上传或拖拽 JD 截图（PNG/JPG/WebP/PDF）</p>
+      <div id="jd-file-info" class="hidden mt-2 text-xs text-slate-600"></div>
+    </div>
+    <p class="text-[10px] text-slate-400 text-center mt-1">或者直接在下方输入框粘贴 JD 文本</p>
+    <textarea id="rs-jd" rows="3" placeholder="粘贴完整 JD…" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm resize-none"></textarea>`;
     if(m.input==='text') inputHtml = `<input id="rs-role" placeholder="${m.placeholder}" class="w-full mt-2 border border-slate-300 rounded-lg px-2 py-1.5 text-sm">`;
     const badge = m.needsRun ? `<span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 inline-flex items-center gap-1"><i data-lucide="database" class="w-3 h-3"></i> 基于 Run: ${RS.run}</span>` : `<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 inline-flex items-center gap-1"><i data-lucide="settings-2" class="w-3 h-3"></i> 不依赖 Run</span>`;
     return `<div class="bg-white border border-slate-200 rounded-xl p-4 flex flex-col"><div class="flex items-center gap-2 text-slate-800 font-semibold text-sm"><i data-lucide="${m.icon}" class="w-4 h-4 text-indigo-600"></i>${m.name}</div><div class="mt-1.5">${badge}</div><p class="text-xs text-slate-500 mt-2 flex-1">${m.desc}</p>${inputHtml}<button onclick="resumeTrigger('${m.id}')" class="agent-trigger mt-3 text-xs bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-3 py-2 flex items-center justify-center gap-1"><i data-lucide="wand-2" class="w-3.5 h-3.5"></i> ${m.cta||'生成简历'}</button></div>`;
@@ -2943,11 +2950,85 @@ async function renderResumeModes(){
   refreshIcons();
 }
 function renderResume(){ loadRunsForSelect(); renderLangChips(); }
+/* ── JD 截图上传 ── */
+const JD_FILE_MAX = 20 * 1024 * 1024;  // 20 MB
+function jdHandleFileSelect(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  if(!['image/png','image/jpeg','image/webp','application/pdf'].includes(f.type) && !f.name.match(/\.(png|jpe?g|webp|pdf)$/i)){
+    toast('仅支持 PNG / JPG / WebP / PDF 文件','warn'); return;
+  }
+  if(f.size > JD_FILE_MAX){ toast('文件过大（≤ 20MB）','warn'); return; }
+  RS.jdFile = f;
+  var info = $('#jd-file-info'); var zone = $('#jd-upload-zone');
+  var icon = f.type==='application/pdf'?'📄':'🖼️';
+  info.innerHTML = icon + ' ' + escapeHtml(f.name) + ' (' + (f.size/1024).toFixed(1) + ' KB) · <button onclick="event.stopPropagation(); jdRemoveFile()" class="text-red-500 hover:underline">✕ 清除</button>';
+  info.classList.remove('hidden');
+  if(zone){ zone.classList.add('border-indigo-400','bg-indigo-50'); }
+  // 文本框提示
+  $('#rs-jd').placeholder = '已上传截图，OCR 提取结果将自动填充…';
+}
+function jdRemoveFile(){
+  RS.jdFile = null;
+  $('#jd-file-input').value = '';
+  var info = $('#jd-file-info'); info.classList.add('hidden'); info.innerHTML = '';
+  var zone = $('#jd-upload-zone');
+  if(zone){ zone.classList.remove('border-indigo-400','bg-indigo-50'); }
+  $('#rs-jd').placeholder = '粘贴完整 JD…';
+}
+// 拖拽支持
+document.addEventListener('DOMContentLoaded', function(){
+  var zone = $('#jd-upload-zone');
+  if(!zone) return;
+  zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('border-indigo-400','bg-indigo-50'); });
+  zone.addEventListener('dragleave', function(e){ e.preventDefault(); if(!RS.jdFile) zone.classList.remove('border-indigo-400','bg-indigo-50'); });
+  zone.addEventListener('drop', function(e){
+    e.preventDefault();
+    if(!RS.jdFile) zone.classList.remove('border-indigo-400','bg-indigo-50');
+    var f = e.dataTransfer.files[0];
+    if(!f) return;
+    // 手动构造一个模拟 event 给 jdHandleFileSelect
+    var dt = new DataTransfer(); dt.items.add(f);
+    document.getElementById('jd-file-input').files = dt.files;
+    jdHandleFileSelect({target:{files:dt.files}});
+  });
+});
 function resumeTrigger(id){
   if(guardBusy()) return; if(!RS.langs.size){ toast('请至少选择一种产出语言','warn'); return; }
   let body = {sid:STATE.sid, mode:id, languages:langsOrdered()};
   if(id==='job'){ body.job_index = parseInt($('#rs-job').value)||1; }
-  else if(id==='jd'){ body.jd_text = $('#rs-jd').value.trim(); if(!body.jd_text){ toast('请粘贴 JD 文本','warn'); return; } }
+  else if(id==='jd'){
+    if(RS.jdFile){
+      // OCR 路径：上传截图 → /api/ocr/jd
+      var fd = new FormData();
+      fd.append('file', RS.jdFile);
+      fd.append('sid', STATE.sid);
+      fd.append('languages', JSON.stringify(langsOrdered()));
+      var panel = $('#resume-panel');
+      panel.innerHTML = '<div class="bg-white border border-slate-200 rounded-xl p-4"><div class="text-sm font-semibold text-slate-800 mb-2">OCR 识别中…</div><div class="logbox rounded-lg p-3 space-y-0.5 max-h-72 overflow-y-auto" id="rs-log"></div><div id="rs-result"></div></div>';
+      var log = $('#rs-log');
+      startSSE(log, function(reply, files){
+        // done
+        var h = '<div class="mt-3 fade-in"><div class="text-sm text-emerald-700 font-medium mb-1">✅ 生成完成 · '+files.length+' 个文件</div>';
+        h += fileChips(files) + '<button onclick="switchView(\'files\');fileTab(\'jobs\')" class="text-xs border border-slate-200 text-slate-600 rounded-lg px-3 py-1.5 mt-2">在文件管理中查看</button></div>';
+        $('#rs-result').innerHTML = h;
+        // OCR 后回填文本到 textarea，方便用户查看和复用
+        if(reply && reply.length > 10){
+          $('#rs-jd').value = reply.substring(0, 2000) + (reply.length > 2000 ? '\n…(截断，完整文本已用于生成)' : '');
+        }
+        jdRemoveFile();
+        refreshIcons();
+      }, null, 0, function(){
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/ocr/jd', true);
+        // No Content-Type header — browser sets multipart boundary automatically
+        xhr.send(fd);
+      });
+      return;
+    }
+    // 文本路径：粘贴 JD → /api/resume（现有逻辑不变）
+    body.jd_text = $('#rs-jd').value.trim(); if(!body.jd_text){ toast('请粘贴 JD 文本或上传 JD 截图','warn'); return; }
+  }
   else { toast('不支持的简历生成模式: '+id, 'warn'); return; }
 
   const panel = $('#resume-panel');

@@ -35,6 +35,8 @@ dependencies = [
     "instructor>=1.15.1",
     "langsmith>=0.4",
     "markdown>=3.10.2",
+    "pytesseract>=0.3.13",
+    "Pillow>=11.0",
 ]
 
 [project.optional-dependencies]

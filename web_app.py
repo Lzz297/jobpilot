@@ -27,6 +27,7 @@ from job_search import search_jobs
 from job_match import match_jobs
 from resume_gen import generate_resume
 from market_analysis import analyze_market, batch_analyze_market
+from ocr_utils import extract_text, get_tesseract_status, is_tesseract_available
 
 
 # ============================================================
@@ -766,6 +767,141 @@ def api_resume():
             set_emit_target(None)
             session["busy"] = False
             _agent_lock.release()
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/ocr/jd", methods=["POST"])
+@login_required
+def api_ocr_jd():
+    """从截图/PDF 中 OCR 提取 JD 文本，然后走 generate_resume(jd_text=...) 管线。
+
+    接收 multipart/form-data:
+        file      — (必填) 图片/PDF 文件，最大 20MB
+        languages — (可选) 简历语言子集，默认 ["en","hk","cn"]
+        sid       — (必填) 会话 ID
+
+    SSE 事件流同 /api/resume：progress / status / review / done / error
+    """
+    sid = (request.form.get("sid") or "").strip()
+    if not sid:
+        return jsonify({"error": "Missing sid"}), 400
+
+    session = _get_or_create_session(sid)
+    if session["busy"]:
+        return jsonify({"error": "Agent is busy"}), 429
+    if not _agent_lock.acquire(blocking=False):
+        return jsonify({"error": "Another session is running"}), 429
+    session["busy"] = True
+
+    # 获取上传文件
+    if "file" not in request.files:
+        session["busy"] = False
+        _agent_lock.release()
+        return jsonify({"error": "未收到上传文件"}), 400
+
+    file = request.files["file"]
+    if not file.filename:
+        session["busy"] = False
+        _agent_lock.release()
+        return jsonify({"error": "文件名为空"}), 400
+
+    # 保存临时文件
+    tmp_dir = os.path.join(OUTPUT_DIR, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_path = os.path.join(tmp_dir, f"ocr_{uuid.uuid4().hex[:8]}{os.path.splitext(file.filename or 'upload.png')[1]}")
+    file_bytes = file.read()
+    try:
+        with open(tmp_path, "wb") as f:
+            f.write(file_bytes)
+    except Exception as e:
+        session["busy"] = False
+        _agent_lock.release()
+        return jsonify({"error": f"文件保存失败: {e}"}), 500
+
+    # 解析语言参数
+    languages_raw = request.form.get("languages", "")
+    languages = None
+    if languages_raw:
+        try:
+            parsed = json.loads(languages_raw)
+            if isinstance(parsed, list) and parsed:
+                languages = parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # 准备 SSE 队列
+    q = session["queue"]
+    while not q.empty():
+        try:
+            q.get_nowait()
+        except queue.Empty:
+            break
+
+    def _run():
+        try:
+            set_emit_target(q)
+
+            # ── 注入 campaign 配置 ──
+            if session.get("campaign"):
+                try:
+                    from config_assembler import load_campaign
+                    from config import set_campaign_config
+                    cfg = load_campaign(session["campaign"], user_id=session.get("user_id"))
+                    set_campaign_config(cfg)
+                except Exception as e:
+                    q.put({"type": "progress", "text": f"⚠️ Campaign 加载失败: {e}"})
+
+            # ── OCR 阶段 ──
+            q.put({"type": "status", "text": "📷 正在 OCR 识别截图…"})
+            q.put({"type": "progress", "text": f"📷 文件: {os.path.basename(tmp_path)} ({len(file_bytes) / 1024:.1f} KB)"})
+
+            ocr_result = extract_text(file_bytes, file.filename)
+
+            if ocr_result.error and not ocr_result.text.strip():
+                # 完全失败
+                q.put({"type": "error", "text": f"OCR 识别失败: {ocr_result.error}"})
+                return
+
+            if ocr_result.error:
+                # 有警告但文本可用（如字符数 < 50）
+                q.put({"type": "progress", "text": f"⚠️ {ocr_result.error}"})
+
+            q.put({"type": "progress",
+                   "text": f"✅ OCR 完成: {len(ocr_result.text)} 字符 "
+                           f"({ocr_result.engine}, {ocr_result.elapsed_ms:.0f}ms)"})
+
+            jd_text = ocr_result.text.strip()
+
+            # ── 简历生成阶段（与 /api/resume mode=jd 完全一致）──
+            result = generate_resume(jd_text=jd_text, output_langs=languages)
+
+            # 推送核查报告
+            try:
+                import resume_gen as _rg
+                cr = getattr(_rg, 'last_check_report', [])
+                if cr:
+                    q.put({"type": "review", "bullets": cr, "flagged_count": len(cr)})
+                else:
+                    q.put({"type": "review", "bullets": [], "flagged_count": 0})
+            except Exception:
+                pass
+
+            files = get_session_files()
+            q.put({"type": "done", "reply": result, "files": [[fp, desc] for fp, desc in files]})
+        except Exception as e:
+            q.put({"type": "error", "text": str(e)})
+        finally:
+            set_emit_target(None)
+            session["busy"] = False
+            _agent_lock.release()
+            # 清理临时文件
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
 
     threading.Thread(target=_run, daemon=True).start()
     return jsonify({"status": "started"})
@@ -1761,4 +1897,21 @@ if __name__ == "__main__":
     print("  JobsDB Agent Web UI")
     print("  http://127.0.0.1:5000")
     print("=" * 50)
+
+    # ── 临时目录管理 ──
+    tmp_dir = os.path.join(OUTPUT_DIR, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    # 清理 24 小时前的残留临时文件
+    try:
+        cutoff = time.time() - 86400
+        for fname in os.listdir(tmp_dir):
+            fpath = os.path.join(tmp_dir, fname)
+            if os.path.isfile(fpath) and os.path.getmtime(fpath) < cutoff:
+                os.remove(fpath)
+    except Exception:
+        pass
+
+    # ── OCR 引擎状态 ──
+    print(f"  OCR: {get_tesseract_status()}")
+
     app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
