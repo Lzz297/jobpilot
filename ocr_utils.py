@@ -26,6 +26,14 @@ from typing import NamedTuple
 from PIL import Image, ImageFilter, ImageOps
 import pytesseract
 
+# ── tessdata 目录：优先项目本地，回退系统默认 ──
+_PROJECT_TESSDATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "tessdata")
+if os.path.isdir(_PROJECT_TESSDATA) and os.listdir(_PROJECT_TESSDATA):
+    os.environ["TESSDATA_PREFIX"] = _PROJECT_TESSDATA
+    _TESSDATA_DIR = _PROJECT_TESSDATA
+else:
+    _TESSDATA_DIR = None
+
 # ── Tesseract 检测 ──
 
 # Windows 常见安装路径（按优先级排列）
